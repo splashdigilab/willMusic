@@ -1,6 +1,14 @@
 <template>
-  <div>
+  <div id="app">
     <NuxtRouteAnnouncer />
-    <NuxtWelcome />
+    <NuxtPage />
   </div>
 </template>
+
+<script setup lang="ts">
+useHead({
+  htmlAttrs: {
+    lang: 'zh-TW'
+  }
+})
+</script>
