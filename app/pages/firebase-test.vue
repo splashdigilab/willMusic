@@ -1,66 +1,66 @@
 <template>
-  <div class="firebase-test-page">
-    <div class="container">
+  <div class="p-firebase-test">
+    <div class="p-firebase-test__container">
       <h1>Firebase 連線測試</h1>
-      
+
       <!-- Config Status -->
-      <section class="test-section">
+      <section class="p-firebase-test__test-section">
         <h2>1. 環境變數載入</h2>
-        <div class="status-grid">
-          <div class="status-item" :class="configStatus.apiKey ? 'ok' : 'error'">
+        <div class="p-firebase-test__status-grid">
+          <div class="p-firebase-test__status-item" :class="configStatus.apiKey ? 'ok' : 'error'">
             apiKey: {{ configStatus.apiKey ? '✓ 已載入' : '✗ 缺少' }}
           </div>
-          <div class="status-item" :class="configStatus.authDomain ? 'ok' : 'error'">
+          <div class="p-firebase-test__status-item" :class="configStatus.authDomain ? 'ok' : 'error'">
             authDomain: {{ configStatus.authDomain ? '✓ 已載入' : '✗ 缺少' }}
           </div>
-          <div class="status-item" :class="configStatus.projectId ? 'ok' : 'error'">
+          <div class="p-firebase-test__status-item" :class="configStatus.projectId ? 'ok' : 'error'">
             projectId: {{ configStatus.projectId ? '✓ 已載入' : '✗ 缺少' }}
           </div>
-          <div class="status-item" :class="configStatus.storageBucket ? 'ok' : 'error'">
+          <div class="p-firebase-test__status-item" :class="configStatus.storageBucket ? 'ok' : 'error'">
             storageBucket: {{ configStatus.storageBucket ? '✓ 已載入' : '✗ 缺少' }}
           </div>
-          <div class="status-item" :class="configStatus.appId ? 'ok' : 'error'">
+          <div class="p-firebase-test__status-item" :class="configStatus.appId ? 'ok' : 'error'">
             appId: {{ configStatus.appId ? '✓ 已載入' : '✗ 缺少' }}
           </div>
         </div>
       </section>
 
       <!-- Firestore Init -->
-      <section class="test-section">
+      <section class="p-firebase-test__test-section">
         <h2>2. Firestore 初始化</h2>
-        <div class="status-item" :class="firestoreStatus">
+        <div class="p-firebase-test__status-item" :class="firestoreStatus">
           {{ firestoreMessage }}
         </div>
       </section>
 
       <!-- REST API Test (bypass SDK) - 先測這個！ -->
-      <section class="test-section highlight">
+      <section class="p-firebase-test__test-section highlight">
         <h2>3. Firestore REST API 測試 ⭐ 先執行</h2>
-        <p class="section-desc">繞過 SDK，直接用 HTTP 測試。成功代表 Firestore 已設定好。</p>
-        <button 
-          class="test-btn" 
-          :disabled="testingRest" 
+        <p class="p-firebase-test__section-desc">繞過 SDK，直接用 HTTP 測試。成功代表 Firestore 已設定好。</p>
+        <button
+          class="p-firebase-test__test-btn"
+          :disabled="testingRest"
           @click="runRestApiTest"
         >
           {{ testingRest ? '測試中...（8 秒）' : '執行 REST API 測試' }}
         </button>
-        <div v-if="restTestResult" class="result-box" :class="restTestResult.success ? 'success' : 'error'">
+        <div v-if="restTestResult" class="p-firebase-test__result-box" :class="restTestResult.success ? 'success' : 'error'">
           <p><strong>{{ restTestResult.success ? '✓ 成功' : '✗ 失敗' }}</strong></p>
           <pre>{{ restTestResult.message }}</pre>
         </div>
       </section>
 
       <!-- Read Test (SDK) -->
-      <section class="test-section">
+      <section class="p-firebase-test__test-section">
         <h2>4. Firestore SDK 讀取測試</h2>
-        <button 
-          class="test-btn" 
-          :disabled="testing" 
+        <button
+          class="p-firebase-test__test-btn"
+          :disabled="testing"
           @click="runReadTest"
         >
           {{ testing ? '測試中...' : '執行讀取測試' }}
         </button>
-        <div v-if="readTestResult" class="result-box" :class="readTestResult.success ? 'success' : 'error'">
+        <div v-if="readTestResult" class="p-firebase-test__result-box" :class="readTestResult.success ? 'success' : 'error'">
           <p><strong>{{ readTestResult.success ? '✓ 成功' : '✗ 失敗' }}</strong></p>
           <pre>{{ readTestResult.message }}</pre>
           <pre v-if="readTestResult.details">{{ readTestResult.details }}</pre>
@@ -68,35 +68,35 @@
       </section>
 
       <!-- Write Test (Optional) -->
-      <section class="test-section">
+      <section class="p-firebase-test__test-section">
         <h2>5. Firestore SDK 寫入測試（tokens）</h2>
-        <button 
-          class="test-btn" 
-          :disabled="testingWrite" 
+        <button
+          class="p-firebase-test__test-btn"
+          :disabled="testingWrite"
           @click="runWriteTest(false)"
         >
           {{ testingWrite ? '測試中...（最多等 10 秒）' : '建立測試 Token' }}
         </button>
-        <button 
-          class="test-btn test-btn--alt" 
-          :disabled="testingWrite" 
+        <button
+          class="p-firebase-test__test-btn p-firebase-test__test-btn--alt"
+          :disabled="testingWrite"
           @click="runWriteTest(true)"
         >
           使用本機時間重試
         </button>
-        <div v-if="writeTestResult" class="result-box" :class="writeTestResult.success ? 'success' : 'error'">
+        <div v-if="writeTestResult" class="p-firebase-test__result-box" :class="writeTestResult.success ? 'success' : 'error'">
           <p><strong>{{ writeTestResult.success ? '✓ 成功' : '✗ 失敗' }}</strong></p>
           <pre>{{ writeTestResult.message }}</pre>
         </div>
-        <p v-if="writeTestResult && !writeTestResult.success" class="hint-text">
+        <p v-if="writeTestResult && !writeTestResult.success" class="p-firebase-test__hint-text">
           若顯示逾時，請檢查：Firebase Console 是否已啟用 Firestore、安全規則是否允許寫入、網路連線是否正常
         </p>
       </section>
 
       <!-- 診斷建議 -->
-      <section class="test-section diagnosis-section">
+      <section class="p-firebase-test__test-section p-firebase-test__diagnosis-section">
         <h2>🔧 逾時故障排除</h2>
-        <ol class="diagnosis-list">
+        <ol>
           <li><strong>步驟 3 REST 逾時</strong> → Firestore 可能未建立。至
             <a :href="firebaseConsoleUrl" target="_blank" rel="noopener">Firebase Console</a>
             → Firestore Database → 建立資料庫（<strong>務必選 Native 模式</strong>，不是 Datastore）
@@ -106,12 +106,12 @@
           <li><strong>步驟 3 成功、4/5 SDK 逾時</strong> → SDK 或 IndexedDB 問題，嘗試無痕模式、換瀏覽器、關閉廣告阻擋</li>
           <li><strong>全部逾時</strong> → 檢查 VPN、防火牆、公司網路是否阻擋 firestore.googleapis.com</li>
         </ol>
-        <a :href="firebaseConsoleUrl" target="_blank" rel="noopener" class="console-link">
+        <a :href="firebaseConsoleUrl" target="_blank" rel="noopener" class="p-firebase-test__console-link">
           開啟 Firebase Console →
         </a>
       </section>
 
-      <NuxtLink to="/home" class="back-link">← 返回首頁</NuxtLink>
+      <NuxtLink to="/home" class="p-firebase-test__back-link">← 返回首頁</NuxtLink>
     </div>
   </div>
 </template>
@@ -123,6 +123,7 @@ definePageMeta({ layout: false })
 
 const config = useRuntimeConfig()
 const { $firestore } = useNuxtApp()
+const { createToken } = useFirestore()
 
 const projectId = computed(() => config.public?.firebase?.projectId || '')
 const apiKey = computed(() => config.public?.firebase?.apiKey || '')
@@ -231,26 +232,25 @@ const runReadTest = async () => {
   }
 }
 
-// 4. Write test
+// 5. Write test（建立 token）
 const testingWrite = ref(false)
 const writeTestResult = ref<{ success: boolean; message: string } | null>(null)
 
-const runWriteTest = async (useLocalTimestamp = false) => {
+const runWriteTest = async (useLocalTime: boolean) => {
   testingWrite.value = true
   writeTestResult.value = null
-  
   try {
-    const db = $firestore as any
-    const docData = useLocalTimestamp
-      ? { status: 'unused', createdAt: Timestamp.fromDate(new Date()) }
-      : { status: 'unused', createdAt: serverTimestamp() }
-    
-    const docRef = await withTimeout(
-      addDoc(collection(db, 'tokens'), docData)
-    )
-    writeTestResult.value = {
-      success: true,
-      message: `成功建立 Token，ID: ${docRef.id}`
+    if (useLocalTime) {
+      const db = $firestore as any
+      const tokenData = {
+        status: 'unused',
+        createdAt: Timestamp.now()
+      }
+      const docRef = await addDoc(collection(db, 'tokens'), tokenData)
+      writeTestResult.value = { success: true, message: `已建立測試 Token（本機時間）: ${docRef.id}` }
+    } else {
+      const tokenId = await withTimeout(createToken())
+      writeTestResult.value = { success: true, message: `已建立測試 Token: ${tokenId}` }
     }
   } catch (e: any) {
     writeTestResult.value = {
@@ -263,168 +263,6 @@ const runWriteTest = async (useLocalTimestamp = false) => {
 }
 </script>
 
-<style scoped lang="scss">
-.firebase-test-page {
-  min-height: 100vh;
-  background: #1a1a2e;
-  color: #eee;
-  padding: 2rem 1rem;
-}
-
-.container {
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-h1 {
-  font-size: 1.75rem;
-  margin-bottom: 2rem;
-}
-
-.test-section {
-  background: #16213e;
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-
-  h2 {
-    font-size: 1rem;
-    margin-bottom: 1rem;
-    color: #a0a0a0;
-  }
-
-  &.highlight {
-    border: 2px solid rgba(251, 191, 36, 0.5);
-  }
-}
-
-.section-desc {
-  font-size: 0.8rem;
-  color: #9ca3af;
-  margin-bottom: 1rem;
-}
-
-.status-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.status-item {
-  padding: 0.5rem;
-  border-radius: 6px;
-  font-family: monospace;
-  font-size: 0.875rem;
-
-  &.ok {
-    background: rgba(16, 185, 129, 0.2);
-    color: #10b981;
-  }
-
-  &.error {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-  }
-
-  &.pending {
-    background: rgba(251, 191, 36, 0.2);
-    color: #fbbf24;
-  }
-}
-
-.test-btn {
-  padding: 0.75rem 1.5rem;
-  background: #667eea;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-right: 0.5rem;
-  margin-bottom: 0.5rem;
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  &--alt {
-    background: #4b5563;
-  }
-}
-
-.hint-text {
-  margin-top: 1rem;
-  font-size: 0.75rem;
-  color: #9ca3af;
-  line-height: 1.5;
-}
-
-.result-box {
-  margin-top: 1rem;
-  padding: 1rem;
-  border-radius: 8px;
-
-  pre {
-    margin: 0.5rem 0 0;
-    font-size: 0.75rem;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  &.success {
-    background: rgba(16, 185, 129, 0.2);
-    border: 1px solid #10b981;
-  }
-
-  &.error {
-    background: rgba(239, 68, 68, 0.2);
-    border: 1px solid #ef4444;
-  }
-}
-
-.diagnosis-section {
-  border: 1px solid rgba(251, 191, 36, 0.3);
-}
-
-.diagnosis-list {
-  margin: 1rem 0;
-  padding-left: 1.5rem;
-  line-height: 1.8;
-  font-size: 0.875rem;
-  color: #d1d5db;
-
-  li {
-    margin-bottom: 0.5rem;
-  }
-
-  code {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 0.2em 0.4em;
-    border-radius: 4px;
-    font-size: 0.8em;
-  }
-
-  a {
-    color: #667eea;
-  }
-}
-
-.console-link {
-  display: inline-block;
-  margin-top: 1rem;
-  padding: 0.5rem 1rem;
-  background: #667eea;
-  color: white;
-  text-decoration: none;
-  border-radius: 8px;
-  font-size: 0.875rem;
-}
-
-.back-link {
-  display: inline-block;
-  margin-top: 2rem;
-  color: #667eea;
-  text-decoration: none;
-}
+<style scoped>
+/* Firebase 測試頁面 - 樣式簡化 */
 </style>

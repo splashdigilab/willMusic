@@ -1,25 +1,25 @@
 <template>
-  <div class="editor-page">
+  <div class="p-editor">
     <!-- Header -->
-    <header class="editor-header">
-      <button class="header-btn" @click="goBack">
+    <header class="p-editor__header">
+      <button class="p-editor__header-btn" @click="goBack">
         <span>← 返回</span>
       </button>
-      <h1 class="header-title">編輯便利貼</h1>
-      <button class="header-btn" @click="showPreview = true">
+      <h1 class="p-editor__header-title">編輯便利貼</h1>
+      <button class="p-editor__header-btn" @click="showPreview = true">
         <span>預覽</span>
       </button>
     </header>
 
     <!-- Draft Modal -->
-    <div v-if="showDraftModal" class="modal-overlay" @click="handleDraftDecision(false)">
-      <div class="modal-content" @click.stop>
-        <div class="modal-icon">📝</div>
-        <h2 class="modal-title">發現草稿</h2>
-        <p class="modal-message">
+    <div v-if="showDraftModal" class="p-editor__modal-overlay" @click="handleDraftDecision(false)">
+      <div class="p-editor__modal-content" @click.stop>
+        <div class="p-editor__modal-icon">📝</div>
+        <h2 class="p-editor__modal-title">發現草稿</h2>
+        <p class="p-editor__modal-message">
           您有一份未完成的草稿，要繼續編輯還是重新開始？
         </p>
-        <div class="modal-actions">
+        <div class="p-editor__modal-actions">
           <button class="btn btn--secondary" @click="handleDraftDecision(false)">
             重新開始
           </button>
@@ -31,17 +31,17 @@
     </div>
 
     <!-- Canvas Area -->
-    <div class="canvas-section">
-      <div class="canvas-container">
+    <div class="p-editor__canvas-section">
+      <div class="p-editor__canvas-container">
         <div
           ref="canvasRef"
-          class="canvas"
+          class="p-editor__canvas"
           :style="canvasStyle"
           @click="deselectSticker"
         >
           <!-- Content Text -->
           <div
-            class="canvas-text"
+            class="p-editor__canvas-text"
             :style="textStyle"
             contenteditable
             @input="handleTextInput"
@@ -55,7 +55,7 @@
           <div
             v-for="sticker in stickers"
             :key="sticker.id"
-            class="sticker"
+            class="p-editor__sticker"
             :class="{ 
               'is-selected': selectedStickerId === sticker.id,
               'is-dragging': draggingStickerId === sticker.id 
@@ -70,7 +70,7 @@
             <!-- Delete Button -->
             <button
               v-if="selectedStickerId === sticker.id"
-              class="sticker-delete"
+              class="p-editor__sticker-delete"
               @click.stop="removeSticker(sticker.id)"
             >
               ✕
@@ -79,81 +79,81 @@
         </div>
 
         <!-- Character Count -->
-        <div class="character-count">
+        <div class="p-editor__character-count">
           {{ content.length }} / 200
         </div>
       </div>
     </div>
 
     <!-- Control Panel -->
-    <div class="control-panel">
+    <div class="p-editor__control-panel">
       <!-- Background Color -->
-      <div class="control-section">
-        <h3 class="control-title">背景顏色</h3>
-        <div class="color-grid">
+      <div class="p-editor__control-section">
+        <h3 class="p-editor__control-title">背景顏色</h3>
+        <div class="p-editor__color-grid">
           <button
             v-for="color in backgroundColors"
             :key="color.value"
-            class="color-btn"
+            class="p-editor__color-btn"
             :class="{ 'is-active': backgroundColor === color.value }"
             :style="{ background: color.value }"
             @click="backgroundColor = color.value"
           >
-            <span v-if="backgroundColor === color.value" class="color-check">✓</span>
+            <span v-if="backgroundColor === color.value" class="p-editor__color-check">✓</span>
           </button>
         </div>
       </div>
 
       <!-- Text Color -->
-      <div class="control-section">
-        <h3 class="control-title">文字顏色</h3>
-        <div class="color-grid">
+      <div class="p-editor__control-section">
+        <h3 class="p-editor__control-title">文字顏色</h3>
+        <div class="p-editor__color-grid">
           <button
             v-for="color in textColors"
             :key="color.value"
-            class="color-btn"
+            class="p-editor__color-btn"
             :class="{ 'is-active': textColor === color.value }"
             :style="{ background: color.value }"
             @click="textColor = color.value"
           >
-            <span v-if="textColor === color.value" class="color-check">✓</span>
+            <span v-if="textColor === color.value" class="p-editor__color-check">✓</span>
           </button>
         </div>
       </div>
 
       <!-- Font Size -->
-      <div class="control-section">
-        <h3 class="control-title">文字大小</h3>
+      <div class="p-editor__control-section">
+        <h3 class="p-editor__control-title">文字大小</h3>
         <input
           v-model.number="fontSize"
           type="range"
           min="16"
           max="48"
           step="2"
-          class="slider"
+          class="p-editor__slider"
         />
-        <span class="slider-value">{{ fontSize }}px</span>
+        <span class="p-editor__slider-value">{{ fontSize }}px</span>
       </div>
 
       <!-- Sticker Library -->
-      <div class="control-section">
-        <h3 class="control-title">貼紙</h3>
-        <div class="sticker-categories">
+      <div class="p-editor__control-section">
+        <h3 class="p-editor__control-title">貼紙</h3>
+        <div class="p-editor__sticker-categories">
           <button
             v-for="category in categories"
             :key="category.id"
-            class="category-btn"
+            class="p-editor__category-btn"
             :class="{ 'is-active': selectedCategory === category.id }"
             @click="selectedCategory = category.id"
           >
             {{ category.name }}
           </button>
         </div>
-        <div class="sticker-grid">
+        <div class="p-editor__sticker-grid">
           <button
             v-for="sticker in filteredStickers"
             :key="sticker.id"
-            class="sticker-btn"
+            class="p-editor__sticker-btn"
             @click="addSticker(sticker.id)"
           >
             {{ sticker.content }}
@@ -163,12 +163,12 @@
     </div>
 
     <!-- Bottom Actions -->
-    <div class="bottom-actions">
-      <button class="action-btn action-btn--secondary" @click="clearAll">
+    <div class="p-editor__bottom-actions">
+      <button class="p-editor__action-btn p-editor__action-btn--secondary" @click="clearAll">
         清空
       </button>
       <button 
-        class="action-btn action-btn--primary" 
+        class="p-editor__action-btn p-editor__action-btn--primary" 
         :disabled="isSubmitting"
         @click="handleSubmit"
       >
@@ -177,13 +177,13 @@
     </div>
 
     <!-- Preview Modal -->
-    <div v-if="showPreview" class="modal-overlay" @click="showPreview = false">
-      <div class="preview-modal" @click.stop>
-        <div class="preview-header">
+    <div v-if="showPreview" class="p-editor__modal-overlay" @click="showPreview = false">
+      <div class="p-editor__preview-modal" @click.stop>
+        <div class="p-editor__preview-header">
           <h2>預覽</h2>
-          <button class="close-btn" @click="showPreview = false">✕</button>
+          <button class="p-editor__close-btn" @click="showPreview = false">✕</button>
         </div>
-        <div class="preview-content">
+        <div class="p-editor__preview-content c-sticky-note-container--preview">
           <StickyNote :note="previewNote" />
         </div>
       </div>
@@ -194,6 +194,7 @@
 <script setup lang="ts">
 import type { StickerInstance, DraftData } from '~/types'
 import { STICKER_LIBRARY, getStickersByCategory, getStickerCategories } from '~/data/stickers'
+import StickyNote from '~/components/StickyNote.vue'
 
 definePageMeta({
   layout: false
@@ -532,383 +533,7 @@ watch([backgroundColor, textColor, fontSize], () => {
 })
 </script>
 
-<style scoped lang="scss">
-.editor-page {
-  min-height: 100vh;
-  background: #f5f5f5;
-  display: flex;
-  flex-direction: column;
-}
 
-.editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
-  background: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.header-btn {
-  padding: 0.5rem 1rem;
-  background: transparent;
-  border: none;
-  color: #667eea;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 0.2s ease;
-
-  &:hover {
-    color: #764ba2;
-  }
-}
-
-.header-title {
-  font-size: 1.125rem;
-  font-weight: bold;
-  color: #333;
-}
-
-.canvas-section {
-  padding: 2rem 1rem;
-  flex: 1;
-}
-
-.canvas-container {
-  max-width: 600px;
-  margin: 0 auto;
-  position: relative;
-}
-
-.canvas {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  position: relative;
-  overflow: hidden;
-  cursor: text;
-}
-
-.canvas-text {
-  width: 100%;
-  height: 100%;
-  padding: 2rem;
-  outline: none;
-  word-wrap: break-word;
-  white-space: pre-wrap;
-  line-height: 1.6;
-  
-  &:empty:before {
-    content: attr(placeholder);
-    color: rgba(0, 0, 0, 0.3);
-  }
-}
-
-.character-count {
-  text-align: right;
-  margin-top: 0.5rem;
-  font-size: 0.875rem;
-  color: #666;
-}
-
-.sticker {
-  position: absolute;
-  cursor: grab;
-  user-select: none;
-  transition: transform 0.1s ease;
-  touch-action: none;
-
-  &.is-selected {
-    filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.8));
-  }
-
-  &.is-dragging {
-    cursor: grabbing;
-    transition: none;
-    z-index: 10;
-  }
-}
-
-.sticker-delete {
-  position: absolute;
-  top: -12px;
-  right: -12px;
-  width: 24px;
-  height: 24px;
-  background: #f43f5e;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  font-size: 0.75rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.control-panel {
-  padding: 2rem 1rem;
-  background: white;
-  border-top: 1px solid #e0e0e0;
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.control-section {
-  margin-bottom: 2rem;
-}
-
-.control-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 1rem;
-}
-
-.color-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
-  gap: 0.75rem;
-}
-
-.color-btn {
-  aspect-ratio: 1;
-  border: 3px solid transparent;
-  border-radius: 12px;
-  cursor: pointer;
-  position: relative;
-  transition: all 0.2s ease;
-
-  &:hover {
-    transform: scale(1.05);
-  }
-
-  &.is-active {
-    border-color: #333;
-    transform: scale(1.1);
-  }
-}
-
-.color-check {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 1.5rem;
-  color: white;
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
-}
-
-.slider {
-  width: 100%;
-  margin-bottom: 0.5rem;
-}
-
-.slider-value {
-  font-size: 0.875rem;
-  color: #666;
-}
-
-.sticker-categories {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-}
-
-.category-btn {
-  padding: 0.5rem 1rem;
-  background: #f0f0f0;
-  border: 2px solid transparent;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background: #e0e0e0;
-  }
-
-  &.is-active {
-    background: #667eea;
-    color: white;
-    border-color: #667eea;
-  }
-}
-
-.sticker-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
-  gap: 0.75rem;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.sticker-btn {
-  aspect-ratio: 1;
-  background: #f9f9f9;
-  border: 2px solid #e0e0e0;
-  border-radius: 8px;
-  font-size: 2rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background: #f0f0f0;
-    transform: scale(1.1);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
-}
-
-.bottom-actions {
-  display: flex;
-  gap: 1rem;
-  padding: 1rem;
-  background: white;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
-  position: sticky;
-  bottom: 0;
-}
-
-.action-btn {
-  flex: 1;
-  padding: 1rem;
-  border: none;
-  border-radius: 12px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-
-  &--secondary {
-    background: #e0e0e0;
-    color: #333;
-
-    &:hover {
-      background: #d0d0d0;
-    }
-  }
-
-  &--primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-
-    &:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
-    }
-  }
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 1rem;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 16px;
-  padding: 2rem;
-  max-width: 400px;
-  width: 100%;
-  text-align: center;
-}
-
-.modal-icon {
-  font-size: 4rem;
-  margin-bottom: 1rem;
-}
-
-.modal-title {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #333;
-  margin-bottom: 1rem;
-}
-
-.modal-message {
-  color: #666;
-  margin-bottom: 2rem;
-  line-height: 1.6;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 1rem;
-}
-
-.btn {
-  flex: 1;
-  padding: 1rem;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &--secondary {
-    background: #e0e0e0;
-    color: #333;
-  }
-
-  &--primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-  }
-}
-
-.preview-modal {
-  background: white;
-  border-radius: 16px;
-  padding: 2rem;
-  max-width: 500px;
-  width: 100%;
-}
-
-.preview-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2rem;
-
-  h2 {
-    font-size: 1.25rem;
-    font-weight: bold;
-    color: #333;
-  }
-}
-
-.close-btn {
-  width: 32px;
-  height: 32px;
-  background: #e0e0e0;
-  border: none;
-  border-radius: 50%;
-  font-size: 1.25rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  &:hover {
-    background: #d0d0d0;
-  }
-}
+<style scoped>
+/* 所有樣式已移至 app/assets/scss/pages/_editor.scss */
 </style>
