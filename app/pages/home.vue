@@ -118,7 +118,7 @@ definePageMeta({
   layout: false
 })
 
-const { getHistory } = useFirestore()
+const { getHistory, listenToHistory } = useFirestore()
 const { 
   isInAppBrowser, 
   browserName, 
@@ -130,9 +130,10 @@ const {
 
 const activeTab = ref<'live' | 'archive'>('live')
 
-// Live Wall (最新 60 筆)
+// Live Wall (最新 60 筆，即時監聽)
 const liveItems = ref<QueueHistoryItem[]>([])
 const liveLoading = ref(false)
+let liveUnsubscribe: (() => void) | null = null
 
 // Archive Wall (無限捲動)
 const archiveItems = ref<QueueHistoryItem[]>([])
@@ -143,18 +144,14 @@ let lastArchiveDoc: QueryDocumentSnapshot<DocumentData> | null = null
 const infiniteScrollTrigger = ref<HTMLElement | null>(null)
 
 /**
- * 載入 Live Wall 資料
+ * 即時監聽 Live Wall 資料（資料庫更新時自動同步）
  */
-const loadLiveWall = async () => {
+const startLiveWallListener = () => {
   liveLoading.value = true
-  try {
-    const result = await getHistory(60)
-    liveItems.value = result.items
-  } catch (error) {
-    console.error('Error loading live wall:', error)
-  } finally {
+  liveUnsubscribe = listenToHistory(60, (items) => {
+    liveItems.value = items
     liveLoading.value = false
-  }
+  })
 }
 
 /**
@@ -220,11 +217,17 @@ onMounted(() => {
     showBrowserWarning()
   }
 
-  // 載入 Live Wall
-  loadLiveWall()
+  // 即時監聽 Live Wall（資料庫更新時自動出現）
+  startLiveWallListener()
 
   // 設定 Infinite Scroll
   setupInfiniteScroll()
+})
+
+onUnmounted(() => {
+  if (liveUnsubscribe) {
+    liveUnsubscribe()
+  }
 })
 </script>
 

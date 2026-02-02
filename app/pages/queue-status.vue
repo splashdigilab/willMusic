@@ -35,9 +35,9 @@
 
       <!-- Status Messages -->
       <div class="p-queue-status__status-messages">
-        <div v-if="queueCount === 0" class="p-queue-status__message-box p-queue-status__message-box--success">
+        <div v-if="queueCount <= 1" class="p-queue-status__message-box p-queue-status__message-box--success">
           <span class="p-queue-status__message-icon">🎉</span>
-          <p class="p-queue-status__message-text">您的便利貼即將顯示！</p>
+          <p class="p-queue-status__message-text">您的便利貼已上傳！</p>
         </div>
 
         <div v-else-if="queueCount <= 5" class="p-queue-status__message-box p-queue-status__message-box--info">
@@ -118,7 +118,7 @@ const estimatedTime = computed(() => {
   const totalSeconds = queueCount.value * 15
   
   if (totalSeconds === 0) {
-    return '即將顯示'
+    return '您的便利貼已上傳'
   }
   
   if (totalSeconds < 60) {

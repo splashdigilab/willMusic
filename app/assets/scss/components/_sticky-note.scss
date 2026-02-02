@@ -2,43 +2,44 @@
   Component: Sticky Note
   統一的便利貼樣式系統
   
-  使用方式：
-  - 容器需設定 max-width 控制尺寸
-  - 內部元素使用 em 單位自動等比例縮放
-  - 傳入的 fontSize 作為所有內部元素的基準
+  使用 % 與 cqw（container query）確保各頁面比例一致：
+  - 容器尺寸可不同（editor 600px、home 400px、display 600px）
+  - 內部的 padding、字體、貼紙大小皆為容器的比例
 */
 
 .c-sticky-note {
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
-  /* 
-    內距使用 em：
-    - 基準 24px 時，2rem = 32px
-    - 32px / 24px ≈ 1.33em
+  overflow: hidden;
+
+  /* 啟用 container query，讓內部可使用 cqw 單位 */
+  container-type: inline-size;
+  container-name: sticky-note;
+
+  /*
+    內距：使用 %（padding 的 % 以包含塊寬度為準）
+    8% 確保 padding 佔便利貼寬度的固定比例
   */
-  padding: 1.33em;
-  border-radius: 4px;
-  box-shadow: 
+  padding: 8%;
+  border-radius: 2%;
+  box-shadow:
     0 4px 6px rgba(0, 0, 0, 0.1),
     0 1px 3px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  /* 確保文字繼承字體大小 */
-  font-size: inherit;
 
   &:hover {
-    box-shadow: 
+    box-shadow:
       0 10px 20px rgba(0, 0, 0, 0.15),
       0 3px 6px rgba(0, 0, 0, 0.1);
   }
 
-  /* 背景圖案 - 使用 em 單位確保比例 */
+  /* 背景圖案 - 使用 cqw 確保比例一致 */
   &[data-pattern="lines"] {
     background-image: repeating-linear-gradient(
       transparent,
-      transparent 1em,
-      rgba(0, 0, 0, 0.1) 1em,
-      rgba(0, 0, 0, 0.1) calc(1em + 1px)
+      transparent 4cqw,
+      rgba(0, 0, 0, 0.1) 4cqw,
+      rgba(0, 0, 0, 0.1) calc(4cqw + 1px)
     );
   }
 
@@ -48,28 +49,28 @@
       rgba(0, 0, 0, 0.1) 1px,
       transparent 1px
     );
-    background-size: 0.83em 0.83em; /* 20px / 24px ≈ 0.83em */
+    background-size: 10cqw 10cqw;
   }
 
   &[data-pattern="grid"] {
-    background-image: 
+    background-image:
       repeating-linear-gradient(
         0deg,
         rgba(0, 0, 0, 0.05) 0,
         rgba(0, 0, 0, 0.05) 1px,
         transparent 1px,
-        transparent 0.83em
+        transparent 10cqw
       ),
       repeating-linear-gradient(
         90deg,
         rgba(0, 0, 0, 0.05) 0,
         rgba(0, 0, 0, 0.05) 1px,
         transparent 1px,
-        transparent 0.83em
+        transparent 10cqw
       );
   }
 
-  /* 內容文字區域 */
+  /* 內容文字區域 - 字體大小為容器寬度的比例 */
   &__content {
     width: 100%;
     height: 100%;
@@ -78,20 +79,14 @@
     line-height: 1.6;
     position: relative;
     z-index: 1;
-    /* 文字大小：1em = 容器的 fontSize */
-    font-size: 1em;
+    /* 使用 cqw：字體 = 容器寬度的 --font-size-pct %，預設 4%（對應 editor 24px/600px） */
+    font-size: calc(var(--font-size-pct, 4) * 1cqw);
   }
 
-  /* 貼紙元素 */
+  /* 貼紙元素 - 大小為文字的 2 倍（與 editor 基準一致：2em） */
   &__sticker {
     position: absolute;
-    /* 
-      貼紙大小：2em
-      - 當 fontSize=24px 時，貼紙 = 48px
-      - 當 fontSize=36px 時，貼紙 = 72px
-      自動等比例縮放
-    */
-    font-size: 2em;
+    font-size: calc(var(--font-size-pct, 4) * 2 * 1cqw);
     pointer-events: none;
     user-select: none;
     z-index: 2;
@@ -99,18 +94,17 @@
   }
 }
 
-/* 
+/*
   響應式：只需調整容器尺寸，不需調整內部比例
-  內部元素使用 em 會自動跟著縮放
+  內部使用 % / cqw 會自動跟著縮放
 */
 @media (max-width: 768px) {
   .c-sticky-note {
-    /* 可以縮小整體尺寸，但內部比例保持一致 */
     max-width: 100%;
   }
 }
 
-/* 
+/*
   便利貼容器變體
   用於不同頁面的尺寸設定
 */
@@ -122,7 +116,7 @@
   margin: 0 auto;
 }
 
-/* Home 牆面 - 統一使用 400px 基準，確保與其他頁面比例一致 */
+/* Home 牆面 - 400px 基準，比例與 editor/display 一致（內部用 %） */
 .c-sticky-note-container--wall {
   max-width: 400px;
   width: 100%;

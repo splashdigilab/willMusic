@@ -80,7 +80,35 @@ export const useFirestore = () => {
   }
 
   /**
-   * 取得歷史紀錄（支援分頁）
+   * 即時監聽歷史紀錄（最新 N 筆，用於即時牆）
+   */
+  const listenToHistory = (
+    pageSize: number = 60,
+    callback: (items: QueueHistoryItem[]) => void
+  ): Unsubscribe => {
+    const q = query(
+      collection(db, 'queue_history'),
+      orderBy('playedAt', 'desc'),
+      limit(pageSize)
+    )
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const items: QueueHistoryItem[] = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as QueueHistoryItem))
+        callback(items)
+      },
+      (error) => {
+        console.error('Error listening to history:', error)
+      }
+    )
+  }
+
+  /**
+   * 取得歷史紀錄（支援分頁，用於典藏牆無限捲動）
    */
   const getHistory = async (
     pageSize: number = 20,
@@ -183,6 +211,7 @@ export const useFirestore = () => {
   return {
     createNote,
     listenToPendingQueue,
+    listenToHistory,
     getHistory,
     moveToHistory,
     validateToken,

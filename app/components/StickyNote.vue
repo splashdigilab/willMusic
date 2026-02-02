@@ -40,14 +40,18 @@ const stickers = computed(() => {
   return props.note.style?.stickers || []
 })
 
-// 統一的便利貼樣式
-const noteStyles = computed(() => ({
-  backgroundColor: props.note.style.backgroundColor,
-  color: props.note.style.textColor,
-  fontFamily: props.note.style.fontFamily || 'inherit',
-  // 設定基準字體大小，所有內部元素使用 em 相對於此
-  fontSize: `${props.note.style.fontSize}px`
-}))
+// 統一的便利貼樣式（使用 % 比例，確保各頁面一致）
+// 基準：editor 容器 600px，fontSize 24 → 4% 寬度
+const noteStyles = computed(() => {
+  const fontSize = props.note.style.fontSize ?? 24
+  const fontPct = (fontSize / 600) * 100
+  return {
+    backgroundColor: props.note.style.backgroundColor,
+    color: props.note.style.textColor,
+    fontFamily: props.note.style.fontFamily || 'inherit',
+    '--font-size-pct': fontPct
+  }
+})
 
 const getStickerContent = (type: string) => {
   return STICKER_LIBRARY.find(s => s.id === type)?.content || '⭐'
