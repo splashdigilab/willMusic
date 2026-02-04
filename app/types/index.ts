@@ -17,9 +17,9 @@ export interface StickerInstance {
  */
 export interface DraftData {
   content: string
-  backgroundColor: string
+  backgroundImage: string // 背景圖片 URL
+  shape: string // 造型 ID
   textColor: string
-  fontSize: number
   stickers: StickerInstance[]
   textTransform?: TextBlockTransform
   timestamp: number
@@ -39,12 +39,10 @@ export interface TextBlockTransform {
  * 便利貼樣式配置
  */
 export interface StickyNoteStyle {
-  backgroundColor: string
+  backgroundImage: string // 背景圖片 URL
+  shape: string // 造型 ID (對應 shapes.ts)
   textColor: string
-  fontSize: number
   fontFamily?: string
-  rotation?: number // 旋轉角度 (-10 到 10 度)
-  pattern?: 'solid' | 'lines' | 'dots' | 'grid' // 背景花紋
   stickers?: StickerInstance[] // 貼紙
   textTransform?: TextBlockTransform // 文字區塊位置、縮放、旋轉
 }
@@ -102,37 +100,12 @@ export interface CreateNoteForm {
 }
 
 /**
- * 預設樣式配置
+ * 預設樣式配置 (deprecated - 改用 backgrounds.ts + shapes.ts)
  */
 export const DEFAULT_STYLES: StickyNoteStyle[] = [
   {
-    backgroundColor: '#FFE97F',
-    textColor: '#333333',
-    fontSize: 24,
-    pattern: 'solid'
-  },
-  {
-    backgroundColor: '#FF9CEE',
-    textColor: '#FFFFFF',
-    fontSize: 24,
-    pattern: 'solid'
-  },
-  {
-    backgroundColor: '#9CDDFF',
-    textColor: '#333333',
-    fontSize: 24,
-    pattern: 'solid'
-  },
-  {
-    backgroundColor: '#CAFFBF',
-    textColor: '#333333',
-    fontSize: 24,
-    pattern: 'solid'
-  },
-  {
-    backgroundColor: '#FFC6FF',
-    textColor: '#333333',
-    fontSize: 24,
-    pattern: 'solid'
+    backgroundImage: 'https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=600&h=450&fit=crop&q=80',
+    shape: 'rounded',
+    textColor: '#333333'
   }
 ]

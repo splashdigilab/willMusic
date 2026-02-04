@@ -1,0 +1,70 @@
+/* 即時牆 - 最新 20 則 */
+.p-live {
+  min-height: 100vh;
+  padding: 1rem 0 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.p-live__nav {
+  padding: 0.5rem 1rem;
+  text-align: right;
+}
+
+.p-live__nav-link {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-size: 0.875rem;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.p-live__container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.p-live__wall-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.p-live__wall-item {
+  animation: p-live-fadeInUp 0.5s ease-out;
+}
+
+.p-live__loading-state,
+.p-live__empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: white;
+}
+
+.p-live__empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.p-live__loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  margin: 0 auto 1rem;
+  animation: p-live-spin 1s linear infinite;
+}
+
+@keyframes p-live-fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes p-live-spin {
+  to { transform: rotate(360deg); }
+}

@@ -3,159 +3,28 @@
  */
 export interface StickerType {
   id: string
-  name: string
   category: 'emoji' | 'icon' | 'shape' | 'kpop'
-  content: string // Emoji 或 SVG path
   defaultScale: number
+  svgFile: string // SVG 檔案路徑
 }
 
 /**
  * 預設 Sticker 庫
  */
 export const STICKER_LIBRARY: StickerType[] = [
-  // Emoji 類別
-  {
-    id: 'emoji-heart',
-    name: '愛心',
-    category: 'emoji',
-    content: '❤️',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-star',
-    name: '星星',
-    category: 'emoji',
-    content: '⭐',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-sparkle',
-    name: '閃亮',
-    category: 'emoji',
-    content: '✨',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-music',
-    name: '音符',
-    category: 'emoji',
-    content: '🎵',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-fire',
-    name: '火焰',
-    category: 'emoji',
-    content: '🔥',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-crown',
-    name: '皇冠',
-    category: 'emoji',
-    content: '👑',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-rainbow',
-    name: '彩虹',
-    category: 'emoji',
-    content: '🌈',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-butterfly',
-    name: '蝴蝶',
-    category: 'emoji',
-    content: '🦋',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-flower',
-    name: '花朵',
-    category: 'emoji',
-    content: '🌸',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-moon',
-    name: '月亮',
-    category: 'emoji',
-    content: '🌙',
-    defaultScale: 1
-  },
-  
-  // K-Pop 相關
-  {
-    id: 'emoji-mic',
-    name: '麥克風',
-    category: 'kpop',
-    content: '🎤',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-cd',
-    name: 'CD',
-    category: 'kpop',
-    content: '💿',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-headphone',
-    name: '耳機',
-    category: 'kpop',
-    content: '🎧',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-guitar',
-    name: '吉他',
-    category: 'kpop',
-    content: '🎸',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-drum',
-    name: '鼓',
-    category: 'kpop',
-    content: '🥁',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-party',
-    name: '派對',
-    category: 'kpop',
-    content: '🎉',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-clap',
-    name: '鼓掌',
-    category: 'kpop',
-    content: '👏',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-peace',
-    name: 'Peace',
-    category: 'kpop',
-    content: '✌️',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-purple-heart',
-    name: '紫心',
-    category: 'kpop',
-    content: '💜',
-    defaultScale: 1
-  },
-  {
-    id: 'emoji-pink-heart',
-    name: '粉心',
-    category: 'kpop',
-    content: '💗',
-    defaultScale: 1
-  }
+  // Emoji 類別 (使用 SVG 檔案)
+  { id: 'sticker-1', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-1.svg' },
+  { id: 'sticker-2', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-2.svg' },
+  { id: 'sticker-3', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-3.svg' },
+  { id: 'sticker-4', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-4.svg' },
+  { id: 'sticker-5', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-5.svg' },
+  { id: 'sticker-6', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-6.svg' },
+  { id: 'sticker-7', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-7.svg' },
+  { id: 'sticker-8', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-8.svg' },
+  { id: 'sticker-9', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-9.svg' },
+  { id: 'sticker-10', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-10.svg' },
+  { id: 'sticker-11', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-11.svg' },
+  { id: 'sticker-12', category: 'emoji', defaultScale: 1, svgFile: '/svg/stickers/sticker-12.svg' },
 ]
 
 /**

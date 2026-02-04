@@ -56,48 +56,138 @@
     max-width: 600px;
     margin: 0 auto;
     position: relative;
-  }
-
-  &__canvas {
+    aspect-ratio: 1 / 1;
     width: 100%;
-    aspect-ratio: 4 / 3;
-    border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-    position: relative;
-    overflow: hidden;
-    cursor: default;
-    /* 與 StickyNote 一致：啟用 container query，使用 cqw 讓文字/貼紙比例與 display、home 相同 */
+    /* 啟用 container query */
     container-type: inline-size;
     container-name: editor-canvas;
   }
 
-  &__text-block {
+  /* 可裁切層：背景、文字、貼紙（會被 clip-path 裁切） */
+  &__canvas {
     position: absolute;
-    width: 75%;
+    inset: 0;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    cursor: default;
+  }
+
+  /* UI 層：編輯框置頂，不被裁切 */
+  &__canvas-ui {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* 文字內容（可裁切） */
+  &__text-content {
+    position: absolute;
     transform-origin: center center;
     z-index: 1;
-    cursor: text;
+    display: inline-block;
+    pointer-events: auto;
+  }
+
+  &__canvas-text {
+    min-width: 1em;
+    min-height: 1.5em;
+    padding: 0.5em 0.75em;
+    outline: none;
+    white-space: pre;
+    line-height: 1.6;
+    font-size: calc(var(--font-size-pct, 4) * 1cqw);
+    display: inline-block;
+    box-sizing: border-box;
+
+    &.is-empty::before {
+      content: attr(data-placeholder);
+      color: rgba(0, 0, 0, 0.3);
+    }
+  }
+
+  /* 貼紙內容（可裁切） */
+  &__sticker-content {
+    position: absolute;
+    pointer-events: none;
+    font-size: calc(var(--font-size-pct, 4) * 2 * 1cqw);
+    width: calc(var(--font-size-pct, 4) * 2 * 1cqw);
+    height: calc(var(--font-size-pct, 4) * 2 * 1cqw);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__sticker-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  /* 編輯框：文字與貼紙共用，置頂層 */
+  &__edit-frame {
+    position: absolute;
+    transform-origin: center center;
+    pointer-events: auto;
+    cursor: grab;
+    touch-action: none;
+
+    &--text {
+      /* 文字框：主要區域 pointer-events 讓點擊穿透到 contenteditable */
+      pointer-events: none;
+      display: inline-block;
+
+      .p-editor__edit-frame-drag-bar,
+      .p-editor__edit-frame-transform-handle {
+        pointer-events: auto;
+      }
+    }
+
+    /* sizer：與 canvas-text 同字體/padding，撐開編輯框寬高 */
+    &-sizer {
+      display: inline-block;
+      min-width: 1em;
+      min-height: 1.5em;
+      padding: 0.5em 0.75em;
+      font-size: calc(var(--font-size-pct, 4) * 1cqw);
+      line-height: 1.6;
+      white-space: pre;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    &--sticker {
+      width: calc(var(--font-size-pct, 4) * 2 * 1cqw);
+      height: calc(var(--font-size-pct, 4) * 2 * 1cqw);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
     &.is-selected {
-      outline: 2px solid rgba(102, 126, 234, 0.6);
+      outline: 2px solid rgba(102, 126, 234, 0.8);
       outline-offset: 4px;
       border-radius: 8px;
     }
 
-    &.is-dragging,
+    &.is-dragging {
+      cursor: grabbing;
+      transition: none;
+    }
+
     &.is-transforming {
-      cursor: grab;
+      cursor: nwse-resize;
     }
   }
 
-  &__text-block-drag-bar {
+  &__edit-frame-drag-bar {
     position: absolute;
-    top: -8px;
+    top: -10px;
     left: 50%;
     transform: translateX(-50%);
     width: 48px;
     height: 20px;
-    background: rgba(102, 126, 234, 0.8);
+    background: rgba(102, 126, 234, 0.9);
     color: white;
     border-radius: 4px;
     font-size: 0.75rem;
@@ -105,83 +195,14 @@
     align-items: center;
     justify-content: center;
     cursor: grab;
-    z-index: 3;
+    z-index: 2;
 
     &:hover {
       background: rgba(102, 126, 234, 1);
     }
   }
 
-  &__text-block-transform-handle {
-    position: absolute;
-    bottom: -12px;
-    right: -12px;
-    width: 28px;
-    height: 28px;
-    background: #3b82f6;
-    color: white;
-    border: 2px solid white;
-    border-radius: 50%;
-    font-size: 1rem;
-    cursor: nwse-resize;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    z-index: 2;
-
-    &:hover {
-      background: #2563eb;
-      transform: scale(1.1);
-    }
-  }
-
-  &__canvas-text {
-    width: 100%;
-    min-height: 3em;
-    padding: 2rem;
-    padding-top: 2rem;
-    outline: none;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-    line-height: 1.6;
-    /* 與 StickyNote 一致：字體 = 容器寬度的 --font-size-pct %（基準 24px/600px=4%） */
-    font-size: calc(var(--font-size-pct, 4) * 1cqw);
-    
-    &:empty::before {
-      content: attr(data-placeholder);
-      color: rgba(0, 0, 0, 0.3);
-    }
-  }
-
-  &__character-count {
-    text-align: right;
-    margin-top: 0.5rem;
-    font-size: 0.875rem;
-    color: #666;
-  }
-
-  // Sticker - 與 StickyNote 一致：貼紙大小為文字的 2 倍（使用 cqw）
-  &__sticker {
-    position: absolute;
-    cursor: grab;
-    user-select: none;
-    transition: transform 0.1s ease;
-    touch-action: none;
-    font-size: calc(var(--font-size-pct, 4) * 2 * 1cqw);
-
-    &.is-selected {
-      filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.8));
-    }
-
-    &.is-dragging {
-      cursor: grabbing;
-      transition: none;
-      z-index: 10;
-    }
-  }
-
-  &__sticker-delete {
+  &__edit-frame-delete {
     position: absolute;
     top: -12px;
     right: -12px;
@@ -204,7 +225,7 @@
     }
   }
 
-  &__sticker-transform-handle {
+  &__edit-frame-transform-handle {
     position: absolute;
     bottom: -12px;
     right: -12px;
@@ -228,8 +249,11 @@
     }
   }
 
-  &.is-transforming {
-    cursor: nwse-resize;
+  &__character-count {
+    text-align: right;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: #666;
   }
 
   // Control Panel
@@ -289,16 +313,116 @@
     text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
   }
 
-  // Slider
-  &__slider {
-    width: 100%;
-    margin-bottom: 0.5rem;
+  // Background Grid
+  &__background-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 0.75rem;
   }
 
-  &__slider-value {
-    font-size: 0.875rem;
+  &__background-btn {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    border: 3px solid transparent;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0;
+
+    &:hover {
+      transform: scale(1.05);
+    }
+
+    &.is-active {
+      border-color: #667eea;
+      transform: scale(1.1);
+    }
+  }
+
+  &__background-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  &__background-check {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: #667eea;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: bold;
+  }
+
+  // Shape Grid
+  &__shape-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 0.75rem;
+  }
+
+  &__shape-btn {
+    position: relative;
+    aspect-ratio: 1;
+    border: 3px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 1rem;
+    background: #f8f9fa;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+
+    &:hover {
+      transform: scale(1.05);
+      background: #e9ecef;
+    }
+
+    &.is-active {
+      border-color: #667eea;
+      background: #eef2ff;
+      transform: scale(1.1);
+    }
+  }
+
+  &__shape-preview {
+    width: 40px;
+    height: 40px;
+    color: #667eea;
+  }
+
+  &__shape-name {
+    font-size: 0.75rem;
     color: #666;
-    font-weight: 600;
+    font-weight: 500;
+  }
+
+  &__shape-check {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: #667eea;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: bold;
   }
 
   // Sticker Categories
@@ -352,6 +476,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 0.5rem;
 
     &:hover {
       transform: scale(1.1);
@@ -361,6 +486,12 @@
 
     &:active {
       transform: scale(0.95);
+    }
+
+    &-img {
+      width: 80%;
+      height: 80%;
+      object-fit: contain;
     }
   }
 

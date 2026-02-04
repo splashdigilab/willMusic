@@ -32,46 +32,72 @@
 
     <!-- Canvas Area -->
     <div class="p-editor__canvas-section">
-      <div class="p-editor__canvas-container">
-        <div
-          ref="canvasRef"
-          class="p-editor__canvas"
-          :style="canvasStyle"
-          @click="deselectAll"
-        >
-          <!-- 文字區塊：可移動、縮放、旋轉 -->
+      <div ref="canvasRef" class="p-editor__canvas-container" @click="deselectAll">
+        <!-- 可裁切層：背景、文字內容、貼紙圖片 -->
+        <div class="p-editor__canvas p-editor__canvas--stage" :style="canvasStyle">
+          <!-- 文字內容（可裁切） -->
           <div
             ref="textBlockRef"
-            class="p-editor__text-block"
-            :class="{ 
-              'is-selected': textBlockSelected,
-              'is-dragging': textBlockDragging,
-              'is-transforming': textBlockTransforming
-            }"
+            class="p-editor__text-content"
             :style="textBlockStyle"
             @click.stop="selectTextBlock"
           >
-            <div 
-              class="p-editor__text-block-drag-bar"
-              @mousedown.stop="onTextBlockDragBarMouseDown"
-              @touchstart.stop="onTextBlockDragBarTouchStart"
-            >
-              ⋮⋮
-            </div>
             <div
               ref="contentEditableRef"
               class="p-editor__canvas-text"
+              :class="{ 'is-empty': !content.trim() }"
               :style="textStyle"
               contenteditable
               @input="handleTextInput"
               @click.stop="selectTextBlock"
               @focus="selectTextBlock"
               data-placeholder="在這裡輸入文字..."
+            />
+          </div>
+
+          <!-- 貼紙圖片（可裁切） -->
+          <div
+            v-for="sticker in stickers"
+            :key="sticker.id"
+            class="p-editor__sticker-content"
+            :style="getStickerStyle(sticker)"
+          >
+            <img 
+              v-if="STICKER_LIBRARY.find(s => s.id === sticker.type)?.svgFile"
+              :src="STICKER_LIBRARY.find(s => s.id === sticker.type)?.svgFile"
+              :alt="STICKER_LIBRARY.find(s => s.id === sticker.type)?.id"
+              class="p-editor__sticker-img"
+            />
+          </div>
+        </div>
+
+        <!-- UI 層：編輯框置頂，不被裁切 -->
+        <div class="p-editor__canvas-ui">
+          <!-- 文字區塊編輯框（與文字內容同位置、同尺寸） -->
+          <div
+            class="p-editor__edit-frame p-editor__edit-frame--text"
+            :class="{ 
+              'is-selected': textBlockSelected,
+              'is-dragging': textBlockDragging,
+              'is-transforming': textBlockTransforming
+            }"
+            :style="textBlockStyle"
+            @mousedown="selectTextBlock"
+            @touchstart.stop="selectTextBlock"
+          >
+            <!-- 隱藏 sizer：與 contenteditable 同字體/padding，讓編輯框寬高與文字一致；空白時用 placeholder 撐開寬度 -->
+            <span class="p-editor__edit-frame-sizer" aria-hidden="true">{{ content || '在這裡輸入文字...' }}</span>
+            <div 
+              class="p-editor__edit-frame-drag-bar"
+              @mousedown.stop="onTextBlockDragBarMouseDown"
+              @touchstart.stop="onTextBlockDragBarTouchStart"
+              @click.stop="selectTextBlock"
             >
+              ⋮⋮
             </div>
             <div
               v-if="textBlockSelected"
-              class="p-editor__text-block-transform-handle"
+              class="p-editor__edit-frame-transform-handle"
               @mousedown.stop="onTextBlockTransformMouseDown"
               @touchstart.stop="onTextBlockTransformTouchStart"
             >
@@ -79,11 +105,11 @@
             </div>
           </div>
 
-          <!-- Stickers -->
+          <!-- 貼紙編輯框 -->
           <div
             v-for="sticker in stickers"
-            :key="sticker.id"
-            class="p-editor__sticker"
+            :key="`ui-${sticker.id}`"
+            class="p-editor__edit-frame p-editor__edit-frame--sticker"
             :class="{ 
               'is-selected': selectedStickerId === sticker.id,
               'is-dragging': draggingStickerId === sticker.id,
@@ -94,21 +120,16 @@
             @touchstart="onStickerTouchStart($event, sticker)"
             @click.stop="onStickerClick(sticker.id)"
           >
-            {{ STICKER_LIBRARY.find(s => s.id === sticker.type)?.content }}
-            
-            <!-- Delete Button (左上角) -->
             <button
               v-if="selectedStickerId === sticker.id"
-              class="p-editor__sticker-delete"
+              class="p-editor__edit-frame-delete"
               @click.stop="removeSticker(sticker.id)"
             >
               ✕
             </button>
-            
-            <!-- Transform Handle 右下角：按住可旋轉縮放 -->
             <div
               v-if="selectedStickerId === sticker.id"
-              class="p-editor__sticker-transform-handle"
+              class="p-editor__edit-frame-transform-handle"
               @mousedown.stop="onTransformHandleMouseDown($event, sticker)"
               @touchstart.stop="onTransformHandleTouchStart($event, sticker)"
             >
@@ -116,29 +137,50 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Character Count -->
-        <div class="p-editor__character-count">
-          {{ content.length }} / 200
-        </div>
+      <!-- Character Count -->
+      <div class="p-editor__character-count">
+        {{ content.length }} / 200
       </div>
     </div>
 
     <!-- Control Panel -->
     <div class="p-editor__control-panel">
-      <!-- Background Color -->
+      <!-- Background Image -->
       <div class="p-editor__control-section">
-        <h3 class="p-editor__control-title">背景顏色</h3>
-        <div class="p-editor__color-grid">
+        <h3 class="p-editor__control-title">背景圖片</h3>
+        <div class="p-editor__background-grid">
           <button
-            v-for="color in backgroundColors"
-            :key="color.value"
-            class="p-editor__color-btn"
-            :class="{ 'is-active': backgroundColor === color.value }"
-            :style="{ background: color.value }"
-            @click="backgroundColor = color.value"
+            v-for="bg in backgrounds"
+            :key="bg.id"
+            class="p-editor__background-btn"
+            :class="{ 'is-active': backgroundImage === bg.url }"
+            @click="backgroundImage = bg.url"
           >
-            <span v-if="backgroundColor === color.value" class="p-editor__color-check">✓</span>
+            <img :src="bg.url" :alt="bg.id" class="p-editor__background-img" />
+            <span v-if="backgroundImage === bg.url" class="p-editor__background-check">✓</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Shape -->
+      <div class="p-editor__control-section">
+        <h3 class="p-editor__control-title">便利貼造型</h3>
+        <div class="p-editor__shape-grid">
+          <button
+            v-for="shapeItem in shapes"
+            :key="shapeItem.id"
+            class="p-editor__shape-btn"
+            :class="{ 'is-active': shape === shapeItem.id }"
+            @click="shape = shapeItem.id"
+          >
+            <img 
+              :src="shapeItem.svg" 
+              :alt="shapeItem.id"
+              class="p-editor__shape-preview"
+            />
+            <span v-if="shape === shapeItem.id" class="p-editor__shape-check">✓</span>
           </button>
         </div>
       </div>
@@ -158,20 +200,6 @@
             <span v-if="textColor === color.value" class="p-editor__color-check">✓</span>
           </button>
         </div>
-      </div>
-
-      <!-- Font Size -->
-      <div class="p-editor__control-section">
-        <h3 class="p-editor__control-title">文字大小</h3>
-        <input
-          v-model.number="fontSize"
-          type="range"
-          min="16"
-          max="48"
-          step="2"
-          class="p-editor__slider"
-        />
-        <span class="p-editor__slider-value">{{ fontSize }}px</span>
       </div>
 
       <!-- Sticker Library -->
@@ -195,7 +223,12 @@
             class="p-editor__sticker-btn"
             @click="addSticker(sticker.id)"
           >
-            {{ sticker.content }}
+            <img 
+              v-if="sticker.svgFile"
+              :src="sticker.svgFile"
+              :alt="sticker.id"
+              class="p-editor__sticker-btn-img"
+            />
           </button>
         </div>
       </div>
@@ -233,6 +266,8 @@
 <script setup lang="ts">
 import type { StickerInstance, DraftData } from '~/types'
 import { STICKER_LIBRARY, getStickersByCategory, getStickerCategories } from '~/data/stickers'
+import { BACKGROUND_IMAGES } from '~/data/backgrounds'
+import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import StickyNote from '~/components/StickyNote.vue'
 
 definePageMeta({
@@ -245,9 +280,9 @@ const { saveDraft, loadDraft, clearDraft, saveToken, loadToken } = useStorage()
 
 // Editor State
 const content = ref('')
-const backgroundColor = ref('#FFE97F')
+const backgroundImage = ref(BACKGROUND_IMAGES[0].url) // 預設第一張背景
+const shape = ref(DEFAULT_SHAPE_ID)
 const textColor = ref('#333333')
-const fontSize = ref(24)
 const stickers = ref<StickerInstance[]>([])
 const selectedStickerId = ref<string | null>(null)
 const draggingStickerId = ref<string | null>(null)
@@ -289,17 +324,9 @@ const transformState = ref<TransformState | null>(null)
 const showDraftModal = ref(false)
 const showPreview = ref(false)
 
-// Color Options
-const backgroundColors = [
-  { name: 'Yellow', value: '#FFE97F' },
-  { name: 'Pink', value: '#FF9CEE' },
-  { name: 'Blue', value: '#9CDDFF' },
-  { name: 'Green', value: '#CAFFBF' },
-  { name: 'Purple', value: '#FFC6FF' },
-  { name: 'Holographic', value: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
-  { name: 'Neon Pink', value: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
-  { name: 'Neon Green', value: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }
-]
+// 資料來源
+const backgrounds = BACKGROUND_IMAGES
+const shapes = STICKY_NOTE_SHAPES
 
 const textColors = [
   { name: 'Black', value: '#333333' },
@@ -317,10 +344,28 @@ const filteredStickers = computed(() => {
   return getStickersByCategory(selectedCategory.value)
 })
 
+// mask-image 直接使用 Illustrator 輸出的 SVG（無需 clipPath），遮罩 = 形狀的填色區域
+const shapeMaskUrl = computed(() => {
+  const shapeData = getShapeById(shape.value)
+  const s = shapeData ?? getShapeById(DEFAULT_SHAPE_ID)
+  return s ? s.svg : '/svg/shapes/square.svg'
+})
+
 const canvasStyle = computed(() => {
-  const fontPct = (fontSize.value / 600) * 100
+  const fontPct = 4
+  const maskUrl = shapeMaskUrl.value
   return {
-    background: backgroundColor.value,
+    backgroundImage: `url(${backgroundImage.value})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    maskImage: `url(${maskUrl})`,
+    maskSize: '100% 100%',
+    maskRepeat: 'no-repeat',
+    maskPosition: 'center',
+    WebkitMaskImage: `url(${maskUrl})`,
+    WebkitMaskSize: '100% 100%',
+    WebkitMaskRepeat: 'no-repeat',
+    WebkitMaskPosition: 'center',
     '--font-size-pct': fontPct
   }
 })
@@ -341,12 +386,13 @@ const textBlockStyle = computed(() => ({
   transform: `translate(-50%, -50%) scale(${textScale.value}) rotate(${textRotation.value}deg)`
 }))
 
+
 const previewNote = computed(() => ({
   content: content.value,
   style: {
-    backgroundColor: backgroundColor.value,
+    backgroundImage: backgroundImage.value,
+    shape: shape.value,
     textColor: textColor.value,
-    fontSize: fontSize.value,
     stickers: stickers.value,
     textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
   },
@@ -405,6 +451,7 @@ const selectSticker = (id: string) => {
 const selectTextBlock = () => {
   textBlockSelected.value = true
   selectedStickerId.value = null
+  nextTick(() => contentEditableRef.value?.focus())
 }
 
 const deselectAll = () => {
@@ -412,11 +459,11 @@ const deselectAll = () => {
   textBlockSelected.value = false
 }
 
-// 文字區塊拖曳（從拖曳條）
+// 文字區塊拖曳（從拖曳條）- 點擊拖曳條等於選取文字圖層
 const onTextBlockDragBarMouseDown = (e: MouseEvent) => {
   e.preventDefault()
-  textBlockDragging.value = true
   selectTextBlock()
+  textBlockDragging.value = true
 
   const startX = e.clientX
   const startY = e.clientY
@@ -447,8 +494,8 @@ const onTextBlockDragBarTouchStart = (e: TouchEvent) => {
   const touch = e.touches[0]
   if (!touch) return
   e.preventDefault()
-  textBlockDragging.value = true
   selectTextBlock()
+  textBlockDragging.value = true
 
   const startX = touch.clientX
   const startY = touch.clientY
@@ -807,9 +854,9 @@ const removeSticker = (id: string) => {
 const saveDraftData = () => {
   const draft: DraftData = {
     content: content.value,
-    backgroundColor: backgroundColor.value,
+    backgroundImage: backgroundImage.value,
+    shape: shape.value,
     textColor: textColor.value,
-    fontSize: fontSize.value,
     stickers: stickers.value,
     textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
     timestamp: Date.now()
@@ -819,9 +866,9 @@ const saveDraftData = () => {
 
 const loadDraftData = (draft: DraftData) => {
   content.value = draft.content
-  backgroundColor.value = draft.backgroundColor
+  backgroundImage.value = draft.backgroundImage
+  shape.value = draft.shape
   textColor.value = draft.textColor
-  fontSize.value = draft.fontSize
   stickers.value = draft.stickers
   if (draft.textTransform) {
     textX.value = draft.textTransform.x
@@ -848,9 +895,9 @@ const clearAll = () => {
   if (!confirm('確定要清空所有內容嗎？')) return
   
   content.value = ''
-  backgroundColor.value = '#FFE97F'
+  backgroundImage.value = BACKGROUND_IMAGES[0].url
+  shape.value = DEFAULT_SHAPE_ID
   textColor.value = '#333333'
-  fontSize.value = 24
   stickers.value = []
   textX.value = 50
   textY.value = 50
@@ -890,9 +937,9 @@ const handleSubmit = async () => {
     const form = {
       content: content.value.trim(),
       style: {
-        backgroundColor: backgroundColor.value,
+        backgroundImage: backgroundImage.value,
+        shape: shape.value,
         textColor: textColor.value,
-        fontSize: fontSize.value,
         stickers: stickers.value,
         textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
       }
@@ -938,7 +985,7 @@ onMounted(() => {
 })
 
 // Auto-save on changes
-watch([backgroundColor, textColor, fontSize], () => {
+watch([backgroundImage, shape, textColor], () => {
   saveDraftData()
 })
 </script>

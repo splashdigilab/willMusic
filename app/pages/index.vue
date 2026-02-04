@@ -12,9 +12,9 @@ definePageMeta({
   layout: false
 })
 
-// 自動導向到 home
+// 自動導向到即時牆
 onMounted(() => {
-  navigateTo('/home')
+  navigateTo('/live')
 })
 </script>
 

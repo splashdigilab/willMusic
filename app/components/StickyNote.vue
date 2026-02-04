@@ -3,24 +3,31 @@
     ref="noteRef"
     class="c-sticky-note"
     :style="noteStyles"
-    :data-pattern="note.style.pattern || 'solid'"
+    :data-shape="note.style.shape || 'rounded'"
   >
-    <div 
-      class="c-sticky-note__content-wrap"
-      :style="contentWrapStyle"
-    >
-      <div class="c-sticky-note__content">
-        {{ note.content }}
+    <div class="c-sticky-note__inner">
+      <div 
+        class="c-sticky-note__content-wrap"
+        :style="contentWrapStyle"
+      >
+        <div class="c-sticky-note__content">
+          {{ note.content }}
+        </div>
       </div>
-    </div>
-    <!-- 貼紙 -->
-    <div
-      v-for="sticker in stickers"
-      :key="sticker.id"
-      class="c-sticky-note__sticker"
-      :style="getStickerStyle(sticker)"
-    >
-      {{ getStickerContent(sticker.type) }}
+      <!-- 貼紙 -->
+      <div
+        v-for="sticker in stickers"
+        :key="sticker.id"
+        class="c-sticky-note__sticker"
+        :style="getStickerStyle(sticker)"
+      >
+        <img 
+          v-if="getStickerData(sticker.type)?.svgFile"
+          :src="getStickerData(sticker.type)?.svgFile"
+          :alt="getStickerData(sticker.type)?.id"
+          class="c-sticky-note__sticker-img"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -29,6 +36,7 @@
 import { gsap } from 'gsap'
 import type { QueuePendingItem, QueueHistoryItem, StickerInstance } from '~/types'
 import { STICKER_LIBRARY } from '~/data/stickers'
+import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
 
 interface Props {
   note: QueuePendingItem | QueueHistoryItem
@@ -45,16 +53,32 @@ const stickers = computed(() => {
   return props.note.style?.stickers || []
 })
 
+// mask-image 直接使用 Illustrator 輸出的 SVG（無需 clipPath），遮罩 = 形狀的填色區域
+const shapeMaskUrl = computed(() => {
+  const shapeData = getShapeById(props.note.style?.shape || DEFAULT_SHAPE_ID)
+  const s = shapeData ?? getShapeById(DEFAULT_SHAPE_ID)
+  return s ? s.svg : '/svg/shapes/square.svg'
+})
+
 // 統一的便利貼樣式（使用 % 比例，確保各頁面一致）
-// 基準：editor 容器 600px，fontSize 24 → 4% 寬度
 const noteStyles = computed(() => {
-  const fontSize = props.note.style.fontSize ?? 24
-  const fontPct = (fontSize / 600) * 100
+  const fontPct = 4
+  const maskUrl = shapeMaskUrl.value
   return {
-    backgroundColor: props.note.style.backgroundColor,
+    backgroundImage: `url(${props.note.style.backgroundImage})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
     color: props.note.style.textColor,
     fontFamily: props.note.style.fontFamily || 'inherit',
-    '--font-size-pct': fontPct
+    '--font-size-pct': fontPct,
+    maskImage: `url(${maskUrl})`,
+    maskSize: '100% 100%',
+    maskRepeat: 'no-repeat',
+    maskPosition: 'center',
+    WebkitMaskImage: `url(${maskUrl})`,
+    WebkitMaskSize: '100% 100%',
+    WebkitMaskRepeat: 'no-repeat',
+    WebkitMaskPosition: 'center'
   }
 })
 
@@ -71,9 +95,7 @@ const contentWrapStyle = computed(() => {
   }
 })
 
-const getStickerContent = (type: string) => {
-  return STICKER_LIBRARY.find(s => s.id === type)?.content || '⭐'
-}
+const getStickerData = (type: string) => STICKER_LIBRARY.find(s => s.id === type)
 
 const getStickerStyle = (sticker: StickerInstance) => ({
   left: `${sticker.x}%`,
