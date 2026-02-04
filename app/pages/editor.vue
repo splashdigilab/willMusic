@@ -37,18 +37,46 @@
           ref="canvasRef"
           class="p-editor__canvas"
           :style="canvasStyle"
-          @click="deselectSticker"
+          @click="deselectAll"
         >
-          <!-- Content Text -->
+          <!-- 文字區塊：可移動、縮放、旋轉 -->
           <div
-            class="p-editor__canvas-text"
-            :style="textStyle"
-            contenteditable
-            @input="handleTextInput"
-            @click.stop
-            placeholder="在這裡輸入文字..."
+            ref="textBlockRef"
+            class="p-editor__text-block"
+            :class="{ 
+              'is-selected': textBlockSelected,
+              'is-dragging': textBlockDragging,
+              'is-transforming': textBlockTransforming
+            }"
+            :style="textBlockStyle"
+            @click.stop="selectTextBlock"
           >
-            {{ content }}
+            <div 
+              class="p-editor__text-block-drag-bar"
+              @mousedown.stop="onTextBlockDragBarMouseDown"
+              @touchstart.stop="onTextBlockDragBarTouchStart"
+            >
+              ⋮⋮
+            </div>
+            <div
+              ref="contentEditableRef"
+              class="p-editor__canvas-text"
+              :style="textStyle"
+              contenteditable
+              @input="handleTextInput"
+              @click.stop="selectTextBlock"
+              @focus="selectTextBlock"
+              data-placeholder="在這裡輸入文字..."
+            >
+            </div>
+            <div
+              v-if="textBlockSelected"
+              class="p-editor__text-block-transform-handle"
+              @mousedown.stop="onTextBlockTransformMouseDown"
+              @touchstart.stop="onTextBlockTransformTouchStart"
+            >
+              ↻
+            </div>
           </div>
 
           <!-- Stickers -->
@@ -58,7 +86,8 @@
             class="p-editor__sticker"
             :class="{ 
               'is-selected': selectedStickerId === sticker.id,
-              'is-dragging': draggingStickerId === sticker.id 
+              'is-dragging': draggingStickerId === sticker.id,
+              'is-transforming': transformingStickerId === sticker.id
             }"
             :style="getStickerStyle(sticker)"
             @mousedown="onStickerMouseDown($event, sticker)"
@@ -67,7 +96,7 @@
           >
             {{ STICKER_LIBRARY.find(s => s.id === sticker.type)?.content }}
             
-            <!-- Delete Button -->
+            <!-- Delete Button (左上角) -->
             <button
               v-if="selectedStickerId === sticker.id"
               class="p-editor__sticker-delete"
@@ -75,6 +104,16 @@
             >
               ✕
             </button>
+            
+            <!-- Transform Handle 右下角：按住可旋轉縮放 -->
+            <div
+              v-if="selectedStickerId === sticker.id"
+              class="p-editor__sticker-transform-handle"
+              @mousedown.stop="onTransformHandleMouseDown($event, sticker)"
+              @touchstart.stop="onTransformHandleTouchStart($event, sticker)"
+            >
+              ↻
+            </div>
           </div>
         </div>
 
@@ -213,7 +252,18 @@ const stickers = ref<StickerInstance[]>([])
 const selectedStickerId = ref<string | null>(null)
 const draggingStickerId = ref<string | null>(null)
 
+// 文字區塊變換（位置、縮放、旋轉）
+const textX = ref(50)
+const textY = ref(50)
+const textScale = ref(1)
+const textRotation = ref(0)
+const textBlockSelected = ref(false)
+const textBlockDragging = ref(false)
+const textBlockTransforming = ref(false)
+
 const canvasRef = ref<HTMLElement | null>(null)
+const textBlockRef = ref<HTMLElement | null>(null)
+const contentEditableRef = ref<HTMLDivElement | null>(null)
 
 // 拖曳狀態
 interface DragState {
@@ -224,6 +274,18 @@ interface DragState {
   initialY: number
 }
 const dragState = ref<DragState | null>(null)
+const transformingStickerId = ref<string | null>(null)
+
+interface TransformState {
+  stickerId: string
+  centerX: number
+  centerY: number
+  initialDistance: number
+  initialAngle: number
+  initialScale: number
+  initialRotation: number
+}
+const transformState = ref<TransformState | null>(null)
 const showDraftModal = ref(false)
 const showPreview = ref(false)
 
@@ -255,21 +317,29 @@ const filteredStickers = computed(() => {
   return getStickersByCategory(selectedCategory.value)
 })
 
-const canvasStyle = computed(() => ({
-  background: backgroundColor.value
-}))
+const canvasStyle = computed(() => {
+  const fontPct = (fontSize.value / 600) * 100
+  return {
+    background: backgroundColor.value,
+    '--font-size-pct': fontPct
+  }
+})
 
 const textStyle = computed(() => ({
-  color: textColor.value,
-  fontSize: `${fontSize.value}px`
+  color: textColor.value
 }))
 
 const getStickerStyle = (sticker: StickerInstance) => ({
   left: `${sticker.x}%`,
   top: `${sticker.y}%`,
-  transform: `translate(-50%, -50%) scale(${sticker.scale}) rotate(${sticker.rotation}deg)`,
-  fontSize: '3rem'
+  transform: `translate(-50%, -50%) scale(${sticker.scale}) rotate(${sticker.rotation}deg)`
 })
+
+const textBlockStyle = computed(() => ({
+  left: `${textX.value}%`,
+  top: `${textY.value}%`,
+  transform: `translate(-50%, -50%) scale(${textScale.value}) rotate(${textRotation.value}deg)`
+}))
 
 const previewNote = computed(() => ({
   content: content.value,
@@ -277,7 +347,8 @@ const previewNote = computed(() => ({
     backgroundColor: backgroundColor.value,
     textColor: textColor.value,
     fontSize: fontSize.value,
-    stickers: stickers.value
+    stickers: stickers.value,
+    textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
   },
   token: '',
   timestamp: null as any,
@@ -287,8 +358,30 @@ const previewNote = computed(() => ({
 // Methods
 const handleTextInput = (e: Event) => {
   const target = e.target as HTMLElement
-  content.value = target.innerText.slice(0, 200)
+  const text = target.innerText.slice(0, 200)
+  content.value = text
+  if (target.innerText.length > 200) {
+    target.innerText = text
+    placeCaretAtEnd(target)
+  }
   saveDraftData()
+}
+
+const placeCaretAtEnd = (el: HTMLElement) => {
+  const range = document.createRange()
+  const sel = window.getSelection()
+  range.selectNodeContents(el)
+  range.collapse(false)
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+}
+
+const syncContentToDom = (text: string) => {
+  nextTick(() => {
+    if (contentEditableRef.value) {
+      contentEditableRef.value.innerText = text
+    }
+  })
 }
 
 const addSticker = (stickerType: string) => {
@@ -306,15 +399,191 @@ const addSticker = (stickerType: string) => {
 
 const selectSticker = (id: string) => {
   selectedStickerId.value = id
+  textBlockSelected.value = false
 }
 
-const deselectSticker = () => {
+const selectTextBlock = () => {
+  textBlockSelected.value = true
   selectedStickerId.value = null
+}
+
+const deselectAll = () => {
+  selectedStickerId.value = null
+  textBlockSelected.value = false
+}
+
+// 文字區塊拖曳（從拖曳條）
+const onTextBlockDragBarMouseDown = (e: MouseEvent) => {
+  e.preventDefault()
+  textBlockDragging.value = true
+  selectTextBlock()
+
+  const startX = e.clientX
+  const startY = e.clientY
+  const initX = textX.value
+  const initY = textY.value
+
+  const onMouseMove = (moveEvent: MouseEvent) => {
+    if (!canvasRef.value) return
+    const rect = canvasRef.value.getBoundingClientRect()
+    const deltaX = ((moveEvent.clientX - startX) / rect.width) * 100
+    const deltaY = ((moveEvent.clientY - startY) / rect.height) * 100
+    textX.value = Math.min(95, Math.max(5, initX + deltaX))
+    textY.value = Math.min(95, Math.max(5, initY + deltaY))
+  }
+
+  const onMouseUp = () => {
+    textBlockDragging.value = false
+    saveDraftData()
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
+const onTextBlockDragBarTouchStart = (e: TouchEvent) => {
+  const touch = e.touches[0]
+  if (!touch) return
+  e.preventDefault()
+  textBlockDragging.value = true
+  selectTextBlock()
+
+  const startX = touch.clientX
+  const startY = touch.clientY
+  const initX = textX.value
+  const initY = textY.value
+
+  const onTouchMove = (moveEvent: TouchEvent) => {
+    if (!canvasRef.value || !moveEvent.touches[0]) return
+    moveEvent.preventDefault()
+    const t = moveEvent.touches[0]
+    const rect = canvasRef.value.getBoundingClientRect()
+    const deltaX = ((t.clientX - startX) / rect.width) * 100
+    const deltaY = ((t.clientY - startY) / rect.height) * 100
+    textX.value = Math.min(95, Math.max(5, initX + deltaX))
+    textY.value = Math.min(95, Math.max(5, initY + deltaY))
+  }
+
+  const onTouchEnd = () => {
+    textBlockDragging.value = false
+    saveDraftData()
+    document.removeEventListener('touchmove', onTouchMove, { capture: true })
+    document.removeEventListener('touchend', onTouchEnd)
+  }
+
+  document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
+  document.addEventListener('touchend', onTouchEnd)
+}
+
+// 文字區塊旋轉縮放
+const onTextBlockTransformMouseDown = (e: MouseEvent) => {
+  e.preventDefault()
+  if (!canvasRef.value) return
+  textBlockTransforming.value = true
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const centerX = rect.width * (textX.value / 100)
+  const centerY = rect.height * (textY.value / 100)
+  const cursorX = e.clientX - rect.left
+  const cursorY = e.clientY - rect.top
+
+  const dx = cursorX - centerX
+  const dy = cursorY - centerY
+  const distance = Math.sqrt(dx * dx + dy * dy) || 1
+  const angle = Math.atan2(dy, dx)
+
+  const initScale = textScale.value
+  const initRotation = textRotation.value
+
+  const onMouseMove = (moveEvent: MouseEvent) => {
+    if (!canvasRef.value) return
+    const r = canvasRef.value.getBoundingClientRect()
+    const curX = moveEvent.clientX - r.left
+    const curY = moveEvent.clientY - r.top
+    const cx = r.width * (textX.value / 100)
+    const cy = r.height * (textY.value / 100)
+
+    const ndx = curX - cx
+    const ndy = curY - cy
+    const newDist = Math.sqrt(ndx * ndx + ndy * ndy) || 1
+    const newAngle = Math.atan2(ndy, ndx)
+
+    const scaleRatio = newDist / distance
+    const angleDelta = (newAngle - angle) * (180 / Math.PI)
+
+    textScale.value = Math.min(3, Math.max(0.3, initScale * scaleRatio))
+    textRotation.value = initRotation + angleDelta
+  }
+
+  const onMouseUp = () => {
+    textBlockTransforming.value = false
+    saveDraftData()
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
+const onTextBlockTransformTouchStart = (e: TouchEvent) => {
+  const touch = e.touches[0]
+  if (!touch || !canvasRef.value) return
+  e.preventDefault()
+  textBlockTransforming.value = true
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const centerX = rect.width * (textX.value / 100)
+  const centerY = rect.height * (textY.value / 100)
+  const cursorX = touch.clientX - rect.left
+  const cursorY = touch.clientY - rect.top
+
+  const dx = cursorX - centerX
+  const dy = cursorY - centerY
+  const distance = Math.sqrt(dx * dx + dy * dy) || 1
+  const angle = Math.atan2(dy, dx)
+
+  const initScale = textScale.value
+  const initRotation = textRotation.value
+
+  const onTouchMove = (moveEvent: TouchEvent) => {
+    if (!canvasRef.value || !moveEvent.touches[0]) return
+    moveEvent.preventDefault()
+    const t = moveEvent.touches[0]
+    const r = canvasRef.value.getBoundingClientRect()
+    const curX = t.clientX - r.left
+    const curY = t.clientY - r.top
+    const cx = r.width * (textX.value / 100)
+    const cy = r.height * (textY.value / 100)
+
+    const ndx = curX - cx
+    const ndy = curY - cy
+    const newDist = Math.sqrt(ndx * ndx + ndy * ndy) || 1
+    const newAngle = Math.atan2(ndy, ndx)
+
+    const scaleRatio = newDist / distance
+    const angleDelta = (newAngle - angle) * (180 / Math.PI)
+
+    textScale.value = Math.min(3, Math.max(0.3, initScale * scaleRatio))
+    textRotation.value = initRotation + angleDelta
+  }
+
+  const onTouchEnd = () => {
+    textBlockTransforming.value = false
+    saveDraftData()
+    document.removeEventListener('touchmove', onTouchMove, { capture: true })
+    document.removeEventListener('touchend', onTouchEnd)
+  }
+
+  document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
+  document.addEventListener('touchend', onTouchEnd)
 }
 
 // 貼紙拖曳邏輯
 const onStickerMouseDown = (e: MouseEvent, sticker: StickerInstance) => {
-  if ((e.target as HTMLElement).closest('.sticker-delete')) return
+  if ((e.target as HTMLElement).closest('.p-editor__sticker-delete, .p-editor__sticker-transform-handle')) return
   e.preventDefault()
   selectSticker(sticker.id)
   dragState.value = {
@@ -354,7 +623,7 @@ const onStickerMouseDown = (e: MouseEvent, sticker: StickerInstance) => {
 }
 
 const onStickerTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
-  if ((e.target as HTMLElement).closest('.sticker-delete')) return
+  if ((e.target as HTMLElement).closest('.p-editor__sticker-delete, .p-editor__sticker-transform-handle')) return
   const touch = e.touches[0]
   if (!touch) return
 
@@ -398,8 +667,135 @@ const onStickerTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
 }
 
 const onStickerClick = (id: string) => {
-  if (draggingStickerId.value) return
+  if (draggingStickerId.value || transformingStickerId.value) return
   selectSticker(id)
+}
+
+const onTransformHandleMouseDown = (e: MouseEvent, sticker: StickerInstance) => {
+  e.preventDefault()
+  if (!canvasRef.value) return
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const centerX = rect.width * (sticker.x / 100)
+  const centerY = rect.height * (sticker.y / 100)
+  const cursorX = e.clientX - rect.left
+  const cursorY = e.clientY - rect.top
+
+  const dx = cursorX - centerX
+  const dy = cursorY - centerY
+  const distance = Math.sqrt(dx * dx + dy * dy) || 1
+  const angle = Math.atan2(dy, dx)
+
+  transformState.value = {
+    stickerId: sticker.id,
+    centerX: sticker.x,
+    centerY: sticker.y,
+    initialDistance: distance,
+    initialAngle: angle,
+    initialScale: sticker.scale,
+    initialRotation: sticker.rotation
+  }
+  transformingStickerId.value = sticker.id
+
+  const onMouseMove = (moveEvent: MouseEvent) => {
+    if (!transformState.value || !canvasRef.value) return
+
+    const r = canvasRef.value.getBoundingClientRect()
+    const curX = moveEvent.clientX - r.left
+    const curY = moveEvent.clientY - r.top
+    const cx = r.width * (transformState.value.centerX / 100)
+    const cy = r.height * (transformState.value.centerY / 100)
+
+    const dx = curX - cx
+    const dy = curY - cy
+    const newDist = Math.sqrt(dx * dx + dy * dy) || 1
+    const newAngle = Math.atan2(dy, dx)
+
+    const scaleRatio = newDist / transformState.value.initialDistance
+    const angleDelta = (newAngle - transformState.value.initialAngle) * (180 / Math.PI)
+
+    const s = stickers.value.find(st => st.id === transformState.value!.stickerId)
+    if (s) {
+      s.scale = Math.min(3, Math.max(0.3, transformState.value.initialScale * scaleRatio))
+      s.rotation = transformState.value.initialRotation + angleDelta
+    }
+  }
+
+  const onMouseUp = () => {
+    if (transformState.value) saveDraftData()
+    transformState.value = null
+    transformingStickerId.value = null
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
+const onTransformHandleTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
+  const touch = e.touches[0]
+  if (!touch || !canvasRef.value) return
+  e.preventDefault()
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const centerX = rect.width * (sticker.x / 100)
+  const centerY = rect.height * (sticker.y / 100)
+  const cursorX = touch.clientX - rect.left
+  const cursorY = touch.clientY - rect.top
+
+  const dx = cursorX - centerX
+  const dy = cursorY - centerY
+  const distance = Math.sqrt(dx * dx + dy * dy) || 1
+  const angle = Math.atan2(dy, dx)
+
+  transformState.value = {
+    stickerId: sticker.id,
+    centerX: sticker.x,
+    centerY: sticker.y,
+    initialDistance: distance,
+    initialAngle: angle,
+    initialScale: sticker.scale,
+    initialRotation: sticker.rotation
+  }
+  transformingStickerId.value = sticker.id
+
+  const onTouchMove = (moveEvent: TouchEvent) => {
+    if (!transformState.value || !canvasRef.value || !moveEvent.touches[0]) return
+    moveEvent.preventDefault()
+
+    const t = moveEvent.touches[0]
+    const r = canvasRef.value.getBoundingClientRect()
+    const curX = t.clientX - r.left
+    const curY = t.clientY - r.top
+    const cx = r.width * (transformState.value.centerX / 100)
+    const cy = r.height * (transformState.value.centerY / 100)
+
+    const dx = curX - cx
+    const dy = curY - cy
+    const newDist = Math.sqrt(dx * dx + dy * dy) || 1
+    const newAngle = Math.atan2(dy, dx)
+
+    const scaleRatio = newDist / transformState.value.initialDistance
+    const angleDelta = (newAngle - transformState.value.initialAngle) * (180 / Math.PI)
+
+    const s = stickers.value.find(st => st.id === transformState.value!.stickerId)
+    if (s) {
+      s.scale = Math.min(3, Math.max(0.3, transformState.value.initialScale * scaleRatio))
+      s.rotation = transformState.value.initialRotation + angleDelta
+    }
+  }
+
+  const onTouchEnd = () => {
+    if (transformState.value) saveDraftData()
+    transformState.value = null
+    transformingStickerId.value = null
+    document.removeEventListener('touchmove', onTouchMove, { capture: true })
+    document.removeEventListener('touchend', onTouchEnd)
+  }
+
+  document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
+  document.addEventListener('touchend', onTouchEnd)
 }
 
 const removeSticker = (id: string) => {
@@ -415,6 +811,7 @@ const saveDraftData = () => {
     textColor: textColor.value,
     fontSize: fontSize.value,
     stickers: stickers.value,
+    textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
     timestamp: Date.now()
   }
   saveDraft(draft)
@@ -426,6 +823,13 @@ const loadDraftData = (draft: DraftData) => {
   textColor.value = draft.textColor
   fontSize.value = draft.fontSize
   stickers.value = draft.stickers
+  if (draft.textTransform) {
+    textX.value = draft.textTransform.x
+    textY.value = draft.textTransform.y
+    textScale.value = draft.textTransform.scale
+    textRotation.value = draft.textTransform.rotation
+  }
+  syncContentToDom(draft.content)
 }
 
 const handleDraftDecision = (useDraft: boolean) => {
@@ -448,7 +852,12 @@ const clearAll = () => {
   textColor.value = '#333333'
   fontSize.value = 24
   stickers.value = []
+  textX.value = 50
+  textY.value = 50
+  textScale.value = 1
+  textRotation.value = 0
   clearDraft()
+  syncContentToDom('')
 }
 
 const isSubmitting = ref(false)
@@ -484,7 +893,8 @@ const handleSubmit = async () => {
         backgroundColor: backgroundColor.value,
         textColor: textColor.value,
         fontSize: fontSize.value,
-        stickers: stickers.value
+        stickers: stickers.value,
+        textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
       }
     }
 

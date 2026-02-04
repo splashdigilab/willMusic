@@ -70,15 +70,21 @@
       );
   }
 
+  /* 內容文字外包裝 - 支援位置、縮放、旋轉 */
+  &__content-wrap {
+    position: absolute;
+    width: 75%;
+    max-width: 75%;
+    z-index: 1;
+    transform-origin: center center;
+  }
+
   /* 內容文字區域 - 字體大小為容器寬度的比例 */
   &__content {
     width: 100%;
-    height: 100%;
     word-wrap: break-word;
     white-space: pre-wrap;
     line-height: 1.6;
-    position: relative;
-    z-index: 1;
     /* 使用 cqw：字體 = 容器寬度的 --font-size-pct %，預設 4%（對應 editor 24px/600px） */
     font-size: calc(var(--font-size-pct, 4) * 1cqw);
   }

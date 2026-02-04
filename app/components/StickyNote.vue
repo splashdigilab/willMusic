@@ -5,8 +5,13 @@
     :style="noteStyles"
     :data-pattern="note.style.pattern || 'solid'"
   >
-    <div class="c-sticky-note__content">
-      {{ note.content }}
+    <div 
+      class="c-sticky-note__content-wrap"
+      :style="contentWrapStyle"
+    >
+      <div class="c-sticky-note__content">
+        {{ note.content }}
+      </div>
     </div>
     <!-- 貼紙 -->
     <div
@@ -50,6 +55,19 @@ const noteStyles = computed(() => {
     color: props.note.style.textColor,
     fontFamily: props.note.style.fontFamily || 'inherit',
     '--font-size-pct': fontPct
+  }
+})
+
+const contentWrapStyle = computed(() => {
+  const t = props.note.style?.textTransform
+  const x = t?.x ?? 50
+  const y = t?.y ?? 50
+  const scale = t?.scale ?? 1
+  const rotation = t?.rotation ?? 0
+  return {
+    left: `${x}%`,
+    top: `${y}%`,
+    transform: `translate(-50%, -50%) scale(${scale}) rotate(${rotation}deg)`
   }
 })
 

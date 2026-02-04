@@ -65,20 +65,91 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     position: relative;
     overflow: hidden;
+    cursor: default;
+    /* 與 StickyNote 一致：啟用 container query，使用 cqw 讓文字/貼紙比例與 display、home 相同 */
+    container-type: inline-size;
+    container-name: editor-canvas;
+  }
+
+  &__text-block {
+    position: absolute;
+    width: 75%;
+    transform-origin: center center;
+    z-index: 1;
     cursor: text;
+
+    &.is-selected {
+      outline: 2px solid rgba(102, 126, 234, 0.6);
+      outline-offset: 4px;
+      border-radius: 8px;
+    }
+
+    &.is-dragging,
+    &.is-transforming {
+      cursor: grab;
+    }
+  }
+
+  &__text-block-drag-bar {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 48px;
+    height: 20px;
+    background: rgba(102, 126, 234, 0.8);
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    z-index: 3;
+
+    &:hover {
+      background: rgba(102, 126, 234, 1);
+    }
+  }
+
+  &__text-block-transform-handle {
+    position: absolute;
+    bottom: -12px;
+    right: -12px;
+    width: 28px;
+    height: 28px;
+    background: #3b82f6;
+    color: white;
+    border: 2px solid white;
+    border-radius: 50%;
+    font-size: 1rem;
+    cursor: nwse-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 2;
+
+    &:hover {
+      background: #2563eb;
+      transform: scale(1.1);
+    }
   }
 
   &__canvas-text {
     width: 100%;
-    height: 100%;
+    min-height: 3em;
     padding: 2rem;
+    padding-top: 2rem;
     outline: none;
     word-wrap: break-word;
     white-space: pre-wrap;
     line-height: 1.6;
+    /* 與 StickyNote 一致：字體 = 容器寬度的 --font-size-pct %（基準 24px/600px=4%） */
+    font-size: calc(var(--font-size-pct, 4) * 1cqw);
     
-    &:empty:before {
-      content: attr(placeholder);
+    &:empty::before {
+      content: attr(data-placeholder);
       color: rgba(0, 0, 0, 0.3);
     }
   }
@@ -90,13 +161,14 @@
     color: #666;
   }
 
-  // Sticker
+  // Sticker - 與 StickyNote 一致：貼紙大小為文字的 2 倍（使用 cqw）
   &__sticker {
     position: absolute;
     cursor: grab;
     user-select: none;
     transition: transform 0.1s ease;
     touch-action: none;
+    font-size: calc(var(--font-size-pct, 4) * 2 * 1cqw);
 
     &.is-selected {
       filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.8));
@@ -130,6 +202,34 @@
       background: #dc2626;
       transform: scale(1.1);
     }
+  }
+
+  &__sticker-transform-handle {
+    position: absolute;
+    bottom: -12px;
+    right: -12px;
+    width: 28px;
+    height: 28px;
+    background: #3b82f6;
+    color: white;
+    border: 2px solid white;
+    border-radius: 50%;
+    font-size: 1rem;
+    cursor: nwse-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 2;
+
+    &:hover {
+      background: #2563eb;
+      transform: scale(1.1);
+    }
+  }
+
+  &.is-transforming {
+    cursor: nwse-resize;
   }
 
   // Control Panel

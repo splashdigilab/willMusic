@@ -11,50 +11,43 @@
         <section class="p-admin__card">
           <h2 class="p-admin__card-title">生成新 Token</h2>
           <div class="p-admin__token-generator">
-            <div class="p-admin__form-group">
-              <label class="p-admin__form-label">生成數量</label>
-              <input
-                v-model.number="generateCount"
-                type="number"
-                min="1"
-                max="100"
-                class="p-admin__form-input"
-              />
-            </div>
             <button
-              @click="generateTokens"
+              @click="generateToken"
               class="p-admin__btn p-admin__btn--primary"
               :disabled="isGenerating"
             >
-              {{ isGenerating ? '生成中...' : '生成 Tokens' }}
+              {{ isGenerating ? '生成中...' : '生成 Token' }}
             </button>
 
-            <div v-if="generatedTokens.length > 0" class="p-admin__generated-tokens">
-              <h3 class="p-admin__generated-title">已生成 Token（{{ generatedTokens.length }} 個）</h3>
-              <div class="p-admin__token-list">
-                <div
-                  v-for="token in generatedTokens"
-                  :key="token"
-                  class="p-admin__token-item"
+            <div v-if="currentToken" class="p-admin__generated-tokens">
+              <div class="p-admin__qr-section">
+                <p class="p-admin__qr-label">
+                  掃描或點擊前往編輯頁
+                  <span v-if="qrTimeLeft >= 0" class="p-admin__qr-timer">（{{ qrTimeLeft }}秒後消失）</span>
+                </p>
+                <NuxtLink 
+                  :to="`/editor?token=${currentToken}`" 
+                  target="_blank"
+                  class="p-admin__qr-link"
                 >
-                  <code class="p-admin__token-text">{{ token }}</code>
-                  <button
-                    @click="copyToken(token)"
-                    class="p-admin__btn-copy"
-                    title="複製"
-                  >
-                    📋
-                  </button>
-                </div>
+                  <canvas ref="qrCanvas" class="p-admin__qr-canvas"></canvas>
+                </NuxtLink>
               </div>
-              <button @click="downloadTokens" class="p-admin__btn p-admin__btn--secondary">
-                下載為 CSV
-              </button>
+              <div class="p-admin__token-item">
+                <code class="p-admin__token-text">{{ currentToken }}</code>
+                <button
+                  @click="copyToken(currentToken)"
+                  class="p-admin__btn-copy"
+                  title="複製連結"
+                >
+                  📋
+                </button>
+              </div>
             </div>
           </div>
         </section>
 
-        <!-- 統計資訊 -->
+        <!-- 統計資訊（即時更新） -->
         <section class="p-admin__card">
           <h2 class="p-admin__card-title">系統統計</h2>
           <div class="p-admin__stats-grid">
@@ -75,13 +68,6 @@
               <div class="p-admin__stat-label">已使用 Token</div>
             </div>
           </div>
-          <button
-            @click="loadStats"
-            class="p-admin__btn p-admin__btn--secondary"
-            :disabled="loadingStats"
-          >
-            {{ loadingStats ? '載入中...' : '重新整理' }}
-          </button>
         </section>
 
         <!-- 清理工具 -->
@@ -117,8 +103,10 @@ import {
   collection,
   getDocs,
   doc,
-  writeBatch
+  writeBatch,
+  onSnapshot
 } from 'firebase/firestore'
+import QRCode from 'qrcode'
 
 definePageMeta({
   layout: false
@@ -129,23 +117,49 @@ const { createToken } = useFirestore()
 
 const db = $firestore as any
 
-// Token 生成
-const generateCount = ref(5)
+// Token 生成（一次一個）
 const isGenerating = ref(false)
-const generatedTokens = ref<string[]>([])
+const currentToken = ref<string | null>(null)
+const qrCanvas = ref<HTMLCanvasElement | null>(null)
+const qrTimeLeft = ref(60)
+let qrTimer: ReturnType<typeof setInterval> | null = null
 
-const generateTokens = async () => {
+const clearQrCode = () => {
+  if (qrTimer) {
+    clearInterval(qrTimer)
+    qrTimer = null
+  }
+  currentToken.value = null
+  qrTimeLeft.value = 60
+}
+
+const generateToken = async () => {
+  clearQrCode()
   isGenerating.value = true
-  generatedTokens.value = []
 
   try {
-    for (let i = 0; i < generateCount.value; i++) {
-      const tokenId = await createToken()
-      generatedTokens.value.push(tokenId)
+    const tokenId = await createToken()
+    currentToken.value = tokenId
+
+    await nextTick()
+    if (qrCanvas.value) {
+      const url = `${window.location.origin}/editor?token=${tokenId}`
+      await QRCode.toCanvas(qrCanvas.value, url, {
+        width: 200,
+        margin: 2,
+        color: { dark: '#000000', light: '#FFFFFF' }
+      })
     }
-    alert(`成功生成 ${generateCount.value} 個 Token！`)
+
+    qrTimeLeft.value = 60
+    qrTimer = setInterval(() => {
+      qrTimeLeft.value--
+      if (qrTimeLeft.value <= 0) {
+        clearQrCode()
+      }
+    }, 1000)
   } catch (error) {
-    console.error('Error generating tokens:', error)
+    console.error('Error generating token:', error)
     alert('生成 Token 失敗')
   } finally {
     isGenerating.value = false
@@ -153,22 +167,12 @@ const generateTokens = async () => {
 }
 
 const copyToken = (token: string) => {
-  navigator.clipboard.writeText(token)
-  alert('Token 已複製到剪貼簿')
+  const url = `${window.location.origin}/editor?token=${token}`
+  navigator.clipboard.writeText(url)
+  alert('編輯連結已複製到剪貼簿')
 }
 
-const downloadTokens = () => {
-  const csv = 'Token\n' + generatedTokens.value.join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `tokens-${Date.now()}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-// 統計資訊
+// 統計資訊（即時監聽）
 const stats = ref({
   pendingCount: 0,
   historyCount: 0,
@@ -176,30 +180,34 @@ const stats = ref({
   usedTokens: 0
 })
 
-const loadingStats = ref(false)
+let statsUnsubscribes: Array<() => void> = []
 
-const loadStats = async () => {
-  loadingStats.value = true
+// 保留以相容可能的殘留引用（統計已改為即時監聽）
+const loadStats = () => {
+  // 即時監聽中，無需手動載入
+}
 
-  try {
-    const pendingSnapshot = await getDocs(collection(db, 'queue_pending'))
-    stats.value.pendingCount = pendingSnapshot.size
-
-    const historySnapshot = await getDocs(collection(db, 'queue_history'))
-    stats.value.historyCount = historySnapshot.size
-
-    const tokensSnapshot = await getDocs(collection(db, 'tokens'))
-    stats.value.unusedTokens = tokensSnapshot.docs.filter(
-      d => d.data().status === 'unused'
-    ).length
-    stats.value.usedTokens = tokensSnapshot.docs.filter(
-      d => d.data().status === 'used'
-    ).length
-  } catch (error) {
-    console.error('Error loading stats:', error)
-  } finally {
-    loadingStats.value = false
-  }
+const startStatsListeners = () => {
+  statsUnsubscribes.push(
+    onSnapshot(collection(db, 'queue_pending'), (snapshot) => {
+      stats.value.pendingCount = snapshot.size
+    })
+  )
+  statsUnsubscribes.push(
+    onSnapshot(collection(db, 'queue_history'), (snapshot) => {
+      stats.value.historyCount = snapshot.size
+    })
+  )
+  statsUnsubscribes.push(
+    onSnapshot(collection(db, 'tokens'), (snapshot) => {
+      stats.value.unusedTokens = snapshot.docs.filter(
+        d => d.data().status === 'unused'
+      ).length
+      stats.value.usedTokens = snapshot.docs.filter(
+        d => d.data().status === 'used'
+      ).length
+    })
+  )
 }
 
 // 清理工具
@@ -219,7 +227,6 @@ const clearPendingQueue = async () => {
 
     await batch.commit()
     alert('待處理佇列已清空')
-    loadStats()
   } catch (error) {
     console.error('Error clearing queue:', error)
     alert('清空失敗')
@@ -242,7 +249,6 @@ const clearHistory = async () => {
 
     await batch.commit()
     alert('歷史紀錄已清空')
-    loadStats()
   } catch (error) {
     console.error('Error clearing history:', error)
     alert('清空失敗')
@@ -252,7 +258,12 @@ const clearHistory = async () => {
 }
 
 onMounted(() => {
-  loadStats()
+  startStatsListeners()
+})
+
+onUnmounted(() => {
+  statsUnsubscribes.forEach(unsub => unsub())
+  clearQrCode()
 })
 </script>
 

@@ -21,7 +21,18 @@ export interface DraftData {
   textColor: string
   fontSize: number
   stickers: StickerInstance[]
+  textTransform?: TextBlockTransform
   timestamp: number
+}
+
+/**
+ * 文字區塊變換（位置、縮放、旋轉）
+ */
+export interface TextBlockTransform {
+  x: number
+  y: number
+  scale: number
+  rotation: number
 }
 
 /**
@@ -35,6 +46,7 @@ export interface StickyNoteStyle {
   rotation?: number // 旋轉角度 (-10 到 10 度)
   pattern?: 'solid' | 'lines' | 'dots' | 'grid' // 背景花紋
   stickers?: StickerInstance[] // 貼紙
+  textTransform?: TextBlockTransform // 文字區塊位置、縮放、旋轉
 }
 
 /**
