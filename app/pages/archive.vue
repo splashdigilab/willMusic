@@ -82,8 +82,9 @@ const loadMore = async () => {
       return
     }
     const newItems = result.items.filter((item) => {
-      if (existingIds.has(item.id)) return false
-      existingIds.add(item.id)
+      const id = item.id
+      if (id == null || existingIds.has(id)) return false
+      existingIds.add(id)
       return true
     })
     items.value.push(...newItems)
@@ -103,7 +104,7 @@ const setupInfiniteScroll = () => {
   if (!el || observerInstance) return
   observerInstance = new IntersectionObserver(
     (entries) => {
-      if (entries[0].isIntersecting) loadMore()
+      if (entries[0]?.isIntersecting) loadMore()
     },
     { rootMargin: '100px' }
   )
@@ -115,8 +116,14 @@ onMounted(() => {
 
   loading.value = true
   getHistory(20).then((result) => {
-    result.items.forEach((item) => existingIds.add(item.id))
-    items.value = result.items
+    // 依 id 去重
+    const deduped = result.items.filter((item) => {
+      const id = item.id
+      if (id == null || id === '' || existingIds.has(id)) return false
+      existingIds.add(id)
+      return true
+    })
+    items.value = deduped
     lastDoc = result.lastDoc
     hasMore.value = result.items.length === 20
   }).catch(console.error).finally(() => {

@@ -30,30 +30,57 @@ export const useFirestore = () => {
   /**
    * 建立新的便利貼並加入待處理佇列
    */
+  /**
+   * 移除物件中的 undefined 欄位（Firestore 不接受 undefined）
+   */
+  const removeUndefined = (obj: any): any => {
+    if (obj === null || obj === undefined) return obj
+    if (Array.isArray(obj)) return obj.map(removeUndefined)
+    if (typeof obj === 'object') {
+      const result: Record<string, any> = {}
+      for (const [k, v] of Object.entries(obj)) {
+        if (v !== undefined) result[k] = removeUndefined(v)
+      }
+      return result
+    }
+    return obj
+  }
+
   const createNote = async (form: CreateNoteForm, token: string): Promise<string> => {
     try {
-      const noteData: Omit<QueuePendingItem, 'id'> = {
+      const sanitizedStyle = removeUndefined(form.style)
+      const noteData = {
         content: form.content,
-        style: form.style,
+        style: sanitizedStyle,
         token,
-        timestamp: serverTimestamp() as any,
+        timestamp: serverTimestamp(),
         status: 'waiting'
       }
 
-      const docRef = await addDoc(collection(db, 'queue_pending'), noteData)
-      
-      // 更新 token 狀態
-      const tokenQuery = query(collection(db, 'tokens'))
-      const tokenSnapshot = await getDocs(tokenQuery)
-      const tokenDoc = tokenSnapshot.docs.find(d => d.id === token)
-      
-      if (tokenDoc) {
-        await updateDoc(doc(db, 'tokens', tokenDoc.id), {
-          status: 'used'
-        })
-      }
+      let newDocId: string
 
-      return docRef.id
+      await runTransaction(db, async (transaction) => {
+        // 1. 檢查 token 是否仍為 unused
+        const tokenRef = doc(db, 'tokens', token)
+        const tokenSnap = await transaction.get(tokenRef)
+        if (!tokenSnap.exists()) {
+          throw new Error('Token 不存在')
+        }
+        const tokenData = tokenSnap.data() as TokenDocument
+        if (tokenData.status !== 'unused') {
+          throw new Error('Token 無效或已使用')
+        }
+
+        // 2. 新增到 queue_pending 並取得新 doc ID
+        const pendingRef = doc(collection(db, 'queue_pending'))
+        newDocId = pendingRef.id
+        transaction.set(pendingRef, noteData)
+
+        // 3. 標記 token 為已使用
+        transaction.update(tokenRef, { status: 'used' })
+      })
+
+      return newDocId!
     } catch (error) {
       console.error('Error creating note:', error)
       throw error
@@ -81,6 +108,24 @@ export const useFirestore = () => {
   }
 
   /**
+   * 依內容去重：相同內容且 playedAt 在 10 秒內的視為同一次提交的重複
+   */
+  const deduplicateByContent = (items: QueueHistoryItem[]): QueueHistoryItem[] => {
+    const DUPLICATE_WINDOW_MS = 10000
+    const signatureLastPlayed = new Map<string, number>()
+    return items.filter((item) => {
+      const sig = `${item.content}|${item.style?.backgroundImage}|${item.style?.shape}|${JSON.stringify(item.style?.stickers ?? [])}|${item.style?.drawing ?? ''}`
+      const playedAt = item.playedAt?.toMillis?.() ?? 0
+      const last = signatureLastPlayed.get(sig)
+      if (last != null && Math.abs(playedAt - last) < DUPLICATE_WINDOW_MS) {
+        return false
+      }
+      signatureLastPlayed.set(sig, playedAt)
+      return true
+    })
+  }
+
+  /**
    * 即時監聽歷史紀錄（最新 N 筆，用於即時牆）
    */
   const listenToHistory = (
@@ -96,11 +141,19 @@ export const useFirestore = () => {
     return onSnapshot(
       q,
       (snapshot) => {
-        const items: QueueHistoryItem[] = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as QueueHistoryItem))
-        callback(items)
+        const seen = new Set<string>()
+        const rawItems: QueueHistoryItem[] = []
+        snapshot.docs.forEach((docSnap) => {
+          const item = {
+            id: docSnap.id,
+            ...docSnap.data()
+          } as QueueHistoryItem
+          if (item.id && !seen.has(item.id)) {
+            seen.add(item.id)
+            rawItems.push(item)
+          }
+        })
+        callback(deduplicateByContent(rawItems))
       },
       (error) => {
         console.error('Error listening to history:', error)
@@ -130,13 +183,21 @@ export const useFirestore = () => {
       }
 
       const snapshot = await getDocs(q)
-      const items: QueueHistoryItem[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as QueueHistoryItem))
+      const seen = new Set<string>()
+      const rawItems: QueueHistoryItem[] = []
+      snapshot.docs.forEach((docSnap) => {
+        const item = {
+          id: docSnap.id,
+          ...docSnap.data()
+        } as QueueHistoryItem
+        if (item.id && !seen.has(item.id)) {
+          seen.add(item.id)
+          rawItems.push(item)
+        }
+      })
 
       return {
-        items,
+        items: deduplicateByContent(rawItems),
         lastDoc: snapshot.docs[snapshot.docs.length - 1] || null
       }
     } catch (error) {

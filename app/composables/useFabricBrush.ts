@@ -1,7 +1,24 @@
-import { Canvas, PencilBrush } from 'fabric'
+import { Canvas, PencilBrush, Path } from 'fabric'
+
+type TSimplePathData = Parameters<PencilBrush['createPath']>[0]
+
+class EraserBrush extends PencilBrush {
+  override _setBrushStyles(ctx: CanvasRenderingContext2D) {
+    super._setBrushStyles(ctx)
+    ctx.strokeStyle = 'rgba(150, 150, 150, 0.6)'
+  }
+
+  override createPath(pathData: TSimplePathData): Path {
+    const path = super.createPath(pathData)
+    path.set({ globalCompositeOperation: 'destination-out' })
+    return path
+  }
+}
 
 export function useFabricBrush(onPathCreated?: () => void) {
   let fabricCanvas: Canvas | null = null
+  let pencilBrush: PencilBrush | null = null
+  let eraserBrush: EraserBrush | null = null
 
   const init = (canvasEl: HTMLCanvasElement | null, width: number, height: number) => {
     if (!canvasEl || !import.meta.client) return
@@ -20,10 +37,14 @@ export function useFabricBrush(onPathCreated?: () => void) {
       if (onPathCreated) onPathCreated()
     })
 
-    const brush = new PencilBrush(fabricCanvas)
-    brush.color = '#333333'
-    brush.width = 4
-    fabricCanvas.freeDrawingBrush = brush
+    pencilBrush = new PencilBrush(fabricCanvas)
+    pencilBrush.color = '#333333'
+    pencilBrush.width = 4
+
+    eraserBrush = new EraserBrush(fabricCanvas)
+    eraserBrush.width = 16
+
+    fabricCanvas.freeDrawingBrush = pencilBrush
 
     return fabricCanvas
   }
@@ -34,21 +55,32 @@ export function useFabricBrush(onPathCreated?: () => void) {
     }
   }
 
+  const setEraserMode = (enabled: boolean) => {
+    if (!fabricCanvas || !pencilBrush || !eraserBrush) return
+    fabricCanvas.freeDrawingBrush = enabled ? eraserBrush : pencilBrush
+  }
+
   const setBrushColor = (color: string) => {
-    if (fabricCanvas?.freeDrawingBrush) {
-      fabricCanvas.freeDrawingBrush.color = color
+    if (pencilBrush) {
+      pencilBrush.color = color
     }
   }
 
   const setBrushWidth = (width: number) => {
-    if (fabricCanvas?.freeDrawingBrush) {
-      fabricCanvas.freeDrawingBrush.width = width
+    if (pencilBrush) {
+      pencilBrush.width = width
+    }
+  }
+
+  const setEraserWidth = (width: number) => {
+    if (eraserBrush) {
+      eraserBrush.width = width
     }
   }
 
   const exportToDataURL = (): string | null => {
     if (!fabricCanvas) return null
-    return fabricCanvas.toDataURL({ format: 'png', quality: 1 })
+    return fabricCanvas.toDataURL({ format: 'png', quality: 1, multiplier: 1 })
   }
 
   const loadFromDataURL = async (dataUrl: string) => {
@@ -107,8 +139,10 @@ export function useFabricBrush(onPathCreated?: () => void) {
   return {
     init,
     setDrawingMode,
+    setEraserMode,
     setBrushColor,
     setBrushWidth,
+    setEraserWidth,
     exportToDataURL,
     loadFromDataURL,
     clear,

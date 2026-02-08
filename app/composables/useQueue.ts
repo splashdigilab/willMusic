@@ -21,7 +21,8 @@ export const useQueue = () => {
       queue.value = items
       
       // 如果沒有正在播放的項目且佇列有項目，自動播放下一個
-      if (!isPlaying.value && items.length > 0) {
+      // 注意：不在 isCompleting 期間自動播放，避免與 completeCurrentItem 中的 playNext 衝突
+      if (!isPlaying.value && !isCompleting && items.length > 0) {
         playNext()
       }
     })
@@ -49,6 +50,7 @@ export const useQueue = () => {
 
     const nextItem = queue.value[0]
     if (!nextItem) return
+
     currentItem.value = nextItem
     isPlaying.value = true
   }
@@ -60,14 +62,20 @@ export const useQueue = () => {
     if (!currentItem.value || isCompleting) return
 
     const itemToComplete = currentItem.value
-    currentItem.value = null
-    isPlaying.value = false
     isCompleting = true
 
     try {
       await moveToHistory(itemToComplete)
-      if (queue.value.length > 0) {
-        await playNext()
+      currentItem.value = null
+      isPlaying.value = false
+
+      // 從佇列中排除剛完成的項目後再播放下一個（避免 listener 尚未更新時重複播放同一則）
+      const completedId = itemToComplete.id
+      const remaining = queue.value.filter((item) => item.id !== completedId)
+      const nextItem = remaining[0]
+      if (nextItem) {
+        currentItem.value = nextItem
+        isPlaying.value = true
       }
     } catch (error) {
       console.error('Error completing item:', error)

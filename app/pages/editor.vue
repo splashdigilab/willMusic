@@ -224,26 +224,54 @@
             {{ drawMode ? '完成繪圖' : '✏️ 畫筆' }}
           </button>
           <template v-if="drawMode">
-            <div class="p-editor__brush-colors">
-              <button
-                v-for="c in brushColors"
-                :key="c.value"
-                class="p-editor__brush-color-btn"
-                :class="{ 'is-active': brushColor === c.value }"
-                :style="{ background: c.value }"
-                @click="brushColor = c.value"
-              />
-            </div>
-            <div class="p-editor__brush-size">
-              <label>粗細</label>
-              <input
-                v-model.number="brushWidth"
-                type="range"
-                min="2"
-                max="20"
-                class="p-editor__brush-slider"
-              />
-            </div>
+            <button
+              class="p-editor__draw-mode-btn p-editor__draw-mode-btn--tool"
+              :class="{ 'is-active': !eraserMode }"
+              @click="eraserMode = false"
+            >
+              ✏️ 畫筆
+            </button>
+            <button
+              class="p-editor__draw-mode-btn p-editor__draw-mode-btn--tool"
+              :class="{ 'is-active': eraserMode }"
+              @click="eraserMode = true"
+            >
+              🧹 橡皮擦
+            </button>
+            <template v-if="!eraserMode">
+              <div class="p-editor__brush-colors">
+                <button
+                  v-for="c in brushColors"
+                  :key="c.value"
+                  class="p-editor__brush-color-btn"
+                  :class="{ 'is-active': brushColor === c.value }"
+                  :style="{ background: c.value }"
+                  @click="brushColor = c.value"
+                />
+              </div>
+              <div class="p-editor__brush-size">
+                <label>粗細</label>
+                <input
+                  v-model.number="brushWidth"
+                  type="range"
+                  min="2"
+                  max="20"
+                  class="p-editor__brush-slider"
+                />
+              </div>
+            </template>
+            <template v-else>
+              <div class="p-editor__brush-size">
+                <label>粗細</label>
+                <input
+                  v-model.number="eraserWidth"
+                  type="range"
+                  min="8"
+                  max="40"
+                  class="p-editor__brush-slider"
+                />
+              </div>
+            </template>
           </template>
         </div>
       </div>
@@ -286,6 +314,7 @@
         清空
       </button>
       <button 
+        type="button"
         class="p-editor__action-btn p-editor__action-btn--primary" 
         :disabled="isSubmitting"
         @click="handleSubmit"
@@ -310,7 +339,7 @@
 </template>
 
 <script setup lang="ts">
-import type { StickerInstance, DraftData } from '~/types'
+import type { StickerInstance, DraftData, StickyNoteStyle } from '~/types'
 import { STICKER_LIBRARY, getStickersByCategory, getStickerCategories } from '~/data/stickers'
 import { BACKGROUND_IMAGES } from '~/data/backgrounds'
 import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
@@ -376,6 +405,8 @@ const showPreview = ref(false)
 const drawMode = ref(false)
 const brushColor = ref('#333333')
 const brushWidth = ref(4)
+const eraserMode = ref(false)
+const eraserWidth = ref(16)
 const drawingData = ref<string | null>(null)
 const brushColors = [
   { value: '#333333' },
@@ -432,6 +463,14 @@ watch(brushColor, (c) => {
 
 watch(brushWidth, (w) => {
   fabricBrush.setBrushWidth(w)
+}, { immediate: false })
+
+watch(eraserMode, (v) => {
+  fabricBrush.setEraserMode(v)
+}, { immediate: false })
+
+watch(eraserWidth, (w) => {
+  fabricBrush.setEraserWidth(w)
 }, { immediate: false })
 
 // mask-image 直接使用 Illustrator 輸出的 SVG（無需 clipPath），遮罩 = 形狀的填色區域
@@ -1016,6 +1055,9 @@ const clearAll = () => {
 const isSubmitting = ref(false)
 
 const handleSubmit = async () => {
+  // 防止重複提交（雙擊或快速連續點擊）
+  if (isSubmitting.value) return
+
   if (!content.value.trim()) {
     alert('請輸入文字內容')
     return
@@ -1039,17 +1081,19 @@ const handleSubmit = async () => {
       return
     }
 
-    // 建立便利貼表單資料
+    // 建立便利貼表單資料（Firestore 不接受 undefined，僅在有值時加入 drawing）
+    const style: StickyNoteStyle = {
+      backgroundImage: backgroundImage.value,
+      shape: shape.value,
+      textColor: textColor.value,
+      stickers: stickers.value,
+      textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
+    }
+    if (drawingData.value) style.drawing = drawingData.value
+
     const form = {
       content: content.value.trim(),
-      style: {
-        backgroundImage: backgroundImage.value,
-        shape: shape.value,
-        textColor: textColor.value,
-        stickers: stickers.value,
-        textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
-        drawing: drawingData.value ?? undefined
-      }
+      style
     }
 
     await createNote(form, token)
@@ -1085,6 +1129,8 @@ const initFabricBrush = () => {
   fabricBrush.init(drawingCanvasRef.value, size, size)
   fabricBrush.setBrushColor(brushColor.value)
   fabricBrush.setBrushWidth(brushWidth.value)
+  fabricBrush.setEraserWidth(eraserWidth.value)
+  fabricBrush.setEraserMode(eraserMode.value)
   fabricBrush.setDrawingMode(drawMode.value)
   if (drawingData.value) {
     fabricBrush.loadFromDataURL(drawingData.value)

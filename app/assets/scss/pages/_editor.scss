@@ -327,6 +327,11 @@
     &:hover {
       background: rgba(102, 126, 234, 0.3);
     }
+
+    &--tool {
+      padding: 0.4rem 0.75rem;
+      font-size: 0.9rem;
+    }
   }
 
   &__brush-colors {
