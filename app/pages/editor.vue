@@ -69,10 +69,20 @@
               class="p-editor__sticker-img"
             />
           </div>
+
+          <!-- 手繪層 (Fabric.js) -->
+          <div
+            ref="drawingLayerRef"
+            class="p-editor__drawing-layer"
+            :class="{ 'is-active': drawMode }"
+            :style="{ pointerEvents: drawMode ? 'auto' : 'none' }"
+          >
+            <canvas ref="drawingCanvasRef" class="p-editor__drawing-canvas" />
+          </div>
         </div>
 
-        <!-- UI 層：編輯框置頂，不被裁切 -->
-        <div class="p-editor__canvas-ui">
+        <!-- UI 層：編輯框置頂，不被裁切（繪圖模式時隱藏以便手繪） -->
+        <div class="p-editor__canvas-ui" :style="{ pointerEvents: drawMode ? 'none' : undefined }">
           <!-- 文字區塊編輯框（與文字內容同位置、同尺寸） -->
           <div
             class="p-editor__edit-frame p-editor__edit-frame--text"
@@ -202,6 +212,42 @@
         </div>
       </div>
 
+      <!-- 手繪筆刷 -->
+      <div class="p-editor__control-section">
+        <h3 class="p-editor__control-title">手繪</h3>
+        <div class="p-editor__draw-controls">
+          <button
+            class="p-editor__draw-mode-btn"
+            :class="{ 'is-active': drawMode }"
+            @click="toggleDrawMode"
+          >
+            {{ drawMode ? '完成繪圖' : '✏️ 畫筆' }}
+          </button>
+          <template v-if="drawMode">
+            <div class="p-editor__brush-colors">
+              <button
+                v-for="c in brushColors"
+                :key="c.value"
+                class="p-editor__brush-color-btn"
+                :class="{ 'is-active': brushColor === c.value }"
+                :style="{ background: c.value }"
+                @click="brushColor = c.value"
+              />
+            </div>
+            <div class="p-editor__brush-size">
+              <label>粗細</label>
+              <input
+                v-model.number="brushWidth"
+                type="range"
+                min="2"
+                max="20"
+                class="p-editor__brush-slider"
+              />
+            </div>
+          </template>
+        </div>
+      </div>
+
       <!-- Sticker Library -->
       <div class="p-editor__control-section">
         <h3 class="p-editor__control-title">貼紙</h3>
@@ -299,6 +345,8 @@ const textBlockTransforming = ref(false)
 const canvasRef = ref<HTMLElement | null>(null)
 const textBlockRef = ref<HTMLElement | null>(null)
 const contentEditableRef = ref<HTMLDivElement | null>(null)
+const drawingLayerRef = ref<HTMLElement | null>(null)
+const drawingCanvasRef = ref<HTMLCanvasElement | null>(null)
 
 // 拖曳狀態
 interface DragState {
@@ -324,6 +372,20 @@ const transformState = ref<TransformState | null>(null)
 const showDraftModal = ref(false)
 const showPreview = ref(false)
 
+// 手繪筆刷
+const drawMode = ref(false)
+const brushColor = ref('#333333')
+const brushWidth = ref(4)
+const drawingData = ref<string | null>(null)
+const brushColors = [
+  { value: '#333333' },
+  { value: '#f43f5e' },
+  { value: '#3b82f6' },
+  { value: '#22c55e' },
+  { value: '#fbbf24' },
+  { value: '#ffffff' }
+]
+
 // 資料來源
 const backgrounds = BACKGROUND_IMAGES
 const shapes = STICKY_NOTE_SHAPES
@@ -343,6 +405,34 @@ const categories = getStickerCategories()
 const filteredStickers = computed(() => {
   return getStickersByCategory(selectedCategory.value)
 })
+
+// Fabric 手繪筆刷
+const fabricBrush = useFabricBrush(() => {
+  const data = fabricBrush.exportToDataURL()
+  if (data) {
+    drawingData.value = data
+    saveDraftData()
+  }
+})
+const toggleDrawMode = () => {
+  if (drawMode.value) {
+    const data = fabricBrush.exportToDataURL()
+    if (data) drawingData.value = data
+    fabricBrush.setDrawingMode(false)
+  } else {
+    fabricBrush.setDrawingMode(true)
+  }
+  drawMode.value = !drawMode.value
+  saveDraftData()
+}
+
+watch(brushColor, (c) => {
+  fabricBrush.setBrushColor(c)
+}, { immediate: false })
+
+watch(brushWidth, (w) => {
+  fabricBrush.setBrushWidth(w)
+}, { immediate: false })
 
 // mask-image 直接使用 Illustrator 輸出的 SVG（無需 clipPath），遮罩 = 形狀的填色區域
 const shapeMaskUrl = computed(() => {
@@ -394,7 +484,8 @@ const previewNote = computed(() => ({
     shape: shape.value,
     textColor: textColor.value,
     stickers: stickers.value,
-    textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
+    textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
+    drawing: drawingData.value ?? undefined
   },
   token: '',
   timestamp: null as any,
@@ -859,17 +950,19 @@ const saveDraftData = () => {
     textColor: textColor.value,
     stickers: stickers.value,
     textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
+    drawing: drawingData.value ?? undefined,
     timestamp: Date.now()
   }
   saveDraft(draft)
 }
 
-const loadDraftData = (draft: DraftData) => {
+const loadDraftData = async (draft: DraftData) => {
   content.value = draft.content
   backgroundImage.value = draft.backgroundImage
   shape.value = draft.shape
   textColor.value = draft.textColor
   stickers.value = draft.stickers
+  drawingData.value = draft.drawing ?? null
   if (draft.textTransform) {
     textX.value = draft.textTransform.x
     textY.value = draft.textTransform.y
@@ -877,34 +970,47 @@ const loadDraftData = (draft: DraftData) => {
     textRotation.value = draft.textTransform.rotation
   }
   syncContentToDom(draft.content)
-}
-
-const handleDraftDecision = (useDraft: boolean) => {
-  if (useDraft) {
-    const draft = loadDraft()
-    if (draft) {
-      loadDraftData(draft)
-    }
-  } else {
-    clearDraft()
+  if (draft.drawing) {
+    await nextTick()
+    fabricBrush.loadFromDataURL(draft.drawing)
   }
-  showDraftModal.value = false
 }
 
-const clearAll = () => {
-  if (!confirm('確定要清空所有內容嗎？')) return
-  
+const resetEditorToInitial = () => {
   content.value = ''
   backgroundImage.value = BACKGROUND_IMAGES[0].url
   shape.value = DEFAULT_SHAPE_ID
   textColor.value = '#333333'
   stickers.value = []
+  drawingData.value = null
+  fabricBrush.clear()
   textX.value = 50
   textY.value = 50
   textScale.value = 1
   textRotation.value = 0
-  clearDraft()
   syncContentToDom('')
+}
+
+const handleDraftDecision = async (useDraft: boolean) => {
+  if (useDraft) {
+    showDraftModal.value = false
+    const draft = loadDraft()
+    if (draft) {
+      await nextTick()
+      await new Promise<void>(r => requestAnimationFrame(() => r()))
+      await loadDraftData(draft)
+    }
+  } else {
+    resetEditorToInitial()
+    clearDraft()
+    showDraftModal.value = false
+  }
+}
+
+const clearAll = () => {
+  if (!confirm('確定要清空所有內容嗎？')) return
+  resetEditorToInitial()
+  clearDraft()
 }
 
 const isSubmitting = ref(false)
@@ -941,7 +1047,8 @@ const handleSubmit = async () => {
         shape: shape.value,
         textColor: textColor.value,
         stickers: stickers.value,
-        textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
+        textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
+        drawing: drawingData.value ?? undefined
       }
     }
 
@@ -970,6 +1077,20 @@ const goBack = () => {
 }
 
 // Lifecycle
+const initFabricBrush = () => {
+  if (!import.meta.client || !canvasRef.value || !drawingCanvasRef.value || !drawingLayerRef.value) return
+  const rect = canvasRef.value.getBoundingClientRect()
+  const size = Math.min(rect.width, rect.height)
+  if (size < 10) return
+  fabricBrush.init(drawingCanvasRef.value, size, size)
+  fabricBrush.setBrushColor(brushColor.value)
+  fabricBrush.setBrushWidth(brushWidth.value)
+  fabricBrush.setDrawingMode(drawMode.value)
+  if (drawingData.value) {
+    fabricBrush.loadFromDataURL(drawingData.value)
+  }
+}
+
 onMounted(() => {
   // 處理 Token
   const tokenFromQuery = route.query.token as string
@@ -977,11 +1098,35 @@ onMounted(() => {
     saveToken(tokenFromQuery)
   }
 
-  // 檢查草稿
+  // 檢查草稿（僅顯示 modal，不預先載入內容；等使用者選擇「使用草稿」才載入）
   const existingDraft = loadDraft()
   if (existingDraft) {
     showDraftModal.value = true
   }
+
+  // 初始化 Fabric 手繪
+  nextTick(() => {
+    initFabricBrush()
+    const ro = canvasRef.value ? new ResizeObserver(() => {
+      nextTick(() => {
+        if (!canvasRef.value || !drawingCanvasRef.value) return
+        const rect = canvasRef.value.getBoundingClientRect()
+        const size = Math.min(rect.width, rect.height)
+        if (fabricBrush.isInitialized()) {
+          fabricBrush.resize(size, size)
+        } else {
+          initFabricBrush()
+        }
+      })
+    }) : null
+    if (canvasRef.value && ro) {
+      ro.observe(canvasRef.value)
+      onUnmounted(() => {
+        ro.disconnect()
+        fabricBrush.dispose()
+      })
+    }
+  })
 })
 
 // Auto-save on changes

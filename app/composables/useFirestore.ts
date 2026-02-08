@@ -11,6 +11,7 @@ import {
   doc,
   deleteDoc,
   serverTimestamp,
+  runTransaction,
   type Unsubscribe,
   type QueryDocumentSnapshot,
   type DocumentData
@@ -146,25 +147,34 @@ export const useFirestore = () => {
 
   /**
    * 將項目從待處理佇列移至歷史紀錄
+   * - 使用 pending 的 document ID 作為 history 的 ID，確保同一項目不會產生重複紀錄
+   * - 使用 transaction：僅當項目仍在 queue_pending 時才寫入，避免多 display 同時完成時重複
    */
   const moveToHistory = async (item: QueuePendingItem): Promise<void> => {
     try {
       if (!item.id) throw new Error('Item ID is required')
 
-      // 加入歷史紀錄
-      const historyData: Omit<QueueHistoryItem, 'id'> = {
-        content: item.content,
-        style: item.style,
-        token: item.token,
-        timestamp: item.timestamp,
-        status: 'played',
-        playedAt: serverTimestamp() as any
-      }
+      const pendingRef = doc(db, 'queue_pending', item.id)
+      const historyRef = doc(db, 'queue_history', item.id)
 
-      await addDoc(collection(db, 'queue_history'), historyData)
+      await runTransaction(db, async (transaction) => {
+        const pendingSnap = await transaction.get(pendingRef)
+        if (!pendingSnap.exists()) {
+          return
+        }
 
-      // 從待處理佇列刪除
-      await deleteDoc(doc(db, 'queue_pending', item.id))
+        const historyData: Omit<QueueHistoryItem, 'id'> = {
+          content: item.content,
+          style: item.style,
+          token: item.token,
+          timestamp: item.timestamp,
+          status: 'played',
+          playedAt: serverTimestamp() as any
+        }
+
+        transaction.set(historyRef, historyData)
+        transaction.delete(pendingRef)
+      })
     } catch (error) {
       console.error('Error moving to history:', error)
       throw error

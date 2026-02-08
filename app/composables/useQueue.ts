@@ -7,7 +7,8 @@ export const useQueue = () => {
   const queue = ref<QueuePendingItem[]>([])
   const currentItem = ref<QueuePendingItem | null>(null)
   const isPlaying = ref(false)
-  
+  let isCompleting = false
+
   let unsubscribe: Unsubscribe | null = null
 
   /**
@@ -47,6 +48,7 @@ export const useQueue = () => {
     }
 
     const nextItem = queue.value[0]
+    if (!nextItem) return
     currentItem.value = nextItem
     isPlaying.value = true
   }
@@ -55,20 +57,25 @@ export const useQueue = () => {
    * 完成當前項目（移至歷史紀錄）
    */
   const completeCurrentItem = async () => {
-    if (!currentItem.value) return
+    if (!currentItem.value || isCompleting) return
+
+    const itemToComplete = currentItem.value
+    currentItem.value = null
+    isPlaying.value = false
+    isCompleting = true
 
     try {
-      await moveToHistory(currentItem.value)
-      currentItem.value = null
-      isPlaying.value = false
-      
-      // 播放下一個
+      await moveToHistory(itemToComplete)
       if (queue.value.length > 0) {
         await playNext()
       }
     } catch (error) {
       console.error('Error completing item:', error)
+      currentItem.value = itemToComplete
+      isPlaying.value = true
       throw error
+    } finally {
+      isCompleting = false
     }
   }
 

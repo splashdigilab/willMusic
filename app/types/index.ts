@@ -22,6 +22,7 @@ export interface DraftData {
   textColor: string
   stickers: StickerInstance[]
   textTransform?: TextBlockTransform
+  drawing?: string // 手繪內容 data URL
   timestamp: number
 }
 
@@ -45,6 +46,7 @@ export interface StickyNoteStyle {
   fontFamily?: string
   stickers?: StickerInstance[] // 貼紙
   textTransform?: TextBlockTransform // 文字區塊位置、縮放、旋轉
+  drawing?: string // 手繪內容 data URL (base64 PNG)
 }
 
 /**

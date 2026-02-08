@@ -28,6 +28,13 @@
           class="c-sticky-note__sticker-img"
         />
       </div>
+      <!-- 手繪圖層 -->
+      <img
+        v-if="props.note.style?.drawing"
+        :src="props.note.style.drawing"
+        alt=""
+        class="c-sticky-note__drawing"
+      />
     </div>
   </div>
 </template>
