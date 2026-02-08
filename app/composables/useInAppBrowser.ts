@@ -72,8 +72,11 @@ export const useInAppBrowser = () => {
    * 取得開啟外部瀏覽器的說明文字
    */
   const getInstructions = computed(() => {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    const isAndroid = /Android/.test(navigator.userAgent)
+    if (!import.meta.client || typeof navigator === 'undefined') {
+      return '請使用 Safari 或 Chrome 等外部瀏覽器開啟此連結'
+    }
+    const ua = navigator.userAgent || ''
+    const isIOS = /iPad|iPhone|iPod/.test(ua)
 
     if (browserName.value === 'LINE') {
       return isIOS

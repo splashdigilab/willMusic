@@ -7,7 +7,7 @@ import {
   startAfter,
   onSnapshot,
   getDocs,
-  updateDoc,
+  where,
   doc,
   deleteDoc,
   serverTimestamp,
@@ -57,8 +57,6 @@ export const useFirestore = () => {
         status: 'waiting'
       }
 
-      let newDocId: string
-
       await runTransaction(db, async (transaction) => {
         // 1. 檢查 token 是否仍為 unused
         const tokenRef = doc(db, 'tokens', token)
@@ -71,16 +69,19 @@ export const useFirestore = () => {
           throw new Error('Token 無效或已使用')
         }
 
-        // 2. 新增到 queue_pending 並取得新 doc ID
-        const pendingRef = doc(collection(db, 'queue_pending'))
-        newDocId = pendingRef.id
+        // 2. 使用 token 作為 queue_pending 的 doc id，避免重複建立
+        const pendingRef = doc(db, 'queue_pending', token)
+        const pendingSnap = await transaction.get(pendingRef)
+        if (pendingSnap.exists()) {
+          throw new Error('Token 已提交，請使用新的連結')
+        }
         transaction.set(pendingRef, noteData)
 
         // 3. 標記 token 為已使用
         transaction.update(tokenRef, { status: 'used' })
       })
 
-      return newDocId!
+      return token
     } catch (error) {
       console.error('Error creating note:', error)
       throw error
@@ -108,19 +109,14 @@ export const useFirestore = () => {
   }
 
   /**
-   * 依內容去重：相同內容且 playedAt 在 10 秒內的視為同一次提交的重複
+   * 依 token 去重：同一 token 只保留一筆（避免重複提交造成多筆）
    */
-  const deduplicateByContent = (items: QueueHistoryItem[]): QueueHistoryItem[] => {
-    const DUPLICATE_WINDOW_MS = 10000
-    const signatureLastPlayed = new Map<string, number>()
+  const deduplicateByToken = (items: QueueHistoryItem[]): QueueHistoryItem[] => {
+    const seen = new Set<string>()
     return items.filter((item) => {
-      const sig = `${item.content}|${item.style?.backgroundImage}|${item.style?.shape}|${JSON.stringify(item.style?.stickers ?? [])}|${item.style?.drawing ?? ''}`
-      const playedAt = item.playedAt?.toMillis?.() ?? 0
-      const last = signatureLastPlayed.get(sig)
-      if (last != null && Math.abs(playedAt - last) < DUPLICATE_WINDOW_MS) {
-        return false
-      }
-      signatureLastPlayed.set(sig, playedAt)
+      const key = item.token || item.id
+      if (!key || seen.has(key)) return false
+      seen.add(key)
       return true
     })
   }
@@ -153,7 +149,7 @@ export const useFirestore = () => {
             rawItems.push(item)
           }
         })
-        callback(deduplicateByContent(rawItems))
+        callback(deduplicateByToken(rawItems))
       },
       (error) => {
         console.error('Error listening to history:', error)
@@ -197,7 +193,7 @@ export const useFirestore = () => {
       })
 
       return {
-        items: deduplicateByContent(rawItems),
+        items: deduplicateByToken(rawItems),
         lastDoc: snapshot.docs[snapshot.docs.length - 1] || null
       }
     } catch (error) {
@@ -216,7 +212,8 @@ export const useFirestore = () => {
       if (!item.id) throw new Error('Item ID is required')
 
       const pendingRef = doc(db, 'queue_pending', item.id)
-      const historyRef = doc(db, 'queue_history', item.id)
+      const historyDocId = item.token || item.id
+      const historyRef = doc(db, 'queue_history', historyDocId)
 
       await runTransaction(db, async (transaction) => {
         const pendingSnap = await transaction.get(pendingRef)
@@ -236,6 +233,21 @@ export const useFirestore = () => {
         transaction.set(historyRef, historyData)
         transaction.delete(pendingRef)
       })
+
+      // 清理同 token 的歷史重複資料（保留 historyDocId）
+      if (item.token) {
+        const dupQuery = query(
+          collection(db, 'queue_history'),
+          where('token', '==', item.token)
+        )
+        const dupSnap = await getDocs(dupQuery)
+        const dupDocs = dupSnap.docs.filter((d) => d.id !== historyDocId)
+        if (dupDocs.length > 0) {
+          await Promise.all(
+            dupDocs.map((d) => deleteDoc(doc(db, 'queue_history', d.id)))
+          )
+        }
+      }
     } catch (error) {
       console.error('Error moving to history:', error)
       throw error
