@@ -1,24 +1,7 @@
 /**
  * LocalStorage 和 SessionStorage 工具函式
  */
-
-export interface DraftData {
-  content: string
-  backgroundColor: string
-  textColor: string
-  fontSize: number
-  stickers: StickerInstance[]
-  timestamp: number
-}
-
-export interface StickerInstance {
-  id: string
-  type: string
-  x: number
-  y: number
-  scale: number
-  rotation: number
-}
+import type { DraftData } from '~/types'
 
 const DRAFT_KEY = 'willmusic_draft'
 const TOKEN_KEY = 'willmusic_token'
@@ -43,6 +26,7 @@ export const useStorage = () => {
 
   /**
    * 從 LocalStorage 讀取草稿
+   * 支援舊格式遷移（backgroundColor → backgroundImage, 補上 shape）
    */
   const loadDraft = (): DraftData | null => {
     if (!import.meta.client) return null
@@ -51,13 +35,25 @@ export const useStorage = () => {
       const draftStr = localStorage.getItem(DRAFT_KEY)
       if (!draftStr) return null
 
-      const draft = JSON.parse(draftStr) as DraftData
-      
+      const raw = JSON.parse(draftStr) as Record<string, unknown>
+
       // 檢查草稿是否過期（24 小時）
-      const isExpired = Date.now() - draft.timestamp > 24 * 60 * 60 * 1000
-      if (isExpired) {
+      const ts = typeof raw.timestamp === 'number' ? raw.timestamp : 0
+      if (Date.now() - ts > 24 * 60 * 60 * 1000) {
         clearDraft()
         return null
+      }
+
+      // 遷移舊格式 → 統一 DraftData
+      const draft: DraftData = {
+        content: typeof raw.content === 'string' ? raw.content : '',
+        backgroundImage: typeof raw.backgroundImage === 'string' ? raw.backgroundImage : (typeof raw.backgroundColor === 'string' ? raw.backgroundColor : ''),
+        shape: typeof raw.shape === 'string' ? raw.shape : 'square',
+        textColor: typeof raw.textColor === 'string' ? raw.textColor : '#333333',
+        stickers: Array.isArray(raw.stickers) ? raw.stickers : [],
+        textTransform: raw.textTransform && typeof raw.textTransform === 'object' ? raw.textTransform as DraftData['textTransform'] : undefined,
+        drawing: typeof raw.drawing === 'string' ? raw.drawing : undefined,
+        timestamp: ts
       }
 
       return draft

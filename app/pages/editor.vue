@@ -310,9 +310,27 @@
 
     <!-- Bottom Actions -->
     <div class="p-editor__bottom-actions">
-      <button class="p-editor__action-btn p-editor__action-btn--secondary" @click="clearAll">
-        清空
-      </button>
+      <div class="p-editor__bottom-actions-left">
+        <button
+          class="p-editor__action-btn p-editor__action-btn--ghost"
+          :disabled="!historyCanUndo"
+          :title="'上一步 (Ctrl+Z)'"
+          @click="historyUndo"
+        >
+          ↩ 上一步
+        </button>
+        <button
+          class="p-editor__action-btn p-editor__action-btn--ghost"
+          :disabled="!historyCanRedo"
+          :title="'下一步 (Ctrl+Shift+Z)'"
+          @click="historyRedo"
+        >
+          ↪ 下一步
+        </button>
+        <button class="p-editor__action-btn p-editor__action-btn--secondary" @click="clearAll">
+          清空
+        </button>
+      </div>
       <button 
         type="button"
         class="p-editor__action-btn p-editor__action-btn--primary" 
@@ -344,6 +362,7 @@ import { STICKER_LIBRARY, getStickersByCategory, getStickerCategories } from '~/
 import { BACKGROUND_IMAGES } from '~/data/backgrounds'
 import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import StickyNote from '~/components/StickyNote.vue'
+import { useEditorHistory } from '~/composables/useEditorHistory'
 
 definePageMeta({
   layout: false
@@ -450,11 +469,12 @@ const toggleDrawMode = () => {
     const data = fabricBrush.exportToDataURL()
     if (data) drawingData.value = data
     fabricBrush.setDrawingMode(false)
+    saveDraftData()
+    nextTick(() => historyPush())
   } else {
     fabricBrush.setDrawingMode(true)
   }
   drawMode.value = !drawMode.value
-  saveDraftData()
 }
 
 watch(brushColor, (c) => {
@@ -532,6 +552,7 @@ const previewNote = computed(() => ({
 }))
 
 // Methods
+let textInputDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const handleTextInput = (e: Event) => {
   const target = e.target as HTMLElement
   const text = target.innerText.slice(0, 200)
@@ -541,6 +562,11 @@ const handleTextInput = (e: Event) => {
     placeCaretAtEnd(target)
   }
   saveDraftData()
+  if (textInputDebounceTimer) clearTimeout(textInputDebounceTimer)
+  textInputDebounceTimer = setTimeout(() => {
+    textInputDebounceTimer = null
+    historyPush()
+  }, 400)
 }
 
 const placeCaretAtEnd = (el: HTMLElement) => {
@@ -571,6 +597,7 @@ const addSticker = (stickerType: string) => {
   }
   stickers.value.push(newSticker)
   saveDraftData()
+  nextTick(() => historyPush())
 }
 
 const selectSticker = (id: string) => {
@@ -612,6 +639,7 @@ const onTextBlockDragBarMouseDown = (e: MouseEvent) => {
   const onMouseUp = () => {
     textBlockDragging.value = false
     saveDraftData()
+    historyPush()
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
   }
@@ -646,6 +674,7 @@ const onTextBlockDragBarTouchStart = (e: TouchEvent) => {
   const onTouchEnd = () => {
     textBlockDragging.value = false
     saveDraftData()
+    historyPush()
     document.removeEventListener('touchmove', onTouchMove, { capture: true })
     document.removeEventListener('touchend', onTouchEnd)
   }
@@ -697,6 +726,7 @@ const onTextBlockTransformMouseDown = (e: MouseEvent) => {
   const onMouseUp = () => {
     textBlockTransforming.value = false
     saveDraftData()
+    historyPush()
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
   }
@@ -750,6 +780,7 @@ const onTextBlockTransformTouchStart = (e: TouchEvent) => {
   const onTouchEnd = () => {
     textBlockTransforming.value = false
     saveDraftData()
+    historyPush()
     document.removeEventListener('touchmove', onTouchMove, { capture: true })
     document.removeEventListener('touchend', onTouchEnd)
   }
@@ -788,6 +819,7 @@ const onStickerMouseDown = (e: MouseEvent, sticker: StickerInstance) => {
   const onMouseUp = () => {
     if (dragState.value) {
       saveDraftData()
+      historyPush()
     }
     dragState.value = null
     draggingStickerId.value = null
@@ -832,6 +864,7 @@ const onStickerTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
   const onTouchEnd = () => {
     if (dragState.value) {
       saveDraftData()
+      historyPush()
     }
     dragState.value = null
     draggingStickerId.value = null
@@ -899,7 +932,10 @@ const onTransformHandleMouseDown = (e: MouseEvent, sticker: StickerInstance) => 
   }
 
   const onMouseUp = () => {
-    if (transformState.value) saveDraftData()
+    if (transformState.value) {
+      saveDraftData()
+      historyPush()
+    }
     transformState.value = null
     transformingStickerId.value = null
     document.removeEventListener('mousemove', onMouseMove)
@@ -964,7 +1000,10 @@ const onTransformHandleTouchStart = (e: TouchEvent, sticker: StickerInstance) =>
   }
 
   const onTouchEnd = () => {
-    if (transformState.value) saveDraftData()
+    if (transformState.value) {
+      saveDraftData()
+      historyPush()
+    }
     transformState.value = null
     transformingStickerId.value = null
     document.removeEventListener('touchmove', onTouchMove, { capture: true })
@@ -979,6 +1018,7 @@ const removeSticker = (id: string) => {
   stickers.value = stickers.value.filter(s => s.id !== id)
   selectedStickerId.value = null
   saveDraftData()
+  nextTick(() => historyPush())
 }
 
 const saveDraftData = () => {
@@ -1015,6 +1055,52 @@ const loadDraftData = async (draft: DraftData) => {
   }
 }
 
+// Undo/Redo 歷史
+const getEditorSnapshot = () => ({
+  content: content.value,
+  backgroundImage: backgroundImage.value,
+  shape: shape.value,
+  textColor: textColor.value,
+  stickers: stickers.value.map(s => ({ ...s })),
+  textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
+  drawing: drawingData.value
+})
+
+const applyEditorSnapshot = async (snap: ReturnType<typeof getEditorSnapshot>) => {
+  content.value = snap.content
+  backgroundImage.value = snap.backgroundImage
+  shape.value = snap.shape
+  textColor.value = snap.textColor
+  stickers.value = snap.stickers.map(s => ({ ...s }))
+  textX.value = snap.textTransform.x
+  textY.value = snap.textTransform.y
+  textScale.value = snap.textTransform.scale
+  textRotation.value = snap.textTransform.rotation
+  drawingData.value = snap.drawing
+  syncContentToDom(snap.content)
+  if (snap.drawing) {
+    await nextTick()
+    fabricBrush.loadFromDataURL(snap.drawing)
+  } else {
+    fabricBrush.clear()
+  }
+  saveDraftData()
+}
+
+const {
+  push: historyPush,
+  undo: historyUndo,
+  redo: historyRedo,
+  init: historyInit,
+  clear: historyClear,
+  canUndo: historyCanUndo,
+  canRedo: historyCanRedo,
+  isRestoring: historyIsRestoring
+} = useEditorHistory({
+  getSnapshot: getEditorSnapshot,
+  applySnapshot: applyEditorSnapshot
+})
+
 const resetEditorToInitial = () => {
   content.value = ''
   backgroundImage.value = BACKGROUND_IMAGES[0].url
@@ -1028,6 +1114,8 @@ const resetEditorToInitial = () => {
   textScale.value = 1
   textRotation.value = 0
   syncContentToDom('')
+  historyClear()
+  nextTick(() => historyInit())
 }
 
 const handleDraftDecision = async (useDraft: boolean) => {
@@ -1039,6 +1127,8 @@ const handleDraftDecision = async (useDraft: boolean) => {
       await new Promise<void>(r => requestAnimationFrame(() => r()))
       await loadDraftData(draft)
     }
+    historyClear()
+    nextTick(() => historyInit())
   } else {
     resetEditorToInitial()
     clearDraft()
@@ -1148,7 +1238,15 @@ onMounted(() => {
   const existingDraft = loadDraft()
   if (existingDraft) {
     showDraftModal.value = true
+  } else {
+    nextTick(() => historyInit())
   }
+
+  // 鍵盤快捷鍵
+  document.addEventListener('keydown', onEditorKeydown)
+  onUnmounted(() => {
+    document.removeEventListener('keydown', onEditorKeydown)
+  })
 
   // 初始化 Fabric 手繪
   nextTick(() => {
@@ -1175,10 +1273,28 @@ onMounted(() => {
   })
 })
 
-// Auto-save on changes
+// Auto-save on changes（undo/redo 還原時不 push，避免污染歷史）
 watch([backgroundImage, shape, textColor], () => {
   saveDraftData()
+  if (!historyIsRestoring.value) {
+    nextTick(() => historyPush())
+  }
 })
+
+// Keyboard shortcuts: Ctrl+Z / Cmd+Z = undo, Ctrl+Shift+Z / Ctrl+Y / Cmd+Shift+Z = redo
+const onEditorKeydown = (e: KeyboardEvent) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault()
+    if (e.shiftKey) {
+      historyRedo()
+    } else {
+      historyUndo()
+    }
+  } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+    e.preventDefault()
+    historyRedo()
+  }
+}
 </script>
 
 
