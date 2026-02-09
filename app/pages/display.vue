@@ -59,7 +59,7 @@ definePageMeta({
   layout: false
 })
 
-const { queue, currentItem, isPlaying, queueLength, startListening, completeCurrentItem } = useQueue()
+const { queue, currentItem, isPlaying, queueLength, startListening, startAutoPlay } = useQueue()
 
 const displayAreaRef = ref<HTMLElement | null>(null)
 const displayDuration = 8000 // 每個便利貼顯示 8 秒
@@ -69,43 +69,22 @@ const nextItems = computed(() => {
   return queue.value.slice(1, 4)
 })
 
-// 自動播放計時器
-let autoPlayTimer: ReturnType<typeof setTimeout> | null = null
-
-const startAutoPlay = () => {
-  if (autoPlayTimer) {
-    clearTimeout(autoPlayTimer)
-  }
-
-  if (currentItem.value) {
-    autoPlayTimer = setTimeout(async () => {
-      await completeCurrentItem()
-    }, displayDuration)
-  }
-}
-
 // 截斷文字
 const truncate = (text: string, length: number) => {
   return text.length > length ? text.substring(0, length) + '...' : text
 }
 
 // 監聽當前項目變化，自動開始播放
+// 計時器由 useQueue singleton 管理，避免 HMR 產生多個計時器
 watch(currentItem, (newItem) => {
   if (newItem) {
-    startAutoPlay()
+    startAutoPlay(displayDuration)
   }
 })
 
 // 當頁面載入時開始監聽佇列
 onMounted(() => {
   startListening()
-})
-
-// 清理計時器
-onUnmounted(() => {
-  if (autoPlayTimer) {
-    clearTimeout(autoPlayTimer)
-  }
 })
 </script>
 

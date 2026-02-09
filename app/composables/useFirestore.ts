@@ -12,6 +12,8 @@ import {
   deleteDoc,
   serverTimestamp,
   runTransaction,
+  getDoc,
+  setDoc,
   type Unsubscribe,
   type QueryDocumentSnapshot,
   type DocumentData
@@ -28,9 +30,6 @@ export const useFirestore = () => {
   const db = $firestore as any
 
   /**
-   * 建立新的便利貼並加入待處理佇列
-   */
-  /**
    * 移除物件中的 undefined 欄位（Firestore 不接受 undefined）
    */
   const removeUndefined = (obj: any): any => {
@@ -46,6 +45,11 @@ export const useFirestore = () => {
     return obj
   }
 
+  /**
+   * 建立新的便利貼並加入待處理佇列
+   * - 使用 token 作為 queue_pending 的 doc ID（保證唯一）
+   * - 使用 transaction 確保原子性
+   */
   const createNote = async (form: CreateNoteForm, token: string): Promise<string> => {
     try {
       const sanitizedStyle = removeUndefined(form.style)
@@ -58,26 +62,17 @@ export const useFirestore = () => {
       }
 
       await runTransaction(db, async (transaction) => {
-        // 1. 檢查 token 是否仍為 unused
         const tokenRef = doc(db, 'tokens', token)
         const tokenSnap = await transaction.get(tokenRef)
-        if (!tokenSnap.exists()) {
-          throw new Error('Token 不存在')
-        }
+        if (!tokenSnap.exists()) throw new Error('Token 不存在')
         const tokenData = tokenSnap.data() as TokenDocument
-        if (tokenData.status !== 'unused') {
-          throw new Error('Token 無效或已使用')
-        }
+        if (tokenData.status !== 'unused') throw new Error('Token 無效或已使用')
 
-        // 2. 使用 token 作為 queue_pending 的 doc id，避免重複建立
         const pendingRef = doc(db, 'queue_pending', token)
         const pendingSnap = await transaction.get(pendingRef)
-        if (pendingSnap.exists()) {
-          throw new Error('Token 已提交，請使用新的連結')
-        }
-        transaction.set(pendingRef, noteData)
+        if (pendingSnap.exists()) throw new Error('Token 已提交，請使用新的連結')
 
-        // 3. 標記 token 為已使用
+        transaction.set(pendingRef, noteData)
         transaction.update(tokenRef, { status: 'used' })
       })
 
@@ -100,21 +95,21 @@ export const useFirestore = () => {
     )
 
     return onSnapshot(q, (snapshot) => {
-      const items: QueuePendingItem[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+      const items: QueuePendingItem[] = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
       } as QueuePendingItem))
       callback(items)
     })
   }
 
   /**
-   * 依 token 去重：同一 token 只保留一筆（避免重複提交造成多筆）
+   * 依 token 去重：同一 token 只保留一筆
    */
   const deduplicateByToken = (items: QueueHistoryItem[]): QueueHistoryItem[] => {
     const seen = new Set<string>()
     return items.filter((item) => {
-      const key = item.token || item.id
+      const key = item.token || item.id || ''
       if (!key || seen.has(key)) return false
       seen.add(key)
       return true
@@ -122,7 +117,8 @@ export const useFirestore = () => {
   }
 
   /**
-   * 即時監聽歷史紀錄（最新 N 筆，用於即時牆）
+   * 即時監聯歷史紀錄（最新 N 筆，用於即時牆）
+   * 內建 self-healing：偵測到同 token 重複文件時自動刪除孤兒
    */
   const listenToHistory = (
     pageSize: number = 60,
@@ -137,18 +133,31 @@ export const useFirestore = () => {
     return onSnapshot(
       q,
       (snapshot) => {
-        const seen = new Set<string>()
-        const rawItems: QueueHistoryItem[] = []
-        snapshot.docs.forEach((docSnap) => {
-          const item = {
-            id: docSnap.id,
-            ...docSnap.data()
-          } as QueueHistoryItem
-          if (item.id && !seen.has(item.id)) {
-            seen.add(item.id)
-            rawItems.push(item)
+        const rawItems: QueueHistoryItem[] = snapshot.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        } as QueueHistoryItem))
+
+        // Self-healing：偵測同 token 的重複文件，自動刪除 doc ID ≠ token 的孤兒
+        const tokenCount = new Map<string, string[]>()
+        for (const item of rawItems) {
+          const token = item.token || ''
+          if (!token) continue
+          if (!tokenCount.has(token)) tokenCount.set(token, [])
+          tokenCount.get(token)!.push(item.id || '')
+        }
+        for (const [token, ids] of tokenCount) {
+          if (ids.length > 1) {
+            const orphanIds = ids.filter(id => id !== token)
+            for (const orphanId of orphanIds) {
+              if (orphanId) {
+                console.warn(`[listenToHistory] Self-healing: deleting orphan ${orphanId} (token=${token})`)
+                deleteDoc(doc(db, 'queue_history', orphanId)).catch(() => {})
+              }
+            }
           }
-        })
+        }
+
         callback(deduplicateByToken(rawItems))
       },
       (error) => {
@@ -179,18 +188,10 @@ export const useFirestore = () => {
       }
 
       const snapshot = await getDocs(q)
-      const seen = new Set<string>()
-      const rawItems: QueueHistoryItem[] = []
-      snapshot.docs.forEach((docSnap) => {
-        const item = {
-          id: docSnap.id,
-          ...docSnap.data()
-        } as QueueHistoryItem
-        if (item.id && !seen.has(item.id)) {
-          seen.add(item.id)
-          rawItems.push(item)
-        }
-      })
+      const rawItems: QueueHistoryItem[] = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      } as QueueHistoryItem))
 
       return {
         items: deduplicateByToken(rawItems),
@@ -203,53 +204,91 @@ export const useFirestore = () => {
   }
 
   /**
-   * 將項目從待處理佇列移至歷史紀錄
-   * - 使用 pending 的 document ID 作為 history 的 ID，確保同一項目不會產生重複紀錄
-   * - 使用 transaction：僅當項目仍在 queue_pending 時才寫入，避免多 display 同時完成時重複
+   * 清理同一 token 的重複歷史紀錄
+   * - 只保留 doc ID === token 的那筆
+   * - 僅當「同 token 有多筆」時才刪除 doc ID ≠ token 的孤兒，絕不刪除唯一一筆
+   */
+  const cleanupDuplicateHistory = async (token: string): Promise<number> => {
+    if (!token) return 0
+    try {
+      const dupQuery = query(
+        collection(db, 'queue_history'),
+        where('token', '==', token)
+      )
+      const dupSnap = await getDocs(dupQuery)
+      // 只有當同 token 真的有多筆時才刪除孤兒，避免誤刪唯一一筆
+      if (dupSnap.docs.length <= 1) return 0
+      const orphans = dupSnap.docs.filter(d => d.id !== token)
+      if (orphans.length > 0) {
+        await Promise.all(
+          orphans.map(d => deleteDoc(doc(db, 'queue_history', d.id)))
+        )
+        console.warn(`[cleanupDuplicateHistory] Deleted ${orphans.length} orphan(s) for token: ${token}`)
+      }
+      return orphans.length
+    } catch (e) {
+      console.error('[cleanupDuplicateHistory] Error:', e)
+      return 0
+    }
+  }
+
+  /**
+   * 將項目從 queue_pending 移至 queue_history
+   *
+   * 關鍵設計：
+   * 1. 以 token 作為 history doc ID（保證同 token 只寫一筆）
+   * 2. 在 transaction 內同時檢查 history 是否已存在（冪等）
+   * 3. transaction 完成後立即清理 + 延遲清理同 token 殘留 history
    */
   const moveToHistory = async (item: QueuePendingItem): Promise<void> => {
     try {
       if (!item.id) throw new Error('Item ID is required')
 
+      const token = item.token || item.id
       const pendingRef = doc(db, 'queue_pending', item.id)
-      const historyDocId = item.token || item.id
-      const historyRef = doc(db, 'queue_history', historyDocId)
+      const historyRef = doc(db, 'queue_history', token)
+
+      console.log(`[moveToHistory] START token=${token}, pendingId=${item.id}`)
 
       await runTransaction(db, async (transaction) => {
         const pendingSnap = await transaction.get(pendingRef)
-        if (!pendingSnap.exists()) {
+        const historySnap = await transaction.get(historyRef)
+
+        console.log(`[moveToHistory] TX: pending=${pendingSnap.exists()}, history=${historySnap.exists()}`)
+
+        if (historySnap.exists()) {
+          if (pendingSnap.exists()) {
+            transaction.delete(pendingRef)
+          }
+          console.log(`[moveToHistory] TX: history already exists, skipping write`)
           return
         }
 
-        const historyData: Omit<QueueHistoryItem, 'id'> = {
-          content: item.content,
-          style: item.style,
-          token: item.token,
-          timestamp: item.timestamp,
+        if (!pendingSnap.exists()) {
+          console.log(`[moveToHistory] TX: pending not found, nothing to do`)
+          return
+        }
+
+        const pendingData = pendingSnap.data()
+        const historyData = {
+          content: pendingData.content ?? item.content,
+          style: pendingData.style ?? item.style,
+          token: pendingData.token ?? token,
+          timestamp: pendingData.timestamp ?? item.timestamp,
           status: 'played',
-          playedAt: serverTimestamp() as any
+          playedAt: serverTimestamp()
         }
 
         transaction.set(historyRef, historyData)
         transaction.delete(pendingRef)
+        console.log(`[moveToHistory] TX: wrote history/${token}, deleted pending/${item.id}`)
       })
 
-      // 清理同 token 的歷史重複資料（保留 historyDocId）
-      if (item.token) {
-        const dupQuery = query(
-          collection(db, 'queue_history'),
-          where('token', '==', item.token)
-        )
-        const dupSnap = await getDocs(dupQuery)
-        const dupDocs = dupSnap.docs.filter((d) => d.id !== historyDocId)
-        if (dupDocs.length > 0) {
-          await Promise.all(
-            dupDocs.map((d) => deleteDoc(doc(db, 'queue_history', d.id)))
-          )
-        }
-      }
+      // 僅在有重複時才清理（cleanupDuplicateHistory 內已判斷 dupSnap.docs.length > 1）
+      await cleanupDuplicateHistory(token)
+
     } catch (error) {
-      console.error('Error moving to history:', error)
+      console.error('[moveToHistory] Error:', error)
       throw error
     }
   }
@@ -259,13 +298,9 @@ export const useFirestore = () => {
    */
   const validateToken = async (token: string): Promise<boolean> => {
     try {
-      const tokenQuery = query(collection(db, 'tokens'))
-      const snapshot = await getDocs(tokenQuery)
-      const tokenDoc = snapshot.docs.find(d => d.id === token)
-
-      if (!tokenDoc) return false
-
-      const data = tokenDoc.data() as TokenDocument
+      const tokenSnap = await getDoc(doc(db, 'tokens', token))
+      if (!tokenSnap.exists()) return false
+      const data = tokenSnap.data() as TokenDocument
       return data.status === 'unused'
     } catch (error) {
       console.error('Error validating token:', error)
@@ -297,6 +332,7 @@ export const useFirestore = () => {
     listenToHistory,
     getHistory,
     moveToHistory,
+    cleanupDuplicateHistory,
     validateToken,
     createToken
   }
