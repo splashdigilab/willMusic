@@ -1,16 +1,83 @@
-import { Canvas, PencilBrush, Path } from 'fabric'
+import { Canvas, PencilBrush, Path, FabricObject } from 'fabric'
+import type { Point } from 'fabric'
 
 type TSimplePathData = Parameters<PencilBrush['createPath']>[0]
+type TBrushEventData = Parameters<PencilBrush['onMouseMove']>[1]
+
+function segmentToPathData(p1: Point, p2: Point): TSimplePathData {
+  return [['M', p1.x, p1.y], ['L', p2.x, p2.y]]
+}
+
+function drawBrushCursor(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
+  ctx.save()
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+}
 
 class EraserBrush extends PencilBrush {
   override _setBrushStyles(ctx: CanvasRenderingContext2D) {
     super._setBrushStyles(ctx)
-    ctx.strokeStyle = 'rgba(150, 150, 150, 0.6)'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 1)'
+  }
+
+  override _saveAndTransform(ctx: CanvasRenderingContext2D) {
+    super._saveAndTransform(ctx)
+    ctx.globalCompositeOperation = 'destination-out'
+  }
+
+  override _render(ctx: CanvasRenderingContext2D = this.canvas.contextTop) {
+    if (this._points.length > 0) {
+      const p = this._points[this._points.length - 1]
+      this._saveAndTransform(ctx)
+      ctx.globalCompositeOperation = 'source-over'
+      drawBrushCursor(ctx, p.x, p.y, this.width / 2)
+      ctx.restore()
+    }
+  }
+
+  override onMouseDown(pointer: Point, ev: TBrushEventData) {
+    super.onMouseDown(pointer, ev)
+    this.canvas.renderTop()
+  }
+
+  override onMouseMove(pointer: Point, ev: TBrushEventData) {
+    super.onMouseMove(pointer, ev)
+    if (this._points.length >= 2) {
+      const p1 = this._points[this._points.length - 2]
+      const p2 = this._points[this._points.length - 1]
+      const pathData = segmentToPathData(p1, p2)
+      const path = this.createPath(pathData)
+      this.canvas.add(path)
+    }
+    if (this._points.length > 0) {
+      this.canvas.renderTop()
+    }
+    this.canvas.requestRenderAll()
+  }
+
+  override onMouseUp(ev: TBrushEventData) {
+    if (!this.canvas._isMainEvent(ev.e)) {
+      return true
+    }
+    this.drawStraightLine = false
+    this.oldEnd = undefined
+    this.canvas.clearContext(this.canvas.contextTop)
+    this.canvas.requestRenderAll()
+    this.canvas.fire('path:created', { path: null })
+    return false
   }
 
   override createPath(pathData: TSimplePathData): Path {
     const path = super.createPath(pathData)
-    path.set({ globalCompositeOperation: 'destination-out' })
+    path.set({
+      fill: null,
+      stroke: 'rgba(255, 255, 255, 1)',
+      globalCompositeOperation: 'destination-out'
+    })
     return path
   }
 }
@@ -19,6 +86,11 @@ export function useFabricBrush(onPathCreated?: () => void) {
   let fabricCanvas: Canvas | null = null
   let pencilBrush: PencilBrush | null = null
   let eraserBrush: EraserBrush | null = null
+  const redoStack: FabricObject[] = []
+  let onUndoRedoChange: (() => void) | null = null
+
+  const getPathObjects = () =>
+    fabricCanvas?.getObjects().filter((obj) => obj.type === 'path') ?? []
 
   const init = (canvasEl: HTMLCanvasElement | null, width: number, height: number) => {
     if (!canvasEl || !import.meta.client) return
@@ -34,6 +106,8 @@ export function useFabricBrush(onPathCreated?: () => void) {
     })
 
     fabricCanvas.on('path:created', () => {
+      redoStack.length = 0
+      onUndoRedoChange?.()
       if (onPathCreated) onPathCreated()
     })
 
@@ -42,6 +116,7 @@ export function useFabricBrush(onPathCreated?: () => void) {
     pencilBrush.width = 4
 
     eraserBrush = new EraserBrush(fabricCanvas)
+    eraserBrush.color = 'rgba(255, 255, 255, 1)'
     eraserBrush.width = 16
 
     fabricCanvas.freeDrawingBrush = pencilBrush
@@ -83,9 +158,36 @@ export function useFabricBrush(onPathCreated?: () => void) {
     return fabricCanvas.toDataURL({ format: 'png', quality: 1, multiplier: 1 })
   }
 
+  const setOnUndoRedoChange = (cb: (() => void) | null) => {
+    onUndoRedoChange = cb
+  }
+
+  const undo = () => {
+    if (!fabricCanvas) return
+    const paths = getPathObjects()
+    const last = paths[paths.length - 1]
+    if (!last) return
+    fabricCanvas.remove(last)
+    redoStack.push(last)
+    fabricCanvas.renderAll()
+    onUndoRedoChange?.()
+  }
+
+  const redo = () => {
+    if (!fabricCanvas || redoStack.length === 0) return
+    const path = redoStack.pop()!
+    fabricCanvas.add(path)
+    fabricCanvas.renderAll()
+    onUndoRedoChange?.()
+  }
+
+  const canUndo = () => getPathObjects().length > 0
+  const canRedo = () => redoStack.length > 0
+
   const loadFromDataURL = async (dataUrl: string) => {
     if (!fabricCanvas) return
     try {
+      redoStack.length = 0
       fabricCanvas.clear()
       fabricCanvas.backgroundColor = 'transparent'
       const { FabricImage } = await import('fabric')
@@ -107,6 +209,7 @@ export function useFabricBrush(onPathCreated?: () => void) {
         fabricCanvas.add(img)
         fabricCanvas.renderAll()
       }
+      onUndoRedoChange?.()
     } catch (e) {
       console.error('Failed to load drawing:', e)
     }
@@ -114,9 +217,11 @@ export function useFabricBrush(onPathCreated?: () => void) {
 
   const clear = () => {
     if (fabricCanvas) {
+      redoStack.length = 0
       fabricCanvas.clear()
       fabricCanvas.backgroundColor = 'transparent'
       fabricCanvas.renderAll()
+      onUndoRedoChange?.()
     }
   }
 
@@ -131,6 +236,8 @@ export function useFabricBrush(onPathCreated?: () => void) {
 
   const dispose = () => {
     if (fabricCanvas) {
+      redoStack.length = 0
+      onUndoRedoChange = null
       fabricCanvas.dispose()
       fabricCanvas = null
     }
@@ -149,6 +256,11 @@ export function useFabricBrush(onPathCreated?: () => void) {
     resize,
     dispose,
     isInitialized,
-    getCanvas: () => fabricCanvas
+    getCanvas: () => fabricCanvas,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    setOnUndoRedoChange
   }
 }

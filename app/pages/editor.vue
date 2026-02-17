@@ -63,9 +63,9 @@
             :style="getStickerStyle(sticker)"
           >
             <img 
-              v-if="STICKER_LIBRARY.find(s => s.id === sticker.type)?.svgFile"
-              :src="STICKER_LIBRARY.find(s => s.id === sticker.type)?.svgFile"
-              :alt="STICKER_LIBRARY.find(s => s.id === sticker.type)?.id"
+              v-if="getStickerById(sticker.type)?.svgFile"
+              :src="getStickerById(sticker.type)?.svgFile"
+              :alt="getStickerById(sticker.type)?.id"
               class="p-editor__sticker-img"
             />
           </div>
@@ -87,7 +87,7 @@
           <div
             class="p-editor__edit-frame p-editor__edit-frame--text"
             :class="{ 
-              'is-selected': textBlockSelected,
+              'is-selected': isTextEditMode,
               'is-dragging': textBlockDragging,
               'is-transforming': textBlockTransforming
             }"
@@ -98,6 +98,7 @@
             <!-- 隱藏 sizer：與 contenteditable 同字體/padding，讓編輯框寬高與文字一致；空白時用 placeholder 撐開寬度 -->
             <span class="p-editor__edit-frame-sizer" aria-hidden="true">{{ content || '在這裡輸入文字...' }}</span>
             <div 
+              v-show="isTextEditMode"
               class="p-editor__edit-frame-drag-bar"
               @mousedown.stop="onTextBlockDragBarMouseDown"
               @touchstart.stop="onTextBlockDragBarTouchStart"
@@ -106,7 +107,7 @@
               ⋮⋮
             </div>
             <div
-              v-if="textBlockSelected"
+              v-if="isTextEditMode"
               class="p-editor__edit-frame-transform-handle"
               @mousedown.stop="onTextBlockTransformMouseDown"
               @touchstart.stop="onTextBlockTransformTouchStart"
@@ -151,78 +152,87 @@
 
       <!-- Character Count -->
       <div class="p-editor__character-count">
-        {{ content.length }} / 200
+        {{ content.length }} / {{ MAX_CONTENT_LENGTH }}
       </div>
     </div>
 
     <!-- Control Panel -->
     <div class="p-editor__control-panel">
-      <!-- Background Image -->
-      <div class="p-editor__control-section">
-        <h3 class="p-editor__control-title">背景圖片</h3>
-        <div class="p-editor__background-grid">
-          <button
-            v-for="bg in backgrounds"
-            :key="bg.id"
-            class="p-editor__background-btn"
-            :class="{ 'is-active': backgroundImage === bg.url }"
-            @click="backgroundImage = bg.url"
-          >
-            <img :src="bg.url" :alt="bg.id" class="p-editor__background-img" />
-            <span v-if="backgroundImage === bg.url" class="p-editor__background-check">✓</span>
-          </button>
+      <!-- Tab Bar -->
+      <div class="p-editor__tab-bar">
+        <button
+          v-for="tab in EDITOR_TABS"
+          :key="tab.id"
+          class="p-editor__tab-btn"
+          :class="{ 'is-active': activeTab === tab.id }"
+          @click="activeTab = tab.id"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
+      <!-- Tab: 便利貼 -->
+      <div v-show="activeTab === 'note'" class="p-editor__tab-content">
+        <div class="p-editor__control-section">
+          <h3 class="p-editor__control-title">背景圖片</h3>
+          <div class="p-editor__background-grid">
+            <button
+              v-for="bg in backgrounds"
+              :key="bg.id"
+              class="p-editor__background-btn"
+              :class="{ 'is-active': backgroundImage === bg.url }"
+              @click="backgroundImage = bg.url"
+            >
+              <img :src="bg.url" :alt="bg.id" class="p-editor__background-img" />
+              <span v-if="backgroundImage === bg.url" class="p-editor__background-check">✓</span>
+            </button>
+          </div>
+        </div>
+        <div class="p-editor__control-section">
+          <h3 class="p-editor__control-title">便利貼造型</h3>
+          <div class="p-editor__shape-grid">
+            <button
+              v-for="shapeItem in shapes"
+              :key="shapeItem.id"
+              class="p-editor__shape-btn"
+              :class="{ 'is-active': shape === shapeItem.id }"
+              @click="shape = shapeItem.id"
+            >
+              <img 
+                :src="shapeItem.svg" 
+                :alt="shapeItem.id"
+                class="p-editor__shape-preview"
+              />
+              <span v-if="shape === shapeItem.id" class="p-editor__shape-check">✓</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Shape -->
-      <div class="p-editor__control-section">
-        <h3 class="p-editor__control-title">便利貼造型</h3>
-        <div class="p-editor__shape-grid">
-          <button
-            v-for="shapeItem in shapes"
-            :key="shapeItem.id"
-            class="p-editor__shape-btn"
-            :class="{ 'is-active': shape === shapeItem.id }"
-            @click="shape = shapeItem.id"
-          >
-            <img 
-              :src="shapeItem.svg" 
-              :alt="shapeItem.id"
-              class="p-editor__shape-preview"
-            />
-            <span v-if="shape === shapeItem.id" class="p-editor__shape-check">✓</span>
-          </button>
+      <!-- Tab: 文字 -->
+      <div v-show="activeTab === 'text'" class="p-editor__tab-content">
+        <div class="p-editor__control-section">
+          <h3 class="p-editor__control-title">文字顏色</h3>
+          <div class="p-editor__color-grid">
+            <button
+              v-for="color in TEXT_COLORS"
+              :key="color.value"
+              class="p-editor__color-btn"
+              :class="{ 'is-active': textColor === color.value }"
+              :style="{ background: color.value }"
+              @click="textColor = color.value"
+            >
+              <span v-if="textColor === color.value" class="p-editor__color-check">✓</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Text Color -->
-      <div class="p-editor__control-section">
-        <h3 class="p-editor__control-title">文字顏色</h3>
-        <div class="p-editor__color-grid">
-          <button
-            v-for="color in textColors"
-            :key="color.value"
-            class="p-editor__color-btn"
-            :class="{ 'is-active': textColor === color.value }"
-            :style="{ background: color.value }"
-            @click="textColor = color.value"
-          >
-            <span v-if="textColor === color.value" class="p-editor__color-check">✓</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 手繪筆刷 -->
-      <div class="p-editor__control-section">
-        <h3 class="p-editor__control-title">手繪</h3>
+      <!-- Tab: 繪圖 -->
+      <div v-show="activeTab === 'draw'" class="p-editor__tab-content">
+        <div class="p-editor__control-section">
+          <h3 class="p-editor__control-title">手繪</h3>
         <div class="p-editor__draw-controls">
-          <button
-            class="p-editor__draw-mode-btn"
-            :class="{ 'is-active': drawMode }"
-            @click="toggleDrawMode"
-          >
-            {{ drawMode ? '完成繪圖' : '✏️ 畫筆' }}
-          </button>
           <template v-if="drawMode">
             <button
               class="p-editor__draw-mode-btn p-editor__draw-mode-btn--tool"
@@ -241,7 +251,7 @@
             <template v-if="!eraserMode">
               <div class="p-editor__brush-colors">
                 <button
-                  v-for="c in brushColors"
+                  v-for="c in BRUSH_COLORS"
                   :key="c.value"
                   class="p-editor__brush-color-btn"
                   :class="{ 'is-active': brushColor === c.value }"
@@ -274,12 +284,14 @@
             </template>
           </template>
         </div>
+        </div>
       </div>
 
-      <!-- Sticker Library -->
-      <div class="p-editor__control-section">
-        <h3 class="p-editor__control-title">貼紙</h3>
-        <div class="p-editor__sticker-categories">
+      <!-- Tab: 貼紙 -->
+      <div v-show="activeTab === 'sticker'" class="p-editor__tab-content">
+        <div class="p-editor__control-section">
+          <h3 class="p-editor__control-title">貼紙</h3>
+          <div class="p-editor__sticker-categories">
           <button
             v-for="category in categories"
             :key="category.id"
@@ -305,33 +317,42 @@
             />
           </button>
         </div>
+        </div>
       </div>
     </div>
 
     <!-- Bottom Actions -->
     <div class="p-editor__bottom-actions">
       <div class="p-editor__bottom-actions-left">
-        <button
-          class="p-editor__action-btn p-editor__action-btn--ghost"
-          :disabled="!historyCanUndo"
-          :title="'上一步 (Ctrl+Z)'"
-          @click="historyUndo"
-        >
-          ↩ 上一步
-        </button>
-        <button
-          class="p-editor__action-btn p-editor__action-btn--ghost"
-          :disabled="!historyCanRedo"
-          :title="'下一步 (Ctrl+Shift+Z)'"
-          @click="historyRedo"
-        >
-          ↪ 下一步
-        </button>
-        <button class="p-editor__action-btn p-editor__action-btn--secondary" @click="clearAll">
-          清空
-        </button>
+        <template v-if="drawMode">
+          <button
+            type="button"
+            class="p-editor__action-btn p-editor__action-btn--ghost"
+            :disabled="!drawCanUndo"
+            @click="fabricBrush.undo()"
+          >
+            上一步
+          </button>
+          <button
+            type="button"
+            class="p-editor__action-btn p-editor__action-btn--ghost"
+            :disabled="!drawCanRedo"
+            @click="fabricBrush.redo()"
+          >
+            下一步
+          </button>
+        </template>
       </div>
-      <button 
+      <button
+        v-if="drawMode"
+        type="button"
+        class="p-editor__action-btn p-editor__action-btn--primary"
+        @click="activeTab = null"
+      >
+        完成繪圖
+      </button>
+      <button
+        v-else
         type="button"
         class="p-editor__action-btn p-editor__action-btn--primary" 
         :disabled="isSubmitting"
@@ -357,12 +378,15 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed, watch, nextTick } from 'vue'
 import type { StickerInstance, DraftData, StickyNoteStyle } from '~/types'
-import { STICKER_LIBRARY, getStickersByCategory, getStickerCategories } from '~/data/stickers'
+import { getStickerById, getStickersByCategory, getStickerCategories } from '~/data/stickers'
 import { BACKGROUND_IMAGES } from '~/data/backgrounds'
 import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
+import { EDITOR_TABS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
+import { useTextBlockInteraction } from '~/composables/useTextBlockInteraction'
+import { useStickerInteraction } from '~/composables/useStickerInteraction'
 import StickyNote from '~/components/StickyNote.vue'
-import { useEditorHistory } from '~/composables/useEditorHistory'
 
 definePageMeta({
   layout: false
@@ -396,57 +420,28 @@ const contentEditableRef = ref<HTMLDivElement | null>(null)
 const drawingLayerRef = ref<HTMLElement | null>(null)
 const drawingCanvasRef = ref<HTMLCanvasElement | null>(null)
 
-// 拖曳狀態
-interface DragState {
-  stickerId: string
-  startX: number
-  startY: number
-  initialX: number
-  initialY: number
-}
-const dragState = ref<DragState | null>(null)
-const transformingStickerId = ref<string | null>(null)
+// Tab: 便利貼 | 文字 | 繪圖 | 貼紙
+const activeTab = ref<'note' | 'text' | 'draw' | 'sticker' | null>('note')
 
-interface TransformState {
-  stickerId: string
-  centerX: number
-  centerY: number
-  initialDistance: number
-  initialAngle: number
-  initialScale: number
-  initialRotation: number
-}
-const transformState = ref<TransformState | null>(null)
+// 文字編輯模式：點選文字或選到文字 tab 時才顯示選取狀態
+const isTextEditMode = computed(() => textBlockSelected.value || activeTab.value === 'text')
+
+const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)
 const showPreview = ref(false)
 
 // 手繪筆刷
 const drawMode = ref(false)
+const drawCanUndo = ref(false)
+const drawCanRedo = ref(false)
 const brushColor = ref('#333333')
 const brushWidth = ref(4)
 const eraserMode = ref(false)
 const eraserWidth = ref(16)
 const drawingData = ref<string | null>(null)
-const brushColors = [
-  { value: '#333333' },
-  { value: '#f43f5e' },
-  { value: '#3b82f6' },
-  { value: '#22c55e' },
-  { value: '#fbbf24' },
-  { value: '#ffffff' }
-]
-
 // 資料來源
 const backgrounds = BACKGROUND_IMAGES
 const shapes = STICKY_NOTE_SHAPES
-
-const textColors = [
-  { name: 'Black', value: '#333333' },
-  { name: 'White', value: '#FFFFFF' },
-  { name: 'Red', value: '#f43f5e' },
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Purple', value: '#a855f7' }
-]
 
 // Sticker Management
 const selectedCategory = ref<'emoji' | 'icon' | 'shape' | 'kpop'>('emoji')
@@ -464,18 +459,29 @@ const fabricBrush = useFabricBrush(() => {
     saveDraftData()
   }
 })
-const toggleDrawMode = () => {
-  if (drawMode.value) {
-    const data = fabricBrush.exportToDataURL()
-    if (data) drawingData.value = data
-    fabricBrush.setDrawingMode(false)
-    saveDraftData()
-    nextTick(() => historyPush())
-  } else {
+// 切換 tab 時同步繪圖模式與文字選取狀態
+watch(activeTab, (tab) => {
+  // 繪圖：進入/退出繪圖模式
+  if (tab === 'draw') {
+    drawMode.value = true
     fabricBrush.setDrawingMode(true)
+  } else {
+    if (drawMode.value) {
+      const data = fabricBrush.exportToDataURL()
+      if (data) drawingData.value = data
+      fabricBrush.setDrawingMode(false)
+      saveDraftData()
+    }
+    drawMode.value = false
   }
-  drawMode.value = !drawMode.value
-}
+  // 文字：切換到文字 tab 時取消貼紙選取；切換離開時取消文字選取
+  if (tab === 'text') {
+    selectedStickerId.value = null
+  } else {
+    textBlockSelected.value = false
+    nextTick(() => contentEditableRef.value?.blur())
+  }
+}, { immediate: true })
 
 watch(brushColor, (c) => {
   fabricBrush.setBrushColor(c)
@@ -492,6 +498,13 @@ watch(eraserMode, (v) => {
 watch(eraserWidth, (w) => {
   fabricBrush.setEraserWidth(w)
 }, { immediate: false })
+
+watch(drawMode, (v) => {
+  if (v && fabricBrush.isInitialized()) {
+    drawCanUndo.value = fabricBrush.canUndo()
+    drawCanRedo.value = fabricBrush.canRedo()
+  }
+})
 
 // mask-image 直接使用 Illustrator 輸出的 SVG（無需 clipPath），遮罩 = 形狀的填色區域
 const shapeMaskUrl = computed(() => {
@@ -526,13 +539,15 @@ const textStyle = computed(() => ({
 const getStickerStyle = (sticker: StickerInstance) => ({
   left: `${sticker.x}%`,
   top: `${sticker.y}%`,
-  transform: `translate(-50%, -50%) scale(${sticker.scale}) rotate(${sticker.rotation}deg)`
+  transform: `translate(-50%, -50%) scale(${sticker.scale}) rotate(${sticker.rotation}deg)`,
+  '--inverse-scale': 1 / sticker.scale
 })
 
 const textBlockStyle = computed(() => ({
   left: `${textX.value}%`,
   top: `${textY.value}%`,
-  transform: `translate(-50%, -50%) scale(${textScale.value}) rotate(${textRotation.value}deg)`
+  transform: `translate(-50%, -50%) scale(${textScale.value}) rotate(${textRotation.value}deg)`,
+  '--inverse-scale': 1 / textScale.value
 }))
 
 
@@ -555,9 +570,9 @@ const previewNote = computed(() => ({
 let textInputDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const handleTextInput = (e: Event) => {
   const target = e.target as HTMLElement
-  const text = target.innerText.slice(0, 200)
+  const text = target.innerText.slice(0, MAX_CONTENT_LENGTH)
   content.value = text
-  if (target.innerText.length > 200) {
+  if (target.innerText.length > MAX_CONTENT_LENGTH) {
     target.innerText = text
     placeCaretAtEnd(target)
   }
@@ -565,7 +580,6 @@ const handleTextInput = (e: Event) => {
   if (textInputDebounceTimer) clearTimeout(textInputDebounceTimer)
   textInputDebounceTimer = setTimeout(() => {
     textInputDebounceTimer = null
-    historyPush()
   }, 400)
 }
 
@@ -597,17 +611,18 @@ const addSticker = (stickerType: string) => {
   }
   stickers.value.push(newSticker)
   saveDraftData()
-  nextTick(() => historyPush())
 }
 
 const selectSticker = (id: string) => {
   selectedStickerId.value = id
   textBlockSelected.value = false
+  activeTab.value = null
 }
 
 const selectTextBlock = () => {
   textBlockSelected.value = true
   selectedStickerId.value = null
+  activeTab.value = 'text'
   nextTick(() => contentEditableRef.value?.focus())
 }
 
@@ -616,411 +631,7 @@ const deselectAll = () => {
   textBlockSelected.value = false
 }
 
-// 文字區塊拖曳（從拖曳條）- 點擊拖曳條等於選取文字圖層
-const onTextBlockDragBarMouseDown = (e: MouseEvent) => {
-  e.preventDefault()
-  selectTextBlock()
-  textBlockDragging.value = true
-
-  const startX = e.clientX
-  const startY = e.clientY
-  const initX = textX.value
-  const initY = textY.value
-
-  const onMouseMove = (moveEvent: MouseEvent) => {
-    if (!canvasRef.value) return
-    const rect = canvasRef.value.getBoundingClientRect()
-    const deltaX = ((moveEvent.clientX - startX) / rect.width) * 100
-    const deltaY = ((moveEvent.clientY - startY) / rect.height) * 100
-    textX.value = Math.min(95, Math.max(5, initX + deltaX))
-    textY.value = Math.min(95, Math.max(5, initY + deltaY))
-  }
-
-  const onMouseUp = () => {
-    textBlockDragging.value = false
-    saveDraftData()
-    historyPush()
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
-}
-
-const onTextBlockDragBarTouchStart = (e: TouchEvent) => {
-  const touch = e.touches[0]
-  if (!touch) return
-  e.preventDefault()
-  selectTextBlock()
-  textBlockDragging.value = true
-
-  const startX = touch.clientX
-  const startY = touch.clientY
-  const initX = textX.value
-  const initY = textY.value
-
-  const onTouchMove = (moveEvent: TouchEvent) => {
-    if (!canvasRef.value || !moveEvent.touches[0]) return
-    moveEvent.preventDefault()
-    const t = moveEvent.touches[0]
-    const rect = canvasRef.value.getBoundingClientRect()
-    const deltaX = ((t.clientX - startX) / rect.width) * 100
-    const deltaY = ((t.clientY - startY) / rect.height) * 100
-    textX.value = Math.min(95, Math.max(5, initX + deltaX))
-    textY.value = Math.min(95, Math.max(5, initY + deltaY))
-  }
-
-  const onTouchEnd = () => {
-    textBlockDragging.value = false
-    saveDraftData()
-    historyPush()
-    document.removeEventListener('touchmove', onTouchMove, { capture: true })
-    document.removeEventListener('touchend', onTouchEnd)
-  }
-
-  document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
-  document.addEventListener('touchend', onTouchEnd)
-}
-
-// 文字區塊旋轉縮放
-const onTextBlockTransformMouseDown = (e: MouseEvent) => {
-  e.preventDefault()
-  if (!canvasRef.value) return
-  textBlockTransforming.value = true
-
-  const rect = canvasRef.value.getBoundingClientRect()
-  const centerX = rect.width * (textX.value / 100)
-  const centerY = rect.height * (textY.value / 100)
-  const cursorX = e.clientX - rect.left
-  const cursorY = e.clientY - rect.top
-
-  const dx = cursorX - centerX
-  const dy = cursorY - centerY
-  const distance = Math.sqrt(dx * dx + dy * dy) || 1
-  const angle = Math.atan2(dy, dx)
-
-  const initScale = textScale.value
-  const initRotation = textRotation.value
-
-  const onMouseMove = (moveEvent: MouseEvent) => {
-    if (!canvasRef.value) return
-    const r = canvasRef.value.getBoundingClientRect()
-    const curX = moveEvent.clientX - r.left
-    const curY = moveEvent.clientY - r.top
-    const cx = r.width * (textX.value / 100)
-    const cy = r.height * (textY.value / 100)
-
-    const ndx = curX - cx
-    const ndy = curY - cy
-    const newDist = Math.sqrt(ndx * ndx + ndy * ndy) || 1
-    const newAngle = Math.atan2(ndy, ndx)
-
-    const scaleRatio = newDist / distance
-    const angleDelta = (newAngle - angle) * (180 / Math.PI)
-
-    textScale.value = Math.min(3, Math.max(0.3, initScale * scaleRatio))
-    textRotation.value = initRotation + angleDelta
-  }
-
-  const onMouseUp = () => {
-    textBlockTransforming.value = false
-    saveDraftData()
-    historyPush()
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
-}
-
-const onTextBlockTransformTouchStart = (e: TouchEvent) => {
-  const touch = e.touches[0]
-  if (!touch || !canvasRef.value) return
-  e.preventDefault()
-  textBlockTransforming.value = true
-
-  const rect = canvasRef.value.getBoundingClientRect()
-  const centerX = rect.width * (textX.value / 100)
-  const centerY = rect.height * (textY.value / 100)
-  const cursorX = touch.clientX - rect.left
-  const cursorY = touch.clientY - rect.top
-
-  const dx = cursorX - centerX
-  const dy = cursorY - centerY
-  const distance = Math.sqrt(dx * dx + dy * dy) || 1
-  const angle = Math.atan2(dy, dx)
-
-  const initScale = textScale.value
-  const initRotation = textRotation.value
-
-  const onTouchMove = (moveEvent: TouchEvent) => {
-    if (!canvasRef.value || !moveEvent.touches[0]) return
-    moveEvent.preventDefault()
-    const t = moveEvent.touches[0]
-    const r = canvasRef.value.getBoundingClientRect()
-    const curX = t.clientX - r.left
-    const curY = t.clientY - r.top
-    const cx = r.width * (textX.value / 100)
-    const cy = r.height * (textY.value / 100)
-
-    const ndx = curX - cx
-    const ndy = curY - cy
-    const newDist = Math.sqrt(ndx * ndx + ndy * ndy) || 1
-    const newAngle = Math.atan2(ndy, ndx)
-
-    const scaleRatio = newDist / distance
-    const angleDelta = (newAngle - angle) * (180 / Math.PI)
-
-    textScale.value = Math.min(3, Math.max(0.3, initScale * scaleRatio))
-    textRotation.value = initRotation + angleDelta
-  }
-
-  const onTouchEnd = () => {
-    textBlockTransforming.value = false
-    saveDraftData()
-    historyPush()
-    document.removeEventListener('touchmove', onTouchMove, { capture: true })
-    document.removeEventListener('touchend', onTouchEnd)
-  }
-
-  document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
-  document.addEventListener('touchend', onTouchEnd)
-}
-
-// 貼紙拖曳邏輯
-const onStickerMouseDown = (e: MouseEvent, sticker: StickerInstance) => {
-  if ((e.target as HTMLElement).closest('.p-editor__sticker-delete, .p-editor__sticker-transform-handle')) return
-  e.preventDefault()
-  selectSticker(sticker.id)
-  dragState.value = {
-    stickerId: sticker.id,
-    startX: e.clientX,
-    startY: e.clientY,
-    initialX: sticker.x,
-    initialY: sticker.y
-  }
-  draggingStickerId.value = sticker.id
-
-  const onMouseMove = (moveEvent: MouseEvent) => {
-    if (!dragState.value || !canvasRef.value) return
-    const rect = canvasRef.value.getBoundingClientRect()
-    const deltaX = ((moveEvent.clientX - dragState.value.startX) / rect.width) * 100
-    const deltaY = ((moveEvent.clientY - dragState.value.startY) / rect.height) * 100
-
-    const sticker = stickers.value.find(s => s.id === dragState.value!.stickerId)
-    if (sticker) {
-      sticker.x = Math.min(95, Math.max(5, dragState.value.initialX + deltaX))
-      sticker.y = Math.min(95, Math.max(5, dragState.value.initialY + deltaY))
-    }
-  }
-
-  const onMouseUp = () => {
-    if (dragState.value) {
-      saveDraftData()
-      historyPush()
-    }
-    dragState.value = null
-    draggingStickerId.value = null
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
-}
-
-const onStickerTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
-  if ((e.target as HTMLElement).closest('.p-editor__sticker-delete, .p-editor__sticker-transform-handle')) return
-  const touch = e.touches[0]
-  if (!touch) return
-
-  selectSticker(sticker.id)
-  dragState.value = {
-    stickerId: sticker.id,
-    startX: touch.clientX,
-    startY: touch.clientY,
-    initialX: sticker.x,
-    initialY: sticker.y
-  }
-  draggingStickerId.value = sticker.id
-
-  const onTouchMove = (moveEvent: TouchEvent) => {
-    if (!dragState.value || !canvasRef.value || !moveEvent.touches[0]) return
-    moveEvent.preventDefault()
-    const touch = moveEvent.touches[0]
-    const rect = canvasRef.value.getBoundingClientRect()
-    const deltaX = ((touch.clientX - dragState.value.startX) / rect.width) * 100
-    const deltaY = ((touch.clientY - dragState.value.startY) / rect.height) * 100
-
-    const s = stickers.value.find(st => st.id === dragState.value!.stickerId)
-    if (s) {
-      s.x = Math.min(95, Math.max(5, dragState.value.initialX + deltaX))
-      s.y = Math.min(95, Math.max(5, dragState.value.initialY + deltaY))
-    }
-  }
-
-  const onTouchEnd = () => {
-    if (dragState.value) {
-      saveDraftData()
-      historyPush()
-    }
-    dragState.value = null
-    draggingStickerId.value = null
-    document.removeEventListener('touchmove', onTouchMove, { capture: true })
-    document.removeEventListener('touchend', onTouchEnd)
-  }
-
-  document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
-  document.addEventListener('touchend', onTouchEnd)
-}
-
-const onStickerClick = (id: string) => {
-  if (draggingStickerId.value || transformingStickerId.value) return
-  selectSticker(id)
-}
-
-const onTransformHandleMouseDown = (e: MouseEvent, sticker: StickerInstance) => {
-  e.preventDefault()
-  if (!canvasRef.value) return
-
-  const rect = canvasRef.value.getBoundingClientRect()
-  const centerX = rect.width * (sticker.x / 100)
-  const centerY = rect.height * (sticker.y / 100)
-  const cursorX = e.clientX - rect.left
-  const cursorY = e.clientY - rect.top
-
-  const dx = cursorX - centerX
-  const dy = cursorY - centerY
-  const distance = Math.sqrt(dx * dx + dy * dy) || 1
-  const angle = Math.atan2(dy, dx)
-
-  transformState.value = {
-    stickerId: sticker.id,
-    centerX: sticker.x,
-    centerY: sticker.y,
-    initialDistance: distance,
-    initialAngle: angle,
-    initialScale: sticker.scale,
-    initialRotation: sticker.rotation
-  }
-  transformingStickerId.value = sticker.id
-
-  const onMouseMove = (moveEvent: MouseEvent) => {
-    if (!transformState.value || !canvasRef.value) return
-
-    const r = canvasRef.value.getBoundingClientRect()
-    const curX = moveEvent.clientX - r.left
-    const curY = moveEvent.clientY - r.top
-    const cx = r.width * (transformState.value.centerX / 100)
-    const cy = r.height * (transformState.value.centerY / 100)
-
-    const dx = curX - cx
-    const dy = curY - cy
-    const newDist = Math.sqrt(dx * dx + dy * dy) || 1
-    const newAngle = Math.atan2(dy, dx)
-
-    const scaleRatio = newDist / transformState.value.initialDistance
-    const angleDelta = (newAngle - transformState.value.initialAngle) * (180 / Math.PI)
-
-    const s = stickers.value.find(st => st.id === transformState.value!.stickerId)
-    if (s) {
-      s.scale = Math.min(3, Math.max(0.3, transformState.value.initialScale * scaleRatio))
-      s.rotation = transformState.value.initialRotation + angleDelta
-    }
-  }
-
-  const onMouseUp = () => {
-    if (transformState.value) {
-      saveDraftData()
-      historyPush()
-    }
-    transformState.value = null
-    transformingStickerId.value = null
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
-}
-
-const onTransformHandleTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
-  const touch = e.touches[0]
-  if (!touch || !canvasRef.value) return
-  e.preventDefault()
-
-  const rect = canvasRef.value.getBoundingClientRect()
-  const centerX = rect.width * (sticker.x / 100)
-  const centerY = rect.height * (sticker.y / 100)
-  const cursorX = touch.clientX - rect.left
-  const cursorY = touch.clientY - rect.top
-
-  const dx = cursorX - centerX
-  const dy = cursorY - centerY
-  const distance = Math.sqrt(dx * dx + dy * dy) || 1
-  const angle = Math.atan2(dy, dx)
-
-  transformState.value = {
-    stickerId: sticker.id,
-    centerX: sticker.x,
-    centerY: sticker.y,
-    initialDistance: distance,
-    initialAngle: angle,
-    initialScale: sticker.scale,
-    initialRotation: sticker.rotation
-  }
-  transformingStickerId.value = sticker.id
-
-  const onTouchMove = (moveEvent: TouchEvent) => {
-    if (!transformState.value || !canvasRef.value || !moveEvent.touches[0]) return
-    moveEvent.preventDefault()
-
-    const t = moveEvent.touches[0]
-    const r = canvasRef.value.getBoundingClientRect()
-    const curX = t.clientX - r.left
-    const curY = t.clientY - r.top
-    const cx = r.width * (transformState.value.centerX / 100)
-    const cy = r.height * (transformState.value.centerY / 100)
-
-    const dx = curX - cx
-    const dy = curY - cy
-    const newDist = Math.sqrt(dx * dx + dy * dy) || 1
-    const newAngle = Math.atan2(dy, dx)
-
-    const scaleRatio = newDist / transformState.value.initialDistance
-    const angleDelta = (newAngle - transformState.value.initialAngle) * (180 / Math.PI)
-
-    const s = stickers.value.find(st => st.id === transformState.value!.stickerId)
-    if (s) {
-      s.scale = Math.min(3, Math.max(0.3, transformState.value.initialScale * scaleRatio))
-      s.rotation = transformState.value.initialRotation + angleDelta
-    }
-  }
-
-  const onTouchEnd = () => {
-    if (transformState.value) {
-      saveDraftData()
-      historyPush()
-    }
-    transformState.value = null
-    transformingStickerId.value = null
-    document.removeEventListener('touchmove', onTouchMove, { capture: true })
-    document.removeEventListener('touchend', onTouchEnd)
-  }
-
-  document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
-  document.addEventListener('touchend', onTouchEnd)
-}
-
-const removeSticker = (id: string) => {
-  stickers.value = stickers.value.filter(s => s.id !== id)
-  selectedStickerId.value = null
-  saveDraftData()
-  nextTick(() => historyPush())
-}
-
+// saveDraftData 需在 composable 之前定義（作為 callback）
 const saveDraftData = () => {
   const draft: DraftData = {
     content: content.value,
@@ -1033,6 +644,47 @@ const saveDraftData = () => {
     timestamp: Date.now()
   }
   saveDraft(draft)
+}
+
+const {
+  onTextBlockDragBarMouseDown,
+  onTextBlockDragBarTouchStart,
+  onTextBlockTransformMouseDown,
+  onTextBlockTransformTouchStart
+} = useTextBlockInteraction({
+  canvasRef,
+  textX,
+  textY,
+  textScale,
+  textRotation,
+  textBlockDragging,
+  textBlockTransforming,
+  selectTextBlock,
+  onDragEnd: saveDraftData,
+  onTransformEnd: saveDraftData
+})
+
+const {
+  onStickerMouseDown,
+  onStickerTouchStart,
+  onStickerClick,
+  onTransformHandleMouseDown,
+  onTransformHandleTouchStart
+} = useStickerInteraction({
+  canvasRef,
+  stickers,
+  selectedStickerId,
+  draggingStickerId,
+  transformingStickerId,
+  selectSticker,
+  onDragEnd: saveDraftData,
+  onTransformEnd: saveDraftData
+})
+
+const removeSticker = (id: string) => {
+  stickers.value = stickers.value.filter(s => s.id !== id)
+  selectedStickerId.value = null
+  saveDraftData()
 }
 
 const loadDraftData = async (draft: DraftData) => {
@@ -1055,52 +707,6 @@ const loadDraftData = async (draft: DraftData) => {
   }
 }
 
-// Undo/Redo 歷史
-const getEditorSnapshot = () => ({
-  content: content.value,
-  backgroundImage: backgroundImage.value,
-  shape: shape.value,
-  textColor: textColor.value,
-  stickers: stickers.value.map(s => ({ ...s })),
-  textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
-  drawing: drawingData.value
-})
-
-const applyEditorSnapshot = async (snap: ReturnType<typeof getEditorSnapshot>) => {
-  content.value = snap.content
-  backgroundImage.value = snap.backgroundImage
-  shape.value = snap.shape
-  textColor.value = snap.textColor
-  stickers.value = snap.stickers.map(s => ({ ...s }))
-  textX.value = snap.textTransform.x
-  textY.value = snap.textTransform.y
-  textScale.value = snap.textTransform.scale
-  textRotation.value = snap.textTransform.rotation
-  drawingData.value = snap.drawing
-  syncContentToDom(snap.content)
-  if (snap.drawing) {
-    await nextTick()
-    fabricBrush.loadFromDataURL(snap.drawing)
-  } else {
-    fabricBrush.clear()
-  }
-  saveDraftData()
-}
-
-const {
-  push: historyPush,
-  undo: historyUndo,
-  redo: historyRedo,
-  init: historyInit,
-  clear: historyClear,
-  canUndo: historyCanUndo,
-  canRedo: historyCanRedo,
-  isRestoring: historyIsRestoring
-} = useEditorHistory({
-  getSnapshot: getEditorSnapshot,
-  applySnapshot: applyEditorSnapshot
-})
-
 const resetEditorToInitial = () => {
   content.value = ''
   backgroundImage.value = BACKGROUND_IMAGES[0].url
@@ -1114,8 +720,6 @@ const resetEditorToInitial = () => {
   textScale.value = 1
   textRotation.value = 0
   syncContentToDom('')
-  historyClear()
-  nextTick(() => historyInit())
 }
 
 const handleDraftDecision = async (useDraft: boolean) => {
@@ -1127,8 +731,6 @@ const handleDraftDecision = async (useDraft: boolean) => {
       await new Promise<void>(r => requestAnimationFrame(() => r()))
       await loadDraftData(draft)
     }
-    historyClear()
-    nextTick(() => historyInit())
   } else {
     resetEditorToInitial()
     clearDraft()
@@ -1136,16 +738,9 @@ const handleDraftDecision = async (useDraft: boolean) => {
   }
 }
 
-const clearAll = () => {
-  if (!confirm('確定要清空所有內容嗎？')) return
-  resetEditorToInitial()
-  clearDraft()
-}
-
 const isSubmitting = ref(false)
 
 const handleSubmit = async () => {
-  // 防止重複提交（雙擊或快速連續點擊）
   if (isSubmitting.value) return
 
   if (!content.value.trim()) {
@@ -1164,14 +759,12 @@ const handleSubmit = async () => {
   try {
     const { createNote, validateToken } = useFirestore()
 
-    // 驗證 token
     const isValid = await validateToken(token)
     if (!isValid) {
       alert('Token 無效或已使用，請使用新的連結')
       return
     }
 
-    // 建立便利貼表單資料（Firestore 不接受 undefined，僅在有值時加入 drawing）
     const style: StickyNoteStyle = {
       backgroundImage: backgroundImage.value,
       shape: shape.value,
@@ -1181,17 +774,9 @@ const handleSubmit = async () => {
     }
     if (drawingData.value) style.drawing = drawingData.value
 
-    const form = {
-      content: content.value.trim(),
-      style
-    }
+    await createNote({ content: content.value.trim(), style }, token)
 
-    await createNote(form, token)
-
-    // 成功後清除草稿
     clearDraft()
-
-    // 導向到 queue status 頁面
     router.push('/queue-status')
   } catch (e: any) {
     console.error('提交失敗:', e)
@@ -1217,6 +802,10 @@ const initFabricBrush = () => {
   const size = Math.min(rect.width, rect.height)
   if (size < 10) return
   fabricBrush.init(drawingCanvasRef.value, size, size)
+  fabricBrush.setOnUndoRedoChange(() => {
+    drawCanUndo.value = fabricBrush.canUndo()
+    drawCanRedo.value = fabricBrush.canRedo()
+  })
   fabricBrush.setBrushColor(brushColor.value)
   fabricBrush.setBrushWidth(brushWidth.value)
   fabricBrush.setEraserWidth(eraserWidth.value)
@@ -1225,6 +814,8 @@ const initFabricBrush = () => {
   if (drawingData.value) {
     fabricBrush.loadFromDataURL(drawingData.value)
   }
+  drawCanUndo.value = fabricBrush.canUndo()
+  drawCanRedo.value = fabricBrush.canRedo()
 }
 
 onMounted(() => {
@@ -1238,15 +829,7 @@ onMounted(() => {
   const existingDraft = loadDraft()
   if (existingDraft) {
     showDraftModal.value = true
-  } else {
-    nextTick(() => historyInit())
   }
-
-  // 鍵盤快捷鍵
-  document.addEventListener('keydown', onEditorKeydown)
-  onUnmounted(() => {
-    document.removeEventListener('keydown', onEditorKeydown)
-  })
 
   // 初始化 Fabric 手繪
   nextTick(() => {
@@ -1273,31 +856,8 @@ onMounted(() => {
   })
 })
 
-// Auto-save on changes（undo/redo 還原時不 push，避免污染歷史）
+// Auto-save on changes
 watch([backgroundImage, shape, textColor], () => {
   saveDraftData()
-  if (!historyIsRestoring.value) {
-    nextTick(() => historyPush())
-  }
 })
-
-// Keyboard shortcuts: Ctrl+Z / Cmd+Z = undo, Ctrl+Shift+Z / Ctrl+Y / Cmd+Shift+Z = redo
-const onEditorKeydown = (e: KeyboardEvent) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-    e.preventDefault()
-    if (e.shiftKey) {
-      historyRedo()
-    } else {
-      historyUndo()
-    }
-  } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-    e.preventDefault()
-    historyRedo()
-  }
-}
 </script>
-
-
-<style scoped>
-/* 所有樣式已移至 app/assets/scss/pages/_editor.scss */
-</style>

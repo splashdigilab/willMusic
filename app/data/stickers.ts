@@ -28,6 +28,12 @@ export const STICKER_LIBRARY: StickerType[] = [
 ]
 
 /**
+ * 依 ID 取得 Sticker
+ */
+export const getStickerById = (id: string): StickerType | undefined =>
+  STICKER_LIBRARY.find(s => s.id === id)
+
+/**
  * 依類別取得 Stickers
  */
 export const getStickersByCategory = (category: StickerType['category']) => {
