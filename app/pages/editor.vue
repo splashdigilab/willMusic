@@ -2,13 +2,12 @@
   <div class="p-editor">
     <!-- Header -->
     <header class="p-editor__header">
-      <button class="p-editor__header-btn" @click="goBack">
-        <span>← 返回</span>
+      <button class="p-editor__header-back-btn" @click="goBack">
+        <img src="/back-btn.svg" alt="">
       </button>
-      <h1 class="p-editor__header-title">編輯便利貼</h1>
-      <button class="p-editor__header-btn" @click="showPreview = true">
-        <span>預覽</span>
-      </button>
+      <div class="p-editor__header-logo">
+        <img src="/logo.svg" alt="logo" />
+      </div>
     </header>
 
     <!-- Draft Modal -->
@@ -20,10 +19,10 @@
           您有一份未完成的草稿，要繼續編輯還是重新開始？
         </p>
         <div class="p-editor__modal-actions">
-          <button class="btn btn--secondary" @click="handleDraftDecision(false)">
+          <button class="p-editor__action-btn p-editor__action-btn--secondary" @click="handleDraftDecision(false)">
             重新開始
           </button>
-          <button class="btn btn--primary" @click="handleDraftDecision(true)">
+          <button class="p-editor__action-btn p-editor__action-btn--primary" @click="handleDraftDecision(true)">
             使用草稿
           </button>
         </div>
@@ -149,11 +148,6 @@
           </div>
         </div>
       </div>
-
-      <!-- Character Count -->
-      <div class="p-editor__character-count">
-        {{ content.length }} / {{ MAX_CONTENT_LENGTH }}
-      </div>
     </div>
 
     <!-- Control Panel -->
@@ -167,14 +161,15 @@
           :class="{ 'is-active': activeTab === tab.id }"
           @click="activeTab = tab.id"
         >
-          {{ tab.label }}
+          <img :src="tab.icon" :alt="tab.label" class="p-editor__tab-icon" />
+          <span class="p-editor__tab-label">{{ tab.label }}</span>
         </button>
       </div>
 
       <!-- Tab: 便利貼 -->
       <div v-show="activeTab === 'note'" class="p-editor__tab-content">
         <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">背景圖片</h3>
+          <h3 class="p-editor__control-title">選擇便利貼材質</h3>
           <div class="p-editor__background-grid">
             <button
               v-for="bg in backgrounds"
@@ -189,7 +184,7 @@
           </div>
         </div>
         <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">便利貼造型</h3>
+          <h3 class="p-editor__control-title">選擇便利貼造型</h3>
           <div class="p-editor__shape-grid">
             <button
               v-for="shapeItem in shapes"
@@ -201,7 +196,7 @@
               <img 
                 :src="shapeItem.svg" 
                 :alt="shapeItem.id"
-                class="p-editor__shape-preview"
+                class="p-editor__shape-icon"
               />
               <span v-if="shape === shapeItem.id" class="p-editor__shape-check">✓</span>
             </button>
@@ -212,7 +207,7 @@
       <!-- Tab: 文字 -->
       <div v-show="activeTab === 'text'" class="p-editor__tab-content">
         <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">文字顏色</h3>
+          <h3 class="p-editor__control-title">選擇文字顏色</h3>
           <div class="p-editor__color-grid">
             <button
               v-for="color in TEXT_COLORS"
@@ -231,80 +226,47 @@
       <!-- Tab: 繪圖 -->
       <div v-show="activeTab === 'draw'" class="p-editor__tab-content">
         <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">手繪</h3>
-        <div class="p-editor__draw-controls">
-          <template v-if="drawMode">
+          <h3 class="p-editor__control-title">選擇筆刷顏色</h3>
+          <div class="p-editor__brush-colors">
             <button
-              class="p-editor__draw-mode-btn p-editor__draw-mode-btn--tool"
-              :class="{ 'is-active': !eraserMode }"
-              @click="eraserMode = false"
-            >
-              ✏️ 畫筆
-            </button>
+              v-for="c in BRUSH_COLORS"
+              :key="c.value"
+              class="p-editor__brush-color-btn"
+              :class="{ 'is-active': !eraserMode && brushColor === c.value }"
+              :style="{ background: c.value }"
+              @click="() => { brushColor = c.value; eraserMode = false }"
+            />
+            <!-- 橡皮擦按鈕 -->
             <button
-              class="p-editor__draw-mode-btn p-editor__draw-mode-btn--tool"
+              class="p-editor__brush-color-btn p-editor__brush-color-btn--eraser"
               :class="{ 'is-active': eraserMode }"
               @click="eraserMode = true"
             >
-              🧹 橡皮擦
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px">
+                <path d="M7 21h10M5.025 14.975l9.9-9.9a3.4 3.4 0 0 1 4.8 0l.01.01a3.4 3.4 0 0 1 0 4.8l-9.9 9.9a3.4 3.4 0 0 1-4.8 0l-.01-.01a3.4 3.4 0 0 1 0-4.8z"/>
+              </svg>
             </button>
-            <template v-if="!eraserMode">
-              <div class="p-editor__brush-colors">
-                <button
-                  v-for="c in BRUSH_COLORS"
-                  :key="c.value"
-                  class="p-editor__brush-color-btn"
-                  :class="{ 'is-active': brushColor === c.value }"
-                  :style="{ background: c.value }"
-                  @click="brushColor = c.value"
-                />
-              </div>
-              <div class="p-editor__brush-size">
-                <label>粗細</label>
-                <input
-                  v-model.number="brushWidth"
-                  type="range"
-                  min="2"
-                  max="20"
-                  class="p-editor__brush-slider"
-                />
-              </div>
-            </template>
-            <template v-else>
-              <div class="p-editor__brush-size">
-                <label>粗細</label>
-                <input
-                  v-model.number="eraserWidth"
-                  type="range"
-                  min="8"
-                  max="40"
-                  class="p-editor__brush-slider"
-                />
-              </div>
-            </template>
-          </template>
+          </div>
         </div>
+        <div class="p-editor__control-section">
+          <h3 class="p-editor__control-title">調整筆刷大小</h3>
+          <input
+            v-model.number="brushWidth"
+            type="range"
+            min="2"
+            max="40"
+            class="p-editor__brush-slider"
+          />
         </div>
       </div>
 
       <!-- Tab: 貼紙 -->
       <div v-show="activeTab === 'sticker'" class="p-editor__tab-content">
         <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">貼紙</h3>
-          <div class="p-editor__sticker-categories">
+          <h3 class="p-editor__control-title">選擇貼紙</h3>
+          <div class="p-editor__sticker-grid">
           <button
-            v-for="category in categories"
-            :key="category.id"
-            class="p-editor__category-btn"
-            :class="{ 'is-active': selectedCategory === category.id }"
-            @click="selectedCategory = category.id"
-          >
-            {{ category.name }}
-          </button>
-        </div>
-        <div class="p-editor__sticker-grid">
-          <button
-            v-for="sticker in filteredStickers"
+            v-for="sticker in STICKER_LIBRARY"
             :key="sticker.id"
             class="p-editor__sticker-btn"
             @click="addSticker(sticker.id)"
@@ -323,74 +285,69 @@
 
     <!-- Bottom Actions -->
     <div class="p-editor__bottom-actions">
-      <div class="p-editor__bottom-actions-left">
-        <template v-if="drawMode">
-          <button
-            type="button"
-            class="p-editor__action-btn p-editor__action-btn--ghost"
-            :disabled="!drawCanUndo"
-            @click="fabricBrush.undo()"
-          >
-            上一步
-          </button>
-          <button
-            type="button"
-            class="p-editor__action-btn p-editor__action-btn--ghost"
-            :disabled="!drawCanRedo"
-            @click="fabricBrush.redo()"
-          >
-            下一步
-          </button>
-        </template>
-      </div>
-      <button
-        v-if="drawMode"
-        type="button"
-        class="p-editor__action-btn p-editor__action-btn--primary"
-        @click="activeTab = null"
-      >
-        完成繪圖
-      </button>
-      <button
-        v-else
-        type="button"
-        class="p-editor__action-btn p-editor__action-btn--primary" 
-        :disabled="isSubmitting"
-        @click="handleSubmit"
-      >
-        {{ isSubmitting ? '提交中...' : '提交便利貼' }}
-      </button>
+      <!-- 繪圖模式：上一步 / 完成繪圖 / 下一步 -->
+      <template v-if="drawMode">
+        <button
+          type="button"
+          class="p-editor__draw-btn p-editor__draw-btn--undo"
+          :disabled="!drawCanUndo"
+          @click="fabricBrush.undo()"
+        >
+          <span class="p-editor__draw-btn-icon">↶</span>
+        </button>
+        <button
+          type="button"
+          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--complete"
+          @click="activeTab = null"
+        >
+          完成繪圖
+        </button>
+        <button
+          type="button"
+          class="p-editor__draw-btn p-editor__draw-btn--redo"
+          :disabled="!drawCanRedo"
+          @click="fabricBrush.redo()"
+        >
+          <span class="p-editor__draw-btn-icon">↷</span>
+        </button>
+      </template>
+      
+      <!-- 一般模式：備存草稿 / 上傳大螢幕 -->
+      <template v-else>
+        <button
+          type="button"
+          class="p-editor__action-btn p-editor__action-btn--secondary"
+          @click="saveDraftData"
+        >
+          儲存草稿
+        </button>
+        <button
+          type="button"
+          class="p-editor__action-btn p-editor__action-btn--primary" 
+          :disabled="isSubmitting"
+          @click="handleSubmit"
+        >
+          {{ isSubmitting ? '提交中...' : '上傳大螢幕' }}
+        </button>
+      </template>
     </div>
 
-    <!-- Preview Modal -->
-    <div v-if="showPreview" class="p-editor__modal-overlay" @click="showPreview = false">
-      <div class="p-editor__preview-modal" @click.stop>
-        <div class="p-editor__preview-header">
-          <h2>預覽</h2>
-          <button class="p-editor__close-btn" @click="showPreview = false">✕</button>
-        </div>
-        <div class="p-editor__preview-content c-sticky-note-container--preview">
-          <StickyNote :note="previewNote" />
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { StickerInstance, DraftData, StickyNoteStyle } from '~/types'
-import { getStickerById, getStickersByCategory, getStickerCategories } from '~/data/stickers'
+import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
 import { BACKGROUND_IMAGES } from '~/data/backgrounds'
 import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_TABS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
 import { useTextBlockInteraction } from '~/composables/useTextBlockInteraction'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
-import StickyNote from '~/components/StickyNote.vue'
-
-definePageMeta({
-  layout: false
-})
+import { useStorage } from '~/composables/useStorage'
+import { useFirestore } from '~/composables/useFirestore'
+import { useFabricBrush } from '~/composables/useFabricBrush'
+import { useRoute, useRouter } from '#vue-router'
 
 const route = useRoute()
 const router = useRouter()
@@ -398,7 +355,7 @@ const { saveDraft, loadDraft, clearDraft, saveToken, loadToken } = useStorage()
 
 // Editor State
 const content = ref('')
-const backgroundImage = ref(BACKGROUND_IMAGES[0].url) // 預設第一張背景
+const backgroundImage = ref(BACKGROUND_IMAGES?.[0]?.url ?? '') // 預設第一張背景
 const shape = ref(DEFAULT_SHAPE_ID)
 const textColor = ref('#333333')
 const stickers = ref<StickerInstance[]>([])
@@ -428,28 +385,20 @@ const isTextEditMode = computed(() => textBlockSelected.value || activeTab.value
 
 const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)
-const showPreview = ref(false)
 
 // 手繪筆刷
 const drawMode = ref(false)
 const drawCanUndo = ref(false)
 const drawCanRedo = ref(false)
 const brushColor = ref('#333333')
-const brushWidth = ref(4)
+const brushWidth = ref(8)
 const eraserMode = ref(false)
-const eraserWidth = ref(16)
 const drawingData = ref<string | null>(null)
 // 資料來源
 const backgrounds = BACKGROUND_IMAGES
 const shapes = STICKY_NOTE_SHAPES
 
 // Sticker Management
-const selectedCategory = ref<'emoji' | 'icon' | 'shape' | 'kpop'>('emoji')
-const categories = getStickerCategories()
-
-const filteredStickers = computed(() => {
-  return getStickersByCategory(selectedCategory.value)
-})
 
 // Fabric 手繪筆刷
 const fabricBrush = useFabricBrush(() => {
@@ -489,18 +438,19 @@ watch(brushColor, (c) => {
 
 watch(brushWidth, (w) => {
   fabricBrush.setBrushWidth(w)
-}, { immediate: false })
-
-watch(eraserMode, (v) => {
-  fabricBrush.setEraserMode(v)
-}, { immediate: false })
-
-watch(eraserWidth, (w) => {
   fabricBrush.setEraserWidth(w)
+}, { immediate: false })
+
+watch(eraserMode, (toEraser) => {
+  fabricBrush.setEraserMode(toEraser)
 }, { immediate: false })
 
 watch(drawMode, (v) => {
   if (v && fabricBrush.isInitialized()) {
+    fabricBrush.setOnUndoRedoChange(() => {
+      drawCanUndo.value = fabricBrush.canUndo()
+      drawCanRedo.value = fabricBrush.canRedo()
+    })
     drawCanUndo.value = fabricBrush.canUndo()
     drawCanRedo.value = fabricBrush.canRedo()
   }
@@ -550,21 +500,6 @@ const textBlockStyle = computed(() => ({
   '--inverse-scale': 1 / textScale.value
 }))
 
-
-const previewNote = computed(() => ({
-  content: content.value,
-  style: {
-    backgroundImage: backgroundImage.value,
-    shape: shape.value,
-    textColor: textColor.value,
-    stickers: stickers.value,
-    textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
-    drawing: drawingData.value ?? undefined
-  },
-  token: '',
-  timestamp: null as any,
-  status: 'waiting' as const
-}))
 
 // Methods
 let textInputDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -709,7 +644,7 @@ const loadDraftData = async (draft: DraftData) => {
 
 const resetEditorToInitial = () => {
   content.value = ''
-  backgroundImage.value = BACKGROUND_IMAGES[0].url
+  backgroundImage.value = BACKGROUND_IMAGES?.[0]?.url ?? ''
   shape.value = DEFAULT_SHAPE_ID
   textColor.value = '#333333'
   stickers.value = []
@@ -797,7 +732,7 @@ const goBack = () => {
 
 // Lifecycle
 const initFabricBrush = () => {
-  if (!import.meta.client || !canvasRef.value || !drawingCanvasRef.value || !drawingLayerRef.value) return
+  if (typeof window === 'undefined' || !canvasRef.value || !drawingCanvasRef.value || !drawingLayerRef.value) return
   const rect = canvasRef.value.getBoundingClientRect()
   const size = Math.min(rect.width, rect.height)
   if (size < 10) return
@@ -808,7 +743,7 @@ const initFabricBrush = () => {
   })
   fabricBrush.setBrushColor(brushColor.value)
   fabricBrush.setBrushWidth(brushWidth.value)
-  fabricBrush.setEraserWidth(eraserWidth.value)
+  fabricBrush.setEraserWidth(brushWidth.value)
   fabricBrush.setEraserMode(eraserMode.value)
   fabricBrush.setDrawingMode(drawMode.value)
   if (drawingData.value) {
@@ -817,6 +752,8 @@ const initFabricBrush = () => {
   drawCanUndo.value = fabricBrush.canUndo()
   drawCanRedo.value = fabricBrush.canRedo()
 }
+
+
 
 onMounted(() => {
   // 處理 Token

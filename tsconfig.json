@@ -1,5 +1,14 @@
 {
   // https://nuxt.com/docs/guide/concepts/typescript
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./app/*"],
+      "@/*": ["./app/*"],
+      "#vue-router": ["./node_modules/vue-router"],
+      "#vue-router/*": ["./node_modules/vue-router/*"]
+    }
+  },
   "files": [],
   "references": [
     {

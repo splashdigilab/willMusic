@@ -18,7 +18,12 @@ function drawBrushCursor(ctx: CanvasRenderingContext2D, x: number, y: number, ra
   ctx.restore()
 }
 
+/** 標記橡皮擦路徑所屬的筆畫 ID，undo 時一次移除同筆畫 */
+const ERASER_STROKE_KEY = '__eraserStrokeId'
+
 class EraserBrush extends PencilBrush {
+  private _currentStrokeId = 0
+
   override _setBrushStyles(ctx: CanvasRenderingContext2D) {
     super._setBrushStyles(ctx)
     ctx.strokeStyle = 'rgba(255, 255, 255, 1)'
@@ -32,14 +37,17 @@ class EraserBrush extends PencilBrush {
   override _render(ctx: CanvasRenderingContext2D = this.canvas.contextTop) {
     if (this._points.length > 0) {
       const p = this._points[this._points.length - 1]
-      this._saveAndTransform(ctx)
-      ctx.globalCompositeOperation = 'source-over'
-      drawBrushCursor(ctx, p.x, p.y, this.width / 2)
-      ctx.restore()
+      if (p) {
+        this._saveAndTransform(ctx)
+        ctx.globalCompositeOperation = 'source-over'
+        drawBrushCursor(ctx, p.x, p.y, this.width / 2)
+        ctx.restore()
+      }
     }
   }
 
   override onMouseDown(pointer: Point, ev: TBrushEventData) {
+    this._currentStrokeId += 1
     super.onMouseDown(pointer, ev)
     this.canvas.renderTop()
   }
@@ -49,9 +57,12 @@ class EraserBrush extends PencilBrush {
     if (this._points.length >= 2) {
       const p1 = this._points[this._points.length - 2]
       const p2 = this._points[this._points.length - 1]
-      const pathData = segmentToPathData(p1, p2)
-      const path = this.createPath(pathData)
-      this.canvas.add(path)
+      if (p1 && p2) {
+        const pathData = segmentToPathData(p1, p2)
+        const path = this.createPath(pathData)
+        ;(path as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] = this._currentStrokeId
+        this.canvas.add(path)
+      }
     }
     if (this._points.length > 0) {
       this.canvas.renderTop()
@@ -67,7 +78,7 @@ class EraserBrush extends PencilBrush {
     this.oldEnd = undefined
     this.canvas.clearContext(this.canvas.contextTop)
     this.canvas.requestRenderAll()
-    this.canvas.fire('path:created', { path: null })
+    this.canvas.fire('path:created', { path: undefined as unknown as FabricObject })
     return false
   }
 
@@ -89,8 +100,8 @@ export function useFabricBrush(onPathCreated?: () => void) {
   const redoStack: FabricObject[] = []
   let onUndoRedoChange: (() => void) | null = null
 
-  const getPathObjects = () =>
-    fabricCanvas?.getObjects().filter((obj) => obj.type === 'path') ?? []
+  const getPathObjects = (): FabricObject[] =>
+    fabricCanvas?.getObjects().filter((obj) => obj?.isType?.('Path', 'path')) ?? []
 
   const init = (canvasEl: HTMLCanvasElement | null, width: number, height: number) => {
     if (!canvasEl || !import.meta.client) return
@@ -167,16 +178,42 @@ export function useFabricBrush(onPathCreated?: () => void) {
     const paths = getPathObjects()
     const last = paths[paths.length - 1]
     if (!last) return
-    fabricCanvas.remove(last)
-    redoStack.push(last)
+    const strokeId = (last as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] as number | undefined
+    if (strokeId !== undefined) {
+      const toRemove = paths.filter((p) => (p as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] === strokeId)
+      toRemove.reverse()
+      for (const p of toRemove) {
+        fabricCanvas.remove(p)
+        redoStack.push(p)
+      }
+    } else {
+      fabricCanvas.remove(last)
+      redoStack.push(last)
+    }
     fabricCanvas.renderAll()
     onUndoRedoChange?.()
   }
 
   const redo = () => {
     if (!fabricCanvas || redoStack.length === 0) return
-    const path = redoStack.pop()!
-    fabricCanvas.add(path)
+    const lastPopped = redoStack.pop()!
+    const strokeId = (lastPopped as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] as number | undefined
+    const toAdd: FabricObject[] = [lastPopped]
+    if (strokeId !== undefined) {
+      while (redoStack.length > 0) {
+        const next = redoStack[redoStack.length - 1]
+        if ((next as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] === strokeId) {
+          toAdd.push(redoStack.pop()!)
+        } else {
+          break
+        }
+      }
+      // redoStack 中同一筆畫的順序是 [first,...,last]，還原時要 [first,...,last] 加入 canvas
+      toAdd.reverse()
+    }
+    for (const p of toAdd) {
+      fabricCanvas.add(p)
+    }
     fabricCanvas.renderAll()
     onUndoRedoChange?.()
   }
