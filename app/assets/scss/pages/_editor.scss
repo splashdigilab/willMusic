@@ -106,8 +106,10 @@
   &__canvas-text {
     min-width: 1em;
     min-height: 1.5em;
+    max-width: calc(85cqw / var(--text-scale, 1));
     padding: 0.5em 0.75em;
     outline: none;
+    word-break: break-word;
     @include sn.sticky-note-font-size;
     display: inline-block;
     box-sizing: border-box;
@@ -175,7 +177,9 @@
       display: inline-block;
       min-width: 1em;
       min-height: 1.5em;
+      max-width: calc(85cqw / var(--text-scale, 1));
       padding: 0.5em 0.75em;
+      word-break: break-word;
       @include sn.sticky-note-font-size;
       visibility: hidden;
       pointer-events: none;

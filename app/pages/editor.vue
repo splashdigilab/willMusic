@@ -498,7 +498,8 @@ const textBlockStyle = computed(() => ({
   left: `${textX.value}%`,
   top: `${textY.value}%`,
   transform: `translate(-50%, -50%) scale(${textScale.value}) rotate(${textRotation.value}deg)`,
-  '--inverse-scale': 1 / textScale.value
+  '--inverse-scale': 1 / textScale.value,
+  '--text-scale': textScale.value
 }))
 
 

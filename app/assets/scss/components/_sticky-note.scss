@@ -11,7 +11,7 @@
 @mixin sticky-note-font-size {
   font-size: calc(var(--font-size-pct, 4) * 1cqw);
   line-height: 1.6;
-  white-space: pre;
+  white-space: pre-wrap;
 }
 
 @mixin sticky-note-sticker-size {
@@ -71,9 +71,11 @@
     transform-origin: center center;
   }
 
-  /* 內容文字區域 - 字體大小為容器寬度的比例 */
+  /* 內容文字區域 - 字體大小為容器寬度的比例，依 scale 換行 */
   &__content {
     width: 100%;
+    max-width: calc(85cqw / var(--text-scale, 1));
+    word-break: break-word;
     @include sticky-note-font-size;
   }
 
@@ -121,14 +123,6 @@
   便利貼容器變體
   用於不同頁面的尺寸設定
 */
-
-/* Editor 畫布 - 600px 基準 */
-.c-sticky-note-container--editor {
-  max-width: 600px;
-  width: 100%;
-  margin: 0 auto;
-}
-
 /* Home 牆面 - 400px 基準，比例與 editor/display 一致（內部用 %） */
 .c-sticky-note-container--wall {
   max-width: 400px;
