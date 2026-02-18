@@ -40,6 +40,7 @@
             class="p-editor__text-content"
             :style="[textBlockStyle, drawMode ? { pointerEvents: 'none' } : {}]"
             @click.stop="() => { if (!drawMode) selectTextBlock() }"
+            @touchstart="(e) => { if (!drawMode && e.touches.length >= 2) { e.preventDefault(); onTextBlockPinchTouchStart(e) } }"
           >
             <div
               ref="contentEditableRef"
@@ -587,7 +588,8 @@ const {
   onTextBlockDragBarMouseDown,
   onTextBlockDragBarTouchStart,
   onTextBlockTransformMouseDown,
-  onTextBlockTransformTouchStart
+  onTextBlockTransformTouchStart,
+  onTextBlockPinchTouchStart
 } = useTextBlockInteraction({
   canvasRef,
   textX,

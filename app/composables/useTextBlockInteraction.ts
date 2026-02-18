@@ -148,10 +148,74 @@ export function useTextBlockInteraction(options: UseTextBlockInteractionOptions)
     setupTransform(centerX, centerY, cursorX, cursorY, textScale.value, textRotation.value, true)
   }
 
+  const setupPinch = (
+    touch1: { clientX: number; clientY: number } | undefined,
+    touch2: { clientX: number; clientY: number } | undefined,
+    initScale: number,
+    initRotation: number,
+    centerX: number,
+    centerY: number
+  ) => {
+    const getMidpoint = (t1: { clientX: number; clientY: number }, t2: { clientX: number; clientY: number }) => ({
+      x: (t1.clientX + t2.clientX) / 2,
+      y: (t1.clientY + t2.clientY) / 2
+    })
+    const getDistance = (t1: { clientX: number; clientY: number }, t2: { clientX: number; clientY: number }) =>
+      Math.sqrt((t2.clientX - t1.clientX) ** 2 + (t2.clientY - t1.clientY) ** 2) || 1
+    const getAngle = (t1: { clientX: number; clientY: number }, t2: { clientX: number; clientY: number }) =>
+      Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX)
+
+    if (!touch1 || !touch2) return
+    const initialDistance = getDistance(touch1, touch2)
+    const initialAngle = getAngle(touch1, touch2)
+
+    const onTouchMove = (moveEvent: TouchEvent) => {
+      if (!canvasRef.value || moveEvent.touches.length < 2) return
+      const mt1 = moveEvent.touches[0]
+      const mt2 = moveEvent.touches[1]
+      moveEvent.preventDefault()
+      const newDist = getDistance(mt1, mt2)
+      const newAngle = getAngle(mt1, mt2)
+      const scaleRatio = newDist / initialDistance
+      const angleDelta = (newAngle - initialAngle) * (180 / Math.PI)
+      textScale.value = clamp(initScale * scaleRatio, 0.3, 3)
+      textRotation.value = initRotation + angleDelta
+    }
+
+    const onTouchEnd = () => {
+      textBlockTransforming.value = false
+      onTransformEnd()
+      document.removeEventListener('touchmove', onTouchMove, { capture: true })
+      document.removeEventListener('touchend', onTouchEnd)
+    }
+
+    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
+    document.addEventListener('touchend', onTouchEnd)
+  }
+
+  const onTextBlockPinchTouchStart = (e: TouchEvent) => {
+    const t1 = e.touches[0]
+    const t2 = e.touches[1]
+    if (!t1 || !t2 || !canvasRef.value) return
+    e.preventDefault()
+    selectTextBlock()
+    textBlockTransforming.value = true
+    const rect = canvasRef.value.getBoundingClientRect()
+    setupPinch(
+      t1,
+      t2,
+      textScale.value,
+      textRotation.value,
+      rect.left + rect.width * (textX.value / 100),
+      rect.top + rect.height * (textY.value / 100)
+    )
+  }
+
   return {
     onTextBlockDragBarMouseDown,
     onTextBlockDragBarTouchStart,
     onTextBlockTransformMouseDown,
-    onTextBlockTransformTouchStart
+    onTextBlockTransformTouchStart,
+    onTextBlockPinchTouchStart
   }
 }
