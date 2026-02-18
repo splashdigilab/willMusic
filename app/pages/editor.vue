@@ -31,25 +31,25 @@
 
     <!-- Canvas Area -->
     <div class="p-editor__canvas-section">
-      <div ref="canvasRef" class="p-editor__canvas-container" @click="deselectAll">
+      <div ref="canvasRef" class="p-editor__canvas-container" :class="{ 'is-draw-mode': drawMode }" @click="deselectAll">
         <!-- 可裁切層：背景、文字內容、貼紙圖片 -->
         <div class="p-editor__canvas p-editor__canvas--stage" :style="canvasStyle">
           <!-- 文字內容（可裁切） -->
           <div
             ref="textBlockRef"
             class="p-editor__text-content"
-            :style="textBlockStyle"
-            @click.stop="selectTextBlock"
+            :style="[textBlockStyle, drawMode ? { pointerEvents: 'none' } : {}]"
+            @click.stop="() => { if (!drawMode) selectTextBlock() }"
           >
             <div
               ref="contentEditableRef"
               class="p-editor__canvas-text"
               :class="{ 'is-empty': !content.trim() }"
               :style="textStyle"
-              contenteditable
+              :contenteditable="!drawMode"
               @input="handleTextInput"
-              @click.stop="selectTextBlock"
-              @focus="selectTextBlock"
+              @click.stop="() => { if (!drawMode) selectTextBlock() }"
+              @focus="() => { if (!drawMode) selectTextBlock() }"
               data-placeholder="在這裡輸入文字..."
             />
           </div>
@@ -179,7 +179,7 @@
               @click="backgroundImage = bg.url"
             >
               <img :src="bg.url" :alt="bg.id" class="p-editor__background-img" />
-              <span v-if="backgroundImage === bg.url" class="p-editor__background-check">✓</span>
+              <img v-if="backgroundImage === bg.url" src="/check.svg" alt="" class="p-editor__background-check" />
             </button>
           </div>
         </div>
@@ -191,14 +191,11 @@
               :key="shapeItem.id"
               class="p-editor__shape-btn"
               :class="{ 'is-active': shape === shapeItem.id }"
+              :style="{ '--shape-svg': `url(${shapeItem.svg})` }"
               @click="shape = shapeItem.id"
             >
-              <img 
-                :src="shapeItem.svg" 
-                :alt="shapeItem.id"
-                class="p-editor__shape-icon"
-              />
-              <span v-if="shape === shapeItem.id" class="p-editor__shape-check">✓</span>
+              <span class="p-editor__shape-icon" :aria-label="shapeItem.id" />
+              <img v-if="shape === shapeItem.id" src="/check.svg" alt="" class="p-editor__shape-check" />
             </button>
           </div>
         </div>
@@ -214,10 +211,10 @@
               :key="color.value"
               class="p-editor__color-btn"
               :class="{ 'is-active': textColor === color.value }"
-              :style="{ background: color.value }"
+              :style="{ '--btn-color': color.value }"
               @click="textColor = color.value"
             >
-              <span v-if="textColor === color.value" class="p-editor__color-check">✓</span>
+              <img v-if="textColor === color.value" src="/check.svg" alt="" class="p-editor__color-check" />
             </button>
           </div>
         </div>
@@ -227,24 +224,24 @@
       <div v-show="activeTab === 'draw'" class="p-editor__tab-content">
         <div class="p-editor__control-section">
           <h3 class="p-editor__control-title">選擇筆刷顏色</h3>
-          <div class="p-editor__brush-colors">
+          <div class="p-editor__color-grid">
             <button
               v-for="c in BRUSH_COLORS"
               :key="c.value"
-              class="p-editor__brush-color-btn"
+              class="p-editor__color-btn"
               :class="{ 'is-active': !eraserMode && brushColor === c.value }"
-              :style="{ background: c.value }"
+              :style="{ '--btn-color': c.value }"
               @click="() => { brushColor = c.value; eraserMode = false }"
-            />
+            >
+              <img v-if="!eraserMode && brushColor === c.value" src="/check.svg" alt="" class="p-editor__color-check" />
+            </button>
             <!-- 橡皮擦按鈕 -->
             <button
-              class="p-editor__brush-color-btn p-editor__brush-color-btn--eraser"
+              class="p-editor__color-btn p-editor__color-btn--eraser"
               :class="{ 'is-active': eraserMode }"
               @click="eraserMode = true"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px">
-                <path d="M7 21h10M5.025 14.975l9.9-9.9a3.4 3.4 0 0 1 4.8 0l.01.01a3.4 3.4 0 0 1 0 4.8l-9.9 9.9a3.4 3.4 0 0 1-4.8 0l-.01-.01a3.4 3.4 0 0 1 0-4.8z"/>
-              </svg>
+              <img src="/erase.svg" alt="橡皮擦" class="p-editor__color-eraser-icon" />
             </button>
           </div>
         </div>
@@ -293,7 +290,7 @@
           :disabled="!drawCanUndo"
           @click="fabricBrush.undo()"
         >
-          <span class="p-editor__draw-btn-icon">↶</span>
+          <img src="/undo.svg" alt="上一步" class="p-editor__draw-btn-icon" />
         </button>
         <button
           type="button"
@@ -308,7 +305,7 @@
           :disabled="!drawCanRedo"
           @click="fabricBrush.redo()"
         >
-          <span class="p-editor__draw-btn-icon">↷</span>
+          <img src="/undo.svg" alt="下一步" class="p-editor__draw-btn-icon p-editor__draw-btn-icon--redo" />
         </button>
       </template>
       
@@ -446,13 +443,16 @@ watch(eraserMode, (toEraser) => {
 }, { immediate: false })
 
 watch(drawMode, (v) => {
-  if (v && fabricBrush.isInitialized()) {
-    fabricBrush.setOnUndoRedoChange(() => {
+  if (v) {
+    contentEditableRef.value?.blur()
+    if (fabricBrush.isInitialized()) {
+      fabricBrush.setOnUndoRedoChange(() => {
+        drawCanUndo.value = fabricBrush.canUndo()
+        drawCanRedo.value = fabricBrush.canRedo()
+      })
       drawCanUndo.value = fabricBrush.canUndo()
       drawCanRedo.value = fabricBrush.canRedo()
-    })
-    drawCanUndo.value = fabricBrush.canUndo()
-    drawCanRedo.value = fabricBrush.canRedo()
+    }
   }
 })
 

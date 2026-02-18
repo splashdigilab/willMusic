@@ -1,7 +1,11 @@
+@use '../base/variables' as var;
+@use '../components/button' as btn;
+
 .p-editor {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
   // Header
   &__header {
     display: flex;
@@ -9,7 +13,7 @@
     justify-content: center;
     padding: 1.5rem 1rem;
     background: white;
-    box-shadow: 0 0px 4px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-soft);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -21,11 +25,14 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    height: 1.5rem;
     position: absolute;
-    left: 1.5rem;
+    left: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
+    height: 2.5rem;
+    img{
+      height: 100%;
+    }
   }
 
   &__header-logo{
@@ -71,12 +78,20 @@
     cursor: default;
   }
 
-  /* UI 層：編輯框置頂，不被裁切 */
+  /* UI 層：編輯框置頂，不被裁切（繪圖模式時全部不接收點擊） */
   &__canvas-ui {
     position: absolute;
     inset: 0;
     pointer-events: none;
     z-index: 10;
+  }
+
+  /* 繪圖模式：UI 層與文字區塊不接收點擊，由繪圖層獨佔 */
+  &__canvas-container.is-draw-mode {
+    .p-editor__canvas-ui,
+    .p-editor__canvas-ui * {
+      pointer-events: none !important;
+    }
   }
 
   /* 文字內容（可裁切） */
@@ -214,10 +229,6 @@
     justify-content: center;
     cursor: grab;
     z-index: 2;
-
-    &:hover {
-      background: rgba(102, 126, 234, 1);
-    }
   }
 
   &__edit-frame-delete {
@@ -267,7 +278,7 @@
   &__control-panel {
     padding: 0;
     background: white;
-    box-shadow: 0 0px 4px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-soft);
     overflow-y: auto;
     flex-shrink: 0;
     border-radius: 1rem 1rem 0 0;
@@ -288,7 +299,6 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
     padding: 0.75rem 0.5rem;
     background: transparent;
     border: none;
@@ -306,32 +316,39 @@
       border-bottom-color: #FF99B2;
       
       .p-editor__tab-label {
-        color: #FF99B2;
+        color: var.$color-grey;
         font-weight: 700;
       }
     }
   }
 
   &__tab-icon {
-    width: 40px;
-    height: 40px;
+    width: 3rem;
+    height: 3rem;
     object-fit: contain;
     flex-shrink: 0;
   }
 
   &__tab-label {
-    font-size: 0.75rem;
-    color: #666;
+    font-size: 0.875rem;
+    color: var.$color-grey;
     white-space: nowrap;
     transition: all 0.2s ease;
   }
 
   &__tab-content {
-    padding-top: 1rem;
+    padding: 1.5rem 0;
     max-width: 600px;
     margin: 0 auto;
-    height: 240px;
+    height: 199px;
     overflow-y: auto;
+
+    /* 貼紙 tab：只讓 sticker-grid 捲動，tab-content 不捲動 */
+    &:has(.p-editor__sticker-grid) {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
   }
 
   &__control-section {
@@ -346,99 +363,55 @@
     &:has(.p-editor__brush-slider) {
       padding-right: 1rem;
     }
+
+    /* 貼紙：control-section 撐滿、不捲動 */
+    &:has(.p-editor__sticker-grid) {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
   }
 
   &__control-title {
     font-size: 0.75rem;
-    font-weight: 600;
-    color: #999;
-    margin-bottom: 0.75rem;
-    letter-spacing: 0.3px;
+    font-weight: bold;
+    color: var.$color-grey;
+    margin-bottom: 0.5rem;
   }
 
   // Color Grid
   // 移除舊的繪圖控制項樣式，使用統一的顏色選擇器
 
-  // 筆刷顏色選擇器 - 圓形按鈕（符合設計稿）
-  &__brush-colors {
-    display: flex;
-    gap: 0.75rem;
-    align-items: center;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-right: 1rem;
-    margin-left: -1rem;
-    padding-left: 1rem;
-    -webkit-overflow-scrolling: touch;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-    scrollbar-width: none;
-  }
-
-  &__brush-color-btn {
-    width: 44px;
-    height: 44px;
-    border: 3px solid transparent;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    &.is-active {
-      border-color: rgba(0, 0, 0, 0.15);
-      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5);
-    }
-
-    &:hover {
-      transform: scale(1.05);
-    }
-
-    // 橡皮擦按鈕特殊樣式
-    &--eraser {
-      background: white;
-      border-color: rgba(0, 0, 0, 0.2);
-      color: #333;
-
-      &.is-active {
-        border-color: rgba(0, 0, 0, 0.4);
-        background: #f5f5f5;
-      }
-    }
-  }
-
   &__brush-slider {
     width: 100%;
-    height: 6px;
+    height: 8px;
     border-radius: 3px;
     appearance: none;
-    background: #e5e5e5;
+    background: #bfbfbf;
     outline: none;
     cursor: pointer;
 
     &::-webkit-slider-thumb {
       appearance: none;
-      width: 20px;
-      height: 20px;
+      width: 1.25rem;
+      height: 1.25rem;
       border-radius: 50%;
       background: white;
-      border: 2px solid #ccc;
+      border: 2px solid #bfbfbf;
       cursor: pointer;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      // box-shadow: var(--shadow-soft);
     }
 
     &::-moz-range-thumb {
-      width: 20px;
-      height: 20px;
+      width: 1.25rem;
+      height: 1.25rem;
       border-radius: 50%;
       background: white;
-      border: 2px solid #ccc;
+      border: 2px solid #bfbfbf;
       cursor: pointer;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      // box-shadow: var(--shadow-soft);
     }
   }
 
@@ -453,6 +426,7 @@
     margin-left: -1rem;
     padding-left: 1rem;
     -webkit-overflow-scrolling: touch;
+    filter: drop-shadow(var(--shadow-soft));
 
     &::-webkit-scrollbar {
       display: none;
@@ -461,32 +435,39 @@
   }
 
   &__color-btn {
-    width: 44px;
-    height: 44px;
-    border: 3px solid transparent;
-    border-radius: 50%; /* 圓形 */
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    @include btn.btn-circle-sm;
     position: relative;
-
-    &:hover {
-      transform: scale(1.05);
-    }
+    background: var(--btn-color);
 
     &.is-active {
-      border-color: rgba(0, 0, 0, 0.15);
-      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5);
+      background: color-mix(in srgb, var(--btn-color) 50%, transparent);
+    }
+
+    &--eraser {
+      background: white;
+
+      &.is-active {
+        opacity: 0.5;
+      }
     }
   }
 
   &__color-check {
-    font-size: 1.25rem;
-    color: rgba(0, 0, 0, 0.6);
-    font-weight: bold;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 1rem;
+    height: 1rem;
+    object-fit: contain;
+    filter: drop-shadow(var(--shadow-soft));
+    z-index: 1;
+  }
+
+  &__color-eraser-icon {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
   }
 
   // 材質/背景圖片選擇器（符合設計稿）
@@ -494,11 +475,12 @@
     display: flex;
     gap: 0.75rem;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
     padding-right: 1rem;
     margin-left: -1rem;
     padding-left: 1rem;
     -webkit-overflow-scrolling: touch;
+    filter: drop-shadow(var(--shadow-soft));
 
     &::-webkit-scrollbar {
       display: none;
@@ -507,23 +489,12 @@
   }
 
   &__background-btn {
-    position: relative;
-    width: 64px;
-    height: 64px;
-    border: 2px solid transparent;
-    border-radius: 12px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    padding: 0;
-    flex-shrink: 0;
-
-    &:hover {
-      transform: scale(1.05);
-    }
-
+    @include btn.btn-square;
+    position: relative;    
     &.is-active {
-      border-color: rgba(0, 0, 0, 0.1);
+      .p-editor__background-img{
+        opacity: 0.5;
+      }
     }
   }
 
@@ -536,21 +507,13 @@
 
   &__background-check {
     position: absolute;
-    top: 6px;
-    right: 6px;
-    font-size: 1.25rem;
-    color: white;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-    background: #667eea;
-    color: white;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
-    font-weight: bold;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 1rem;
+    height: 1rem;
+    object-fit: contain;
+    filter: drop-shadow(var(--shadow-soft));
   }
 
   // Shape Grid
@@ -565,6 +528,7 @@
     margin-left: -1rem;
     padding-left: 1rem;
     -webkit-overflow-scrolling: touch;
+    filter: drop-shadow(var(--shadow-soft));
 
     &::-webkit-scrollbar {
       display: none;
@@ -573,43 +537,53 @@
   }
 
   &__shape-btn {
+    @include btn.btn-reset;
     position: relative;
-    width: 52px;
-    height: 52px;
-    border: 2px solid transparent;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    padding: 0.5rem;
-    background: #f5f5f5;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 32px;
+    height: 32px;
     flex-shrink: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
 
     &.is-active {
-      background: #e8e8e8;
-      border-color: rgba(0, 0, 0, 0.1);
+      .p-editor__shape-icon{
+        opacity: 0.5;
+      }
     }
   }
 
   &__shape-icon {
-    width: 32px;
-    height: 32px;
-    color: #333;
+    display: block;
+    width: 100%;
+    height: 100%;
+    background-color: var.$color-grey;
+    mask-image: var(--shape-svg);
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-image: var(--shape-svg);
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
   }
 
   &__shape-check {
     position: absolute;
-    top: 4px;
-    left: 4px;
-    font-size: 1rem;
-    color: rgba(0, 0, 0, 0.6);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 1rem;
+    height: 1rem;
+    object-fit: contain;
+    filter: drop-shadow(var(--shadow-soft));
   }
 
   // Sticker Grid
-  // 貼紙選擇器（符合設計稿）- 上下滾動
+  // 貼紙選擇器（符合設計稿）- 撐滿 control-section，僅此處可上下捲動
   &__sticker-grid {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
@@ -617,7 +591,6 @@
     align-content: flex-start;
     overflow-x: hidden;
     overflow-y: auto;
-    max-height: 200px;
     padding-right: 0.5rem;
     margin-left: -1rem;
     padding-left: 1rem;
@@ -630,18 +603,10 @@
   }
 
   &__sticker-btn {
-    width: 64px;
-    height: 64px;
+    @include btn.btn-square;
     border: 1px solid #e5e5e5;
-    border-radius: 8px;
     background: white;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     padding: 0.5rem;
-    flex-shrink: 0;
 
     &-img {
       width: 100%;
@@ -651,9 +616,8 @@
   }
 
   // Bottom Actions
-  // Bottom Actions - 符合設計稿樣式
   &__bottom-actions {
-    padding: 1rem;
+    padding: 0 0.5rem 1rem 0.5rem;
     background: white;
     display: flex;
     align-items: center;
@@ -662,42 +626,28 @@
   }
 
   &__action-btn {
-    flex: 1;
-    min-width: 0;
-    padding: 0.875rem 1.25rem;
-    border: none;
-    border-radius: 12px;
-    font-weight: 600;
-    font-size: 0.95rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+    @include btn.btn-action;
 
     &--secondary {
-      background: #e84c6c;
+      background: var.$will-red;
       color: white;
 
-      &:hover:not(:disabled) {
-        background: #d43f5f;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(232, 76, 108, 0.3);
-      }
+      // &:hover:not(:disabled) {
+      //   background: #d43f5f;
+      //   transform: translateY(-1px);
+      //   box-shadow: 0 4px 12px rgba(232, 76, 108, 0.3);
+      // }
     }
 
     &--primary {
-      background: #22c5d9;
+      background: var.$will-blue;
       color: white;
 
-      &:hover:not(:disabled) {
-        background: #1fb5c7;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(34, 197, 217, 0.3);
-      }
+      // &:hover:not(:disabled) {
+      //   background: #1fb5c7;
+      //   transform: translateY(-1px);
+      //   box-shadow: 0 4px 12px rgba(34, 197, 217, 0.3);
+      // }
 
       &:active:not(:disabled) {
         transform: translateY(0);
@@ -710,39 +660,37 @@
     }
   }
 
-  // 繪圖模式圓形按鈕（上一步/下一步）
+  // 繪圖模式圓形按鈕（上一步/下一步）- 固定尺寸確保正圓，will-red，與完成按鈕同高
   &__draw-btn {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    border: none;
-    background: white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
+    @include btn.btn-reset;
+    width: 46px;
+    height: 39px;
     flex-shrink: 0;
+    flex-grow: 0;
+    border: none;
+    border-radius: 999px;
+    background: var.$will-red;
+    padding: 0;
 
     &:disabled {
-      opacity: 0.3;
+      opacity: 0.5;
       cursor: not-allowed;
     }
 
-    &:hover:not(:disabled) {
-      background: #f5f5f5;
-      transform: scale(1.05);
-    }
-
-    &:active:not(:disabled) {
-      transform: scale(0.95);
-    }
+    // &:active:not(:disabled) {
+    //   transform: scale(0.95);
+    // }
   }
 
   &__draw-btn-icon {
-    font-size: 1.75rem;
-    color: #333;
+    width: 22px;
+    height: 22px;
+    display: block;
+    object-fit: contain;
+
+    &--redo {
+      transform: scaleX(-1);
+    }
   }
 
   // Modal
