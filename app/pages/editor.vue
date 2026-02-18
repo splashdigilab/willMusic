@@ -295,7 +295,7 @@
         <button
           type="button"
           class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--complete"
-          @click="activeTab = null"
+          @click="activeTab = 'note'"
         >
           完成繪圖
         </button>
@@ -483,7 +483,8 @@ const canvasStyle = computed(() => {
 })
 
 const textStyle = computed(() => ({
-  color: textColor.value
+  color: textColor.value,
+  '--text-color': textColor.value
 }))
 
 const getStickerStyle = (sticker: StickerInstance) => ({
@@ -551,7 +552,7 @@ const addSticker = (stickerType: string) => {
 const selectSticker = (id: string) => {
   selectedStickerId.value = id
   textBlockSelected.value = false
-  activeTab.value = null
+  activeTab.value = 'sticker'
 }
 
 const selectTextBlock = () => {

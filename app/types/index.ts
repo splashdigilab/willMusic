@@ -100,14 +100,3 @@ export interface CreateNoteForm {
   content: string
   style: StickyNoteStyle
 }
-
-/**
- * 預設樣式配置 (deprecated - 改用 backgrounds.ts + shapes.ts)
- */
-export const DEFAULT_STYLES: StickyNoteStyle[] = [
-  {
-    backgroundImage: 'https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=600&h=450&fit=crop&q=80',
-    shape: 'rounded',
-    textColor: '#333333'
-  }
-]

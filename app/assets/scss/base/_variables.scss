@@ -33,6 +33,7 @@ $will-blue: #00A8C6;
   --shadow-lg: 0 10px 20px #{rgba(0, 0, 0, 0.15)};
   --shadow-xl: 0 20px 40px #{rgba(0, 0, 0, 0.2)};
   --shadow-soft: 0 0px 2px #{rgba($color-grey, 0.15)};
+  --shadow-default: 0 0px 4px #{rgba($color-grey, 0.3)};
   
   // Spacing
   --spacing-xs: 0.25rem;

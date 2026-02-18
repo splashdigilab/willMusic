@@ -1,7 +1,10 @@
 @use '../base/variables' as var;
 @use '../components/button' as btn;
+@use '../components/sticky-note' as sn;
 
 .p-editor {
+  margin: 0 auto;
+  max-width: 1024px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -13,7 +16,7 @@
     justify-content: center;
     padding: 1.5rem 1rem;
     background: white;
-    box-shadow: var(--shadow-soft);
+    box-shadow: var(--shadow-default);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -98,7 +101,7 @@
   &__text-content {
     position: absolute;
     transform-origin: center center;
-    z-index: 1;
+    @include sn.sticky-note-layer-text;
     display: inline-block;
     pointer-events: auto;
   }
@@ -108,41 +111,36 @@
     min-height: 1.5em;
     padding: 0.5em 0.75em;
     outline: none;
-    white-space: pre;
-    line-height: 1.6;
-    font-size: calc(var(--font-size-pct, 4) * 1cqw);
+    @include sn.sticky-note-font-size;
     display: inline-block;
     box-sizing: border-box;
 
     &.is-empty::before {
       content: attr(data-placeholder);
-      color: rgba(0, 0, 0, 0.3);
+      color: color-mix(in srgb, var(--text-color, #333) 45%, transparent);
     }
   }
 
-  /* 貼紙內容（可裁切） */
+  /* 貼紙內容（可裁切，最頂層） */
   &__sticker-content {
     position: absolute;
+    @include sn.sticky-note-layer-sticker;
     pointer-events: none;
-    font-size: calc(var(--font-size-pct, 4) * 2 * 1cqw);
-    width: calc(var(--font-size-pct, 4) * 2 * 1cqw);
-    height: calc(var(--font-size-pct, 4) * 2 * 1cqw);
+    @include sn.sticky-note-sticker-size;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   &__sticker-img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
+    @include sn.sticky-note-sticker-img;
   }
 
   /* 手繪層 (Fabric.js) */
   &__drawing-layer {
     position: absolute;
     inset: 0;
-    z-index: 5;
+    @include sn.sticky-note-layer-drawing;
     touch-action: none;
 
     &.is-active {
@@ -181,16 +179,13 @@
       min-width: 1em;
       min-height: 1.5em;
       padding: 0.5em 0.75em;
-      font-size: calc(var(--font-size-pct, 4) * 1cqw);
-      line-height: 1.6;
-      white-space: pre;
+      @include sn.sticky-note-font-size;
       visibility: hidden;
       pointer-events: none;
     }
 
     &--sticker {
-      width: calc(var(--font-size-pct, 4) * 2 * 1cqw);
-      height: calc(var(--font-size-pct, 4) * 2 * 1cqw);
+      @include sn.sticky-note-sticker-size;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -278,7 +273,7 @@
   &__control-panel {
     padding: 0;
     background: white;
-    box-shadow: var(--shadow-soft);
+    box-shadow: var(--shadow-default);
     overflow-y: auto;
     flex-shrink: 0;
     border-radius: 1rem 1rem 0 0;
