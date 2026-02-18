@@ -2,7 +2,6 @@
 @use '../components/button' as btn;
 @use '../components/sticky-note' as sn;
 
-/* Editor 滿版：防止 iOS Safari/Chrome 上下滑動 */
 body.is-editor-page {
   overflow: hidden;
   position: fixed;
@@ -23,7 +22,7 @@ body.is-editor-page #app {
 .p-editor {
   margin: 0 auto;
   max-width: 1024px;
-  min-height: 100vh;
+  min-height: 100dvh;
   max-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -33,7 +32,7 @@ body.is-editor-page #app {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1.5rem 1rem;
+    padding: 1rem 1rem;
     background: white;
     box-shadow: var(--shadow-default);
     position: sticky;
@@ -48,7 +47,7 @@ body.is-editor-page #app {
     border: none;
     cursor: pointer;
     position: absolute;
-    left: 0.75rem;
+    left: 0.5rem;
     top: 50%;
     transform: translateY(-50%);
     height: 2.5rem;
@@ -112,27 +111,24 @@ body.is-editor-page #app {
     }
   }
 
-  /* 文字內容（可裁切） */
+  /* 文字內容（可裁切）- left:0 讓可用寬度不受位置影響，位置由 transform 控制 */
   &__text-content {
     position: absolute;
     transform-origin: center center;
     @include sn.sticky-note-layer-text;
-    display: inline-block;
     pointer-events: auto;
   }
 
   &__canvas-text {
+    display: inline-block;
     min-width: 1em;
     min-height: 1.5em;
-    max-width: calc(85cqw / var(--text-scale, 1));
+    width: fit-content;
+    max-width: calc(100cqw / var(--text-scale, 1));
     padding: 0.5em 0.75em;
     outline: none;
     word-break: break-word;
-    /* iOS 在 input font-size < 16px 時會自動放大，設 minimum 避免 */
-    font-size: max(16px, calc(var(--font-size-pct, 4) * 1cqw));
-    line-height: 1.6;
-    white-space: pre-wrap;
-    display: inline-block;
+    @include sn.sticky-note-font-size;
     box-sizing: border-box;
 
     &.is-empty::before {
@@ -183,9 +179,8 @@ body.is-editor-page #app {
     touch-action: none;
 
     &--text {
-      /* 文字框：主要區域 pointer-events 讓點擊穿透到 contenteditable */
+      /* 文字框：left:0 讓可用寬度不受位置影響，大小依 sizer 縮放至文字大小 */
       pointer-events: none;
-      display: inline-block;
 
       .p-editor__edit-frame-drag-bar,
       .p-editor__edit-frame-transform-handle {
@@ -193,17 +188,16 @@ body.is-editor-page #app {
       }
     }
 
-    /* sizer：與 canvas-text 同字體/padding，撐開編輯框寬高 */
+    /* sizer：與 canvas-text 同字體/padding，撐開編輯框至文字大小 */
     &-sizer {
       display: inline-block;
       min-width: 1em;
       min-height: 1.5em;
-      max-width: calc(85cqw / var(--text-scale, 1));
+      width: fit-content;
+      max-width: calc(100cqw / var(--text-scale, 1));
       padding: 0.5em 0.75em;
       word-break: break-word;
-      font-size: max(16px, calc(var(--font-size-pct, 4) * 1cqw));
-      line-height: 1.6;
-      white-space: pre-wrap;
+      @include sn.sticky-note-font-size;
       visibility: hidden;
       pointer-events: none;
     }
@@ -318,7 +312,7 @@ body.is-editor-page #app {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 0.75rem 0.5rem;
+    padding: 0.25rem 0.5rem 0.5rem 0.5rem;
     background: transparent;
     border: none;
     border-bottom: 3px solid transparent;
@@ -336,30 +330,30 @@ body.is-editor-page #app {
       
       .p-editor__tab-label {
         color: var.$color-grey;
-        font-weight: 700;
+        font-weight: bold;
       }
     }
   }
 
   &__tab-icon {
-    width: 3rem;
-    height: 3rem;
+    width: 2.5rem;
+    height: 2.5rem;
     object-fit: contain;
     flex-shrink: 0;
   }
 
   &__tab-label {
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: var.$color-grey;
     white-space: nowrap;
     transition: all 0.2s ease;
   }
 
   &__tab-content {
-    padding: 1.5rem 0;
+    padding: 0.5rem 0 1rem 0;
     max-width: 600px;
     margin: 0 auto;
-    height: 199px;
+    height: 167px;
     overflow-y: auto;
 
     /* 貼紙 tab：只讓 sticker-grid 捲動，tab-content 不捲動 */
@@ -372,7 +366,7 @@ body.is-editor-page #app {
 
   &__control-section {
     max-width: 600px;
-    margin: 0 0 1rem 0;
+    margin: 0 0 0.5rem 0;
     padding-left: 1rem;
 
     &:last-child {
@@ -642,6 +636,7 @@ body.is-editor-page #app {
     align-items: center;
     gap: 0.5rem;
     flex-shrink: 0;
+    z-index: 10;
   }
 
   &__action-btn {
@@ -683,7 +678,7 @@ body.is-editor-page #app {
   &__draw-btn {
     @include btn.btn-reset;
     width: 46px;
-    height: 39px;
+    height: 36px;
     flex-shrink: 0;
     flex-grow: 0;
     border: none;

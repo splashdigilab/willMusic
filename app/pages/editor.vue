@@ -115,7 +115,8 @@
             </div>
           </div>
 
-          <!-- 貼紙編輯框 -->
+          <!-- 貼紙編輯框（僅在貼紙 tab 時顯示） -->
+          <template v-if="activeTab === 'sticker'">
           <div
             v-for="sticker in stickers"
             :key="`ui-${sticker.id}`"
@@ -146,6 +147,7 @@
               ↻
             </div>
           </div>
+          </template>
         </div>
       </div>
     </div>
@@ -334,14 +336,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-
-// 防止手機點選輸入時頁面放大、滿版不滑動
-useHead({
-  meta: [
-    { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover' }
-  ],
-  bodyAttrs: { class: 'is-editor-page' }
-})
 import type { StickerInstance, DraftData, StickyNoteStyle } from '~/types'
 import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
 import { BACKGROUND_IMAGES } from '~/data/backgrounds'
@@ -352,7 +346,15 @@ import { useStickerInteraction } from '~/composables/useStickerInteraction'
 import { useStorage } from '~/composables/useStorage'
 import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
-import { useRoute, useRouter } from '#vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useHead } from '@unhead/vue'
+
+useHead({
+  meta: [
+    { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover' }
+  ],
+  bodyAttrs: { class: 'is-editor-page' }
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -428,10 +430,12 @@ watch(activeTab, (tab) => {
     }
     drawMode.value = false
   }
-  // 文字：切換到文字 tab 時取消貼紙選取；切換離開時取消文字選取
-  if (tab === 'text') {
+  // 貼紙：切換到非貼紙 tab 時移除貼紙編輯框與選取狀態
+  if (tab !== 'sticker') {
     selectedStickerId.value = null
-  } else {
+  }
+  // 文字：切換到非文字 tab 時取消文字選取
+  if (tab !== 'text') {
     textBlockSelected.value = false
     nextTick(() => contentEditableRef.value?.blur())
   }
@@ -503,9 +507,9 @@ const getStickerStyle = (sticker: StickerInstance) => ({
 })
 
 const textBlockStyle = computed(() => ({
-  left: `${textX.value}%`,
-  top: `${textY.value}%`,
-  transform: `translate(-50%, -50%) scale(${textScale.value}) rotate(${textRotation.value}deg)`,
+  left: '0',
+  top: '0',
+  transform: `translate(calc(${textX.value}cqw - 50%), calc(${textY.value}cqw - 50%)) scale(${textScale.value}) rotate(${textRotation.value}deg)`,
   '--inverse-scale': 1 / textScale.value,
   '--text-scale': textScale.value
 }))

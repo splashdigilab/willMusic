@@ -71,10 +71,10 @@
     transform-origin: center center;
   }
 
-  /* 內容文字區域 - 字體大小為容器寬度的比例，依 scale 換行 */
+  /* 內容文字區域 - 字體比例依 scale 換行，僅與 scale 有關，可超出畫面 */
   &__content {
-    width: 100%;
-    max-width: calc(85cqw / var(--text-scale, 1));
+    width: fit-content;
+    max-width: calc(100cqw / var(--text-scale, 1));
     word-break: break-word;
     @include sticky-note-font-size;
   }
