@@ -40,7 +40,6 @@
             class="p-editor__text-content"
             :style="[textBlockStyle, drawMode ? { pointerEvents: 'none' } : {}]"
             @click.stop="() => { if (!drawMode) selectTextBlock() }"
-            @touchstart="(e) => { if (!drawMode && e.touches.length >= 2) { e.preventDefault(); onTextBlockPinchTouchStart(e) } }"
           >
             <div
               ref="contentEditableRef"
@@ -335,6 +334,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+
+// 防止手機點選輸入時頁面放大、滿版不滑動
+useHead({
+  meta: [
+    { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover' }
+  ],
+  bodyAttrs: { class: 'is-editor-page' }
+})
 import type { StickerInstance, DraftData, StickyNoteStyle } from '~/types'
 import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
 import { BACKGROUND_IMAGES } from '~/data/backgrounds'
@@ -588,8 +595,7 @@ const {
   onTextBlockDragBarMouseDown,
   onTextBlockDragBarTouchStart,
   onTextBlockTransformMouseDown,
-  onTextBlockTransformTouchStart,
-  onTextBlockPinchTouchStart
+  onTextBlockTransformTouchStart
 } = useTextBlockInteraction({
   canvasRef,
   textX,

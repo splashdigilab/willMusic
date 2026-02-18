@@ -79,10 +79,6 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
 
   const onStickerTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
     if ((e.target as HTMLElement).closest('.p-editor__edit-frame-delete, .p-editor__edit-frame-transform-handle')) return
-    if (e.touches.length >= 2) {
-      onStickerPinchTouchStart(e, sticker)
-      return
-    }
     const touch = e.touches[0]
     if (!touch) return
     selectSticker(sticker.id)
@@ -97,7 +93,6 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
 
     const onTouchMove = (moveEvent: TouchEvent) => {
       if (!dragState || !canvasRef.value || !moveEvent.touches[0]) return
-      if (moveEvent.touches.length >= 2) return
       moveEvent.preventDefault()
       const t = moveEvent.touches[0]
       const rect = canvasRef.value.getBoundingClientRect()
@@ -114,63 +109,6 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
       if (dragState) onDragEnd()
       dragState = null
       draggingStickerId.value = null
-      document.removeEventListener('touchmove', onTouchMove, { capture: true })
-      document.removeEventListener('touchend', onTouchEnd)
-    }
-
-    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
-    document.addEventListener('touchend', onTouchEnd)
-  }
-
-  const onStickerPinchTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
-    if (e.touches.length < 2 || !canvasRef.value) return
-    e.preventDefault()
-    selectSticker(sticker.id)
-    dragState = null
-    draggingStickerId.value = null
-
-    const getDistance = (t1: Touch, t2: Touch) =>
-      Math.sqrt((t2.clientX - t1.clientX) ** 2 + (t2.clientY - t1.clientY) ** 2) || 1
-    const getAngle = (t1: Touch, t2: Touch) =>
-      Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX)
-
-    const t1 = e.touches[0]
-    const t2 = e.touches[1]
-    if (!t1 || !t2) return
-    const initialDistance = getDistance(t1, t2)
-    const initialAngle = getAngle(t1, t2)
-
-    transformState = {
-      stickerId: sticker.id,
-      centerX: sticker.x,
-      centerY: sticker.y,
-      initialDistance,
-      initialAngle,
-      initialScale: sticker.scale,
-      initialRotation: sticker.rotation
-    }
-    transformingStickerId.value = sticker.id
-
-    const onTouchMove = (moveEvent: TouchEvent) => {
-      const mt1 = moveEvent.touches[0]
-      const mt2 = moveEvent.touches[1]
-      if (!transformState || !canvasRef.value || !mt1 || !mt2) return
-      moveEvent.preventDefault()
-      const newDist = getDistance(mt1, mt2)
-      const newAngle = getAngle(mt1, mt2)
-      const scaleRatio = newDist / transformState.initialDistance
-      const angleDelta = (newAngle - transformState.initialAngle) * (180 / Math.PI)
-      const s = stickers.value.find(st => st.id === transformState!.stickerId)
-      if (s) {
-        s.scale = clamp(transformState.initialScale * scaleRatio, 0.3, 3)
-        s.rotation = transformState.initialRotation + angleDelta
-      }
-    }
-
-    const onTouchEnd = () => {
-      if (transformState) onTransformEnd()
-      transformState = null
-      transformingStickerId.value = null
       document.removeEventListener('touchmove', onTouchMove, { capture: true })
       document.removeEventListener('touchend', onTouchEnd)
     }
@@ -304,7 +242,6 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
   return {
     onStickerMouseDown,
     onStickerTouchStart,
-    onStickerPinchTouchStart,
     onStickerClick,
     onTransformHandleMouseDown,
     onTransformHandleTouchStart
