@@ -369,6 +369,7 @@ import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
 import { BACKGROUND_IMAGES } from '~/data/backgrounds'
 import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_TABS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
+import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
 import { useTextBlockInteraction } from '~/composables/useTextBlockInteraction'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
 import { useCanvasPinch } from '~/composables/useCanvasPinch'
@@ -530,19 +531,9 @@ const textStyle = computed(() => ({
   textAlign: textAlign.value
 }))
 
-const getStickerStyle = (sticker: StickerInstance) => ({
-  left: `${sticker.x}%`,
-  top: `${sticker.y}%`,
-  transform: `translate(-50%, -50%) scale(${sticker.scale}) rotate(${sticker.rotation}deg)`,
-  '--inverse-scale': 1 / sticker.scale
-})
 
 const textBlockStyle = computed(() => ({
-  left: `${textX.value}%`,
-  top: `${textY.value}%`,
-  transform: `translate(-50%, -50%) scale(${textScale.value}) rotate(${textRotation.value}deg)`,
-  '--inverse-scale': 1 / textScale.value,
-  '--text-scale': textScale.value,
+  ...getTextBlockStyle(textX.value, textY.value, textScale.value, textRotation.value),
   textAlign: textAlign.value
 }))
 

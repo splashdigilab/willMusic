@@ -125,8 +125,7 @@ body.is-editor-page #app {
     display: inline-block;
     min-width: 1em;
     min-height: 1.5em;
-    width: fit-content;
-    max-width: calc(100cqw / var(--text-scale, 1));
+    @include sn.sticky-note-text-block-width;
     padding: 0.5em 0.75em;
     outline: none;
     word-break: break-word;
@@ -162,6 +161,8 @@ body.is-editor-page #app {
 
   /* 手繪層 (Fabric.js) */
   &__drawing-layer {
+    display: flex;
+    align-items: center;
     position: absolute;
     inset: 0;
     @include sn.sticky-note-layer-drawing;
@@ -196,13 +197,12 @@ body.is-editor-page #app {
       }
     }
 
-    /* sizer：與 canvas-text 同字體/padding，撐開編輯框至文字大小 */
+    /* sizer：與 canvas-text 完全相同尺寸，撐開編輯框 */
     &-sizer {
       display: inline-block;
       min-width: 1em;
       min-height: 1.5em;
-      width: fit-content;
-      max-width: calc(100cqw / var(--text-scale, 1));
+      @include sn.sticky-note-text-block-width;
       padding: 0.5em 0.75em;
       word-break: break-word;
       @include sn.sticky-note-font-size;

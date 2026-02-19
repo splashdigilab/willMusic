@@ -8,6 +8,13 @@
 */
 
 /* Mixins：供 editor 等頁面共用比例 */
+
+/** 文字區塊寬度：max-content + 換行只與 scale 有關（視覺寬 80cqw），editor 與 display 共用 */
+@mixin sticky-note-text-block-width {
+  width: max-content;
+  max-width: calc(80cqw / var(--text-scale, 1));
+}
+
 @mixin sticky-note-font-size {
   font-size: calc(var(--font-size-pct, 4) * 1cqw);
   line-height: 1.6;
@@ -71,10 +78,9 @@
     transform-origin: center center;
   }
 
-  /* 內容文字區域 - 字體比例依 scale 換行，僅與 scale 有關，可超出畫面 */
+  /* 內容文字區域 - 換行寬度只與 scale 有關，與 editor 共用 mixin */
   &__content {
-    width: fit-content;
-    max-width: calc(100cqw / var(--text-scale, 1));
+    @include sticky-note-text-block-width;
     word-break: break-word;
     @include sticky-note-font-size;
   }

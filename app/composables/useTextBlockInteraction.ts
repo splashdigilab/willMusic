@@ -46,8 +46,8 @@ export function useTextBlockInteraction(options: UseTextBlockInteractionOptions)
       const clientY = 'touches' in e ? e.touches[0]?.clientY ?? startY : e.clientY
       const deltaX = ((clientX - startX) / rect.width) * 100
       const deltaY = ((clientY - startY) / rect.height) * 100
-      textX.value = clamp(initX + deltaX, 5, 95)
-      textY.value = clamp(initY + deltaY, 5, 95)
+      textX.value = clamp(initX + deltaX, -30, 130)
+      textY.value = clamp(initY + deltaY, -30, 130)
     }
 
     const onEnd = () => {

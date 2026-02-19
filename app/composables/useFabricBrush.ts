@@ -99,12 +99,17 @@ export function useFabricBrush(onPathCreated?: () => void) {
   let eraserBrush: EraserBrush | null = null
   const redoStack: FabricObject[] = []
   let onUndoRedoChange: (() => void) | null = null
+  let initialWidth = 0
+  let initialHeight = 0
 
   const getPathObjects = (): FabricObject[] =>
     fabricCanvas?.getObjects().filter((obj) => obj?.isType?.('Path', 'path')) ?? []
 
   const init = (canvasEl: HTMLCanvasElement | null, width: number, height: number) => {
     if (!canvasEl || !import.meta.client) return
+
+    initialWidth = width
+    initialHeight = height
 
     fabricCanvas = new Canvas(canvasEl, {
       width,
@@ -232,6 +237,12 @@ export function useFabricBrush(onPathCreated?: () => void) {
       if (img.width && img.height) {
         const w = fabricCanvas.getWidth()
         const h = fabricCanvas.getHeight()
+        // 如果還沒初始化基準尺寸，以當前尺寸為基準
+        if (initialWidth === 0 || initialHeight === 0) {
+          initialWidth = w
+          initialHeight = h
+        }
+        // 圖片按當前 canvas 尺寸縮放（與 init 時的基準一致）
         const scale = Math.min(w / img.width, h / img.height)
         img.set({
           left: w / 2,
@@ -257,16 +268,51 @@ export function useFabricBrush(onPathCreated?: () => void) {
       redoStack.length = 0
       fabricCanvas.clear()
       fabricCanvas.backgroundColor = 'transparent'
+      initialWidth = fabricCanvas.getWidth()
+      initialHeight = fabricCanvas.getHeight()
       fabricCanvas.renderAll()
       onUndoRedoChange?.()
     }
   }
 
   const resize = (width: number, height: number) => {
-    if (fabricCanvas && width > 0 && height > 0) {
+    if (!fabricCanvas || width <= 0 || height <= 0) return
+    if (initialWidth === 0 || initialHeight === 0) {
+      // 首次初始化，記錄尺寸
+      initialWidth = width
+      initialHeight = height
       fabricCanvas.setDimensions({ width, height })
       fabricCanvas.renderAll()
+      return
     }
+
+    // 計算縮放比例（canvas 是正方形，用 width 即可）
+    const scaleRatio = width / initialWidth
+    if (Math.abs(scaleRatio - 1) < 0.001) return // 幾乎沒變化，跳過
+
+    // 縮放所有物件：scale 和 position 都要調整，讓畫的內容隨 canvas 尺寸縮放
+    const objects = fabricCanvas.getObjects()
+    for (const obj of objects) {
+      const currentLeft = obj.left ?? 0
+      const currentTop = obj.top ?? 0
+      const currentScaleX = obj.scaleX ?? 1
+      const currentScaleY = obj.scaleY ?? 1
+
+      obj.set({
+        left: currentLeft * scaleRatio,
+        top: currentTop * scaleRatio,
+        scaleX: currentScaleX * scaleRatio,
+        scaleY: currentScaleY * scaleRatio
+      })
+      obj.setCoords() // 更新控制點座標
+    }
+    // 筆刷寬度保持用戶設定值，不隨 canvas 縮放（用戶設定的就是想要的視覺粗細）
+
+    // 更新 canvas 尺寸
+    initialWidth = width
+    initialHeight = height
+    fabricCanvas.setDimensions({ width, height })
+    fabricCanvas.renderAll()
   }
 
   const isInitialized = () => !!fabricCanvas

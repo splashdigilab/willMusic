@@ -5,9 +5,9 @@
 export const MAX_CONTENT_LENGTH = 200
 
 export const EDITOR_TABS = [
-  { id: 'note' as const, label: '便利貼', icon: '/editor-icon/icons1.png' },
+  { id: 'note' as const, label: '便利貼', icon: '/editor-icon/icons3.png' },
   { id: 'text' as const, label: '文字', icon: '/editor-icon/icons2.png' },
-  { id: 'draw' as const, label: '繪圖', icon: '/editor-icon/icons3.png' },
+  { id: 'draw' as const, label: '繪圖', icon: '/editor-icon/icons1.png' },
   { id: 'sticker' as const, label: '貼紙', icon: '/editor-icon/icons4.png' }
 ] as const
 

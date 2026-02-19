@@ -44,6 +44,7 @@ import { gsap } from 'gsap'
 import type { QueuePendingItem, QueueHistoryItem, StickerInstance } from '~/types'
 import { STICKER_LIBRARY } from '~/data/stickers'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
+import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
 
 interface Props {
   note: QueuePendingItem | QueueHistoryItem
@@ -96,21 +97,10 @@ const contentWrapStyle = computed(() => {
   const y = t?.y ?? 50
   const scale = t?.scale ?? 1
   const rotation = t?.rotation ?? 0
-  return {
-    left: `${x}%`,
-    top: `${y}%`,
-    transform: `translate(-50%, -50%) scale(${scale}) rotate(${rotation}deg)`,
-    '--text-scale': scale
-  }
+  return getTextBlockStyle(x, y, scale, rotation)
 })
 
 const getStickerData = (type: string) => STICKER_LIBRARY.find(s => s.id === type)
-
-const getStickerStyle = (sticker: StickerInstance) => ({
-  left: `${sticker.x}%`,
-  top: `${sticker.y}%`,
-  transform: `translate(-50%, -50%) scale(${sticker.scale}) rotate(${sticker.rotation}deg)`
-})
 
 // GSAP 動畫（如果需要）
 onMounted(() => {
