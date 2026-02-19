@@ -36,6 +36,7 @@
         class="p-editor__canvas-container"
         :class="{ 'is-draw-mode': drawMode }"
         @click="deselectAll"
+        @mousedown="onCanvasMouseDown"
         @touchstart.capture="onCanvasTouchStart"
         @touchmove.capture="onCanvasTouchMove"
         @touchend.capture="onCanvasTouchEnd"
@@ -596,6 +597,7 @@ const selectTextBlock = () => {
 }
 
 const deselectAll = () => {
+  if (lastCanvasDragEndAt.value && Date.now() - lastCanvasDragEndAt.value < 400) return
   selectedStickerId.value = null
   textBlockSelected.value = false
 }
@@ -637,19 +639,32 @@ const {
 const {
   onCanvasTouchStart,
   onCanvasTouchMove,
-  onCanvasTouchEnd
+  onCanvasTouchEnd,
+  onCanvasMouseDown,
+  lastCanvasDragEndAt
 } = useCanvasPinch({
   canvasRef,
   drawMode,
   isTextEditMode,
   selectedStickerId,
   stickers,
+  textX,
+  textY,
   textScale,
   textRotation,
+  textBlockDragging,
   textBlockTransforming,
+  draggingStickerId,
   transformingStickerId,
   onTextTransformEnd: saveDraftData,
-  onStickerTransformEnd: saveDraftData
+  onStickerTransformEnd: saveDraftData,
+  onTextDragEnd: saveDraftData,
+  onStickerDragEnd: saveDraftData,
+  onTextTap: () => {
+    selectTextBlock()
+    nextTick(() => contentEditableRef.value?.focus())
+  },
+  onTextDragStart: () => selectTextBlock()
 })
 
 const {
