@@ -80,7 +80,7 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
   const onStickerTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
     if ((e.target as HTMLElement).closest('.p-editor__edit-frame-delete, .p-editor__edit-frame-transform-handle')) return
     const touch = e.touches[0]
-    if (!touch) return
+    if (!touch || e.touches.length > 1) return
     selectSticker(sticker.id)
     dragState = {
       stickerId: sticker.id,
@@ -91,17 +91,22 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
     }
     draggingStickerId.value = sticker.id
 
+    const el = canvasRef.value
+    if (!el) return
+
     const onTouchMove = (moveEvent: TouchEvent) => {
-      if (!dragState || !canvasRef.value || !moveEvent.touches[0]) return
-      moveEvent.preventDefault()
-      const t = moveEvent.touches[0]
-      const rect = canvasRef.value.getBoundingClientRect()
-      const deltaX = ((t.clientX - dragState.startX) / rect.width) * 100
-      const deltaY = ((t.clientY - dragState.startY) / rect.height) * 100
-      const s = stickers.value.find(st => st.id === dragState!.stickerId)
-      if (s) {
-        s.x = clamp(dragState.initialX + deltaX, 5, 95)
-        s.y = clamp(dragState.initialY + deltaY, 5, 95)
+      if (!dragState || !moveEvent.touches[0] || moveEvent.touches.length > 1) return
+      if (moveEvent.touches.length === 1 && canvasRef.value) {
+        moveEvent.preventDefault()
+        const t = moveEvent.touches[0]
+        const rect = canvasRef.value.getBoundingClientRect()
+        const deltaX = ((t.clientX - dragState.startX) / rect.width) * 100
+        const deltaY = ((t.clientY - dragState.startY) / rect.height) * 100
+        const s = stickers.value.find(st => st.id === dragState!.stickerId)
+        if (s) {
+          s.x = clamp(dragState.initialX + deltaX, 5, 95)
+          s.y = clamp(dragState.initialY + deltaY, 5, 95)
+        }
       }
     }
 
@@ -109,12 +114,14 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
       if (dragState) onDragEnd()
       dragState = null
       draggingStickerId.value = null
-      document.removeEventListener('touchmove', onTouchMove, { capture: true })
-      document.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchmove', onTouchMove, { capture: true })
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
     }
 
-    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
-    document.addEventListener('touchend', onTouchEnd)
+    el.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
+    el.addEventListener('touchend', onTouchEnd)
+    el.addEventListener('touchcancel', onTouchEnd)
   }
 
   const onStickerClick = (id: string) => {

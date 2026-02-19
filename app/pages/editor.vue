@@ -31,7 +31,16 @@
 
     <!-- Canvas Area -->
     <div class="p-editor__canvas-section">
-      <div ref="canvasRef" class="p-editor__canvas-container" :class="{ 'is-draw-mode': drawMode }" @click="deselectAll">
+      <div
+        ref="canvasRef"
+        class="p-editor__canvas-container"
+        :class="{ 'is-draw-mode': drawMode }"
+        @click="deselectAll"
+        @touchstart.capture="onCanvasTouchStart"
+        @touchmove.capture="onCanvasTouchMove"
+        @touchend.capture="onCanvasTouchEnd"
+        @touchcancel.capture="onCanvasTouchEnd"
+      >
         <!-- 可裁切層：背景、文字內容、貼紙圖片 -->
         <div class="p-editor__canvas p-editor__canvas--stage" :style="canvasStyle">
           <!-- 文字內容（可裁切） -->
@@ -54,12 +63,15 @@
             />
           </div>
 
-          <!-- 貼紙圖片（可裁切） -->
+          <!-- 貼紙圖片（可裁切）；便利貼/文字 tab 時點擊可進入貼紙編輯 -->
           <div
             v-for="sticker in stickers"
             :key="sticker.id"
             class="p-editor__sticker-content"
+            :class="{ 'is-sticker-clickable': !drawMode && (activeTab === 'note' || activeTab === 'text') }"
             :style="getStickerStyle(sticker)"
+            @click.stop="selectSticker(sticker.id)"
+            @touchstart.stop="selectSticker(sticker.id)"
           >
             <img 
               v-if="getStickerById(sticker.type)?.svgFile"
@@ -343,6 +355,7 @@ import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shape
 import { EDITOR_TABS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
 import { useTextBlockInteraction } from '~/composables/useTextBlockInteraction'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
+import { useCanvasPinch } from '~/composables/useCanvasPinch'
 import { useStorage } from '~/composables/useStorage'
 import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
@@ -560,6 +573,10 @@ const addSticker = (stickerType: string) => {
   }
   stickers.value.push(newSticker)
   saveDraftData()
+  // 選取新貼紙並切到貼紙 tab，讓編輯框出現
+  selectedStickerId.value = newSticker.id
+  textBlockSelected.value = false
+  activeTab.value = 'sticker'
 }
 
 const selectSticker = (id: string) => {
@@ -611,6 +628,24 @@ const {
   selectTextBlock,
   onDragEnd: saveDraftData,
   onTransformEnd: saveDraftData
+})
+
+const {
+  onCanvasTouchStart,
+  onCanvasTouchMove,
+  onCanvasTouchEnd
+} = useCanvasPinch({
+  canvasRef,
+  drawMode,
+  isTextEditMode,
+  selectedStickerId,
+  stickers,
+  textScale,
+  textRotation,
+  textBlockTransforming,
+  transformingStickerId,
+  onTextTransformEnd: saveDraftData,
+  onStickerTransformEnd: saveDraftData
 })
 
 const {
