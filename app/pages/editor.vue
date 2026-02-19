@@ -339,18 +339,11 @@
         </button>
       </template>
       
-      <!-- 一般模式：備存草稿 / 上傳大螢幕 -->
+      <!-- 一般模式：上傳大螢幕（草稿自動儲存） -->
       <template v-else>
         <button
           type="button"
-          class="p-editor__action-btn p-editor__action-btn--secondary"
-          @click="saveDraftData"
-        >
-          儲存草稿
-        </button>
-        <button
-          type="button"
-          class="p-editor__action-btn p-editor__action-btn--primary" 
+          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full" 
           :disabled="isSubmitting"
           @click="handleSubmit"
         >

@@ -721,6 +721,11 @@ body.is-editor-page #app {
     &--complete {
       flex-grow: 1;
     }
+
+    // 一般模式的單個按鈕（全寬）
+    &--full {
+      flex-grow: 1;
+    }
   }
 
   // 繪圖模式圓形按鈕（上一步/下一步）- 固定尺寸確保正圓，will-red，與完成按鈕同高

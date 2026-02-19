@@ -20,7 +20,7 @@ export const TEXT_ALIGN_OPTIONS = [
 ] as const
 
 export const TEXT_COLORS = [
-  { name: 'White', value: '#FFFFFF' },
+  { name: 'White', value: '#ffffff' },
   { name: 'Black', value: '#241F20' },
   { name: 'Blue', value: '#00A8C6' },
   { name: 'Red', value: '#E6204D' },
