@@ -76,6 +76,7 @@ const noteStyles = computed(() => {
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     color: props.note.style.textColor,
+    textAlign: props.note.style.textAlign || 'center',
     fontFamily: props.note.style.fontFamily || 'inherit',
     '--font-size-pct': fontPct,
     maskImage: `url(${maskUrl})`,
@@ -96,9 +97,9 @@ const contentWrapStyle = computed(() => {
   const scale = t?.scale ?? 1
   const rotation = t?.rotation ?? 0
   return {
-    left: '0',
-    top: '0',
-    transform: `translate(calc(${x}cqw - 50%), calc(${y}cqw - 50%)) scale(${scale}) rotate(${rotation}deg)`,
+    left: `${x}%`,
+    top: `${y}%`,
+    transform: `translate(-50%, -50%) scale(${scale}) rotate(${rotation}deg)`,
     '--text-scale': scale
   }
 })

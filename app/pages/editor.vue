@@ -232,6 +232,22 @@
             </button>
           </div>
         </div>
+        <div class="p-editor__control-section">
+          <h3 class="p-editor__control-title">文字對齊</h3>
+          <div class="p-editor__align-row">
+            <button
+              v-for="opt in TEXT_ALIGN_OPTIONS"
+              :key="opt.value"
+              type="button"
+              class="p-editor__align-btn"
+              :class="{ 'is-active': textAlign === opt.value }"
+              :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
+              @click="textAlign = opt.value"
+            >
+              <img :src="opt.svg" :alt="''" class="p-editor__align-icon" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Tab: 繪圖 -->
@@ -352,7 +368,7 @@ import type { StickerInstance, DraftData, StickyNoteStyle } from '~/types'
 import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
 import { BACKGROUND_IMAGES } from '~/data/backgrounds'
 import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
-import { EDITOR_TABS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
+import { EDITOR_TABS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
 import { useTextBlockInteraction } from '~/composables/useTextBlockInteraction'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
 import { useCanvasPinch } from '~/composables/useCanvasPinch'
@@ -377,7 +393,8 @@ const { saveDraft, loadDraft, clearDraft, saveToken, loadToken } = useStorage()
 const content = ref('')
 const backgroundImage = ref(BACKGROUND_IMAGES?.[0]?.url ?? '') // 預設第一張背景
 const shape = ref(DEFAULT_SHAPE_ID)
-const textColor = ref('#333333')
+const textColor = ref('#ffffff')
+const textAlign = ref<'left' | 'center' | 'right'>('center')
 const stickers = ref<StickerInstance[]>([])
 const selectedStickerId = ref<string | null>(null)
 const draggingStickerId = ref<string | null>(null)
@@ -410,7 +427,7 @@ const showDraftModal = ref(false)
 const drawMode = ref(false)
 const drawCanUndo = ref(false)
 const drawCanRedo = ref(false)
-const brushColor = ref('#333333')
+const brushColor = ref('#ffffff')
 const brushWidth = ref(8)
 const eraserMode = ref(false)
 const drawingData = ref<string | null>(null)
@@ -509,7 +526,8 @@ const canvasStyle = computed(() => {
 
 const textStyle = computed(() => ({
   color: textColor.value,
-  '--text-color': textColor.value
+  '--text-color': textColor.value,
+  textAlign: textAlign.value
 }))
 
 const getStickerStyle = (sticker: StickerInstance) => ({
@@ -520,11 +538,12 @@ const getStickerStyle = (sticker: StickerInstance) => ({
 })
 
 const textBlockStyle = computed(() => ({
-  left: '0',
-  top: '0',
-  transform: `translate(calc(${textX.value}cqw - 50%), calc(${textY.value}cqw - 50%)) scale(${textScale.value}) rotate(${textRotation.value}deg)`,
+  left: `${textX.value}%`,
+  top: `${textY.value}%`,
+  transform: `translate(-50%, -50%) scale(${textScale.value}) rotate(${textRotation.value}deg)`,
   '--inverse-scale': 1 / textScale.value,
-  '--text-scale': textScale.value
+  '--text-scale': textScale.value,
+  textAlign: textAlign.value
 }))
 
 
@@ -604,6 +623,7 @@ const saveDraftData = () => {
     backgroundImage: backgroundImage.value,
     shape: shape.value,
     textColor: textColor.value,
+    textAlign: textAlign.value,
     stickers: stickers.value,
     textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
     drawing: drawingData.value ?? undefined,
@@ -676,6 +696,7 @@ const loadDraftData = async (draft: DraftData) => {
   backgroundImage.value = draft.backgroundImage
   shape.value = draft.shape
   textColor.value = draft.textColor
+  textAlign.value = draft.textAlign ?? 'center'
   stickers.value = draft.stickers
   drawingData.value = draft.drawing ?? null
   if (draft.textTransform) {
@@ -695,7 +716,8 @@ const resetEditorToInitial = () => {
   content.value = ''
   backgroundImage.value = BACKGROUND_IMAGES?.[0]?.url ?? ''
   shape.value = DEFAULT_SHAPE_ID
-  textColor.value = '#333333'
+  textColor.value = '#ffffff'
+  textAlign.value = 'center'
   stickers.value = []
   drawingData.value = null
   fabricBrush.clear()
@@ -753,6 +775,7 @@ const handleSubmit = async () => {
       backgroundImage: backgroundImage.value,
       shape: shape.value,
       textColor: textColor.value,
+      textAlign: textAlign.value,
       stickers: stickers.value,
       textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
     }

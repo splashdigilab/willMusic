@@ -13,19 +13,26 @@ export const EDITOR_TABS = [
 
 export type EditorTabId = typeof EDITOR_TABS[number]['id']
 
+export const TEXT_ALIGN_OPTIONS = [
+  { value: 'left' as const, svg: '/align-left.svg' },
+  { value: 'center' as const, svg: '/align-center.svg' },
+  { value: 'right' as const, svg: '/align-right.svg' }
+] as const
+
 export const TEXT_COLORS = [
-  { name: 'Black', value: '#333333' },
   { name: 'White', value: '#FFFFFF' },
-  { name: 'Red', value: '#f43f5e' },
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Purple', value: '#a855f7' }
+  { name: 'Black', value: '#241F20' },
+  { name: 'Blue', value: '#00A8C6' },
+  { name: 'Red', value: '#E6204D' },
+  { name: 'LightBlue', value: '#66E5FF' },
+  { name: 'LightRed', value: '#FF99B2' },
 ] as const
 
 export const BRUSH_COLORS = [
-  { value: '#333333' },
-  { value: '#f43f5e' },
-  { value: '#3b82f6' },
-  { value: '#22c55e' },
-  { value: '#fbbf24' },
-  { value: '#ffffff' }
+  { value: '#ffffff' },
+  { value: '#241F20' },
+  { value: '#00A8C6' },
+  { value: '#E6204D' },
+  { value: '#66E5FF' },
+  { value: '#FF99B2' },
 ] as const

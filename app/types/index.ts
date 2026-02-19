@@ -15,11 +15,14 @@ export interface StickerInstance {
 /**
  * 草稿資料
  */
+export type TextAlign = 'left' | 'center' | 'right'
+
 export interface DraftData {
   content: string
   backgroundImage: string // 背景圖片 URL
   shape: string // 造型 ID
   textColor: string
+  textAlign?: TextAlign
   stickers: StickerInstance[]
   textTransform?: TextBlockTransform
   drawing?: string // 手繪內容 data URL
@@ -43,6 +46,7 @@ export interface StickyNoteStyle {
   backgroundImage: string // 背景圖片 URL
   shape: string // 造型 ID (對應 shapes.ts)
   textColor: string
+  textAlign?: TextAlign // 文字對齊：左、中、右
   fontFamily?: string
   stickers?: StickerInstance[] // 貼紙
   textTransform?: TextBlockTransform // 文字區塊位置、縮放、旋轉
