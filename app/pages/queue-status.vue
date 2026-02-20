@@ -82,7 +82,7 @@
       <div class="p-queue-status__info-box">
         <h3 class="p-queue-status__info-title">關於顯示時間</h3>
         <ul class="p-queue-status__info-list">
-          <li class="p-queue-status__info-item">每個便利貼會在大螢幕上顯示約 15 秒</li>
+          <li class="p-queue-status__info-item">每個便利貼會在大螢幕上顯示約 {{ DISPLAY_SLOT_DURATION_SECONDS }} 秒</li>
           <li class="p-queue-status__info-item">顯示順序為提交的先後順序</li>
           <li class="p-queue-status__info-item"><strong>需開啟 /display 頁面（LED 螢幕）</strong>，便利貼才會播放並加入即時牆/典藏牆</li>
           <li class="p-queue-status__info-item">此頁面會即時更新佇列狀態</li>
@@ -98,6 +98,7 @@
 
 <script setup lang="ts">
 import { collection, query, onSnapshot } from 'firebase/firestore'
+import { DISPLAY_SLOT_DURATION_SECONDS } from '~/data/display-config'
 
 definePageMeta({
   layout: false
@@ -112,10 +113,10 @@ const isLoading = ref(true)
 let unsubscribe: (() => void) | null = null
 
 /**
- * 預估等待時間（每個 15 秒）
+ * 預估等待時間（每張以 DISPLAY_SLOT_DURATION_SECONDS 計算）
  */
 const estimatedTime = computed(() => {
-  const totalSeconds = queueCount.value * 15
+  const totalSeconds = queueCount.value * DISPLAY_SLOT_DURATION_SECONDS
   
   if (totalSeconds === 0) {
     return '您的便利貼已上傳'

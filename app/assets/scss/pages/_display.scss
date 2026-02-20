@@ -53,8 +53,7 @@
   }
 
   &__current-note {
-    /* 容器尺寸由 .c-sticky-note-container--display 控制 */
-    animation: p-display-float 3s ease-in-out infinite;
+    /* 容器尺寸由 .c-sticky-note-container--display 控制；位移與縮放由 GSAP timeline 驅動 */
   }
 
   // Idle State
