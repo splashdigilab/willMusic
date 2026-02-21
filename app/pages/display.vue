@@ -67,7 +67,11 @@ import type { QueuePendingItem, QueueHistoryItem } from '~/types'
 import { useDisplayController } from '~/composables/useDisplayController'
 import {
   DISPLAY_SLOT_DURATION_MS,
-  DISPLAY_ANIMATION_RATIO
+  DISPLAY_ANIMATION_RATIO,
+  DISPLAY_SCALE_OFF,
+  DISPLAY_SCALE_PEAK,
+  DISPLAY_ENTER_ANIM1_RATIO,
+  DISPLAY_EXIT_ANIM1_RATIO
 } from '~/data/display-config'
 
 const {
@@ -130,9 +134,9 @@ function runSlotTimeline(el: HTMLElement, fromHistory: boolean) {
   const exitStart = enterDuration + holdDuration
 
   if (fromHistory) {
-    gsap.set(el, { x: OFF_SCREEN_LEFT, y: 0, scale: 0.8, opacity: 1, transformOrigin: '50% 50%' })
+    gsap.set(el, { x: OFF_SCREEN_LEFT, y: 0, scale: DISPLAY_SCALE_OFF, opacity: 1, transformOrigin: '50% 50%' })
   } else {
-    gsap.set(el, { x: 0, y: OFF_SCREEN_BOTTOM, scale: 0.8, opacity: 1, transformOrigin: '50% 50%' })
+    gsap.set(el, { x: 0, y: OFF_SCREEN_BOTTOM, scale: DISPLAY_SCALE_OFF, opacity: 1, transformOrigin: '50% 50%' })
   }
 
   slotTimeline = gsap.timeline({
@@ -142,21 +146,25 @@ function runSlotTimeline(el: HTMLElement, fromHistory: boolean) {
     }
   })
 
-  // 0 ~ ratio：進入 — 到中央、scale 1.1 → 1
+  // 進入：動畫1 從畫面外移入同時 scale OFF→PEAK，動畫2 scale PEAK→1
+  const enterAnim1Duration = enterDuration * DISPLAY_ENTER_ANIM1_RATIO
+  const enterAnim2Duration = enterDuration * (1 - DISPLAY_ENTER_ANIM1_RATIO)
   if (fromHistory) {
-    slotTimeline.to(el, { x: 0, scale: 1.1, duration: enterDuration * 0.6, ease: EASE })
+    slotTimeline.to(el, { x: 0, scale: DISPLAY_SCALE_PEAK, duration: enterAnim1Duration, ease: EASE })
   } else {
-    slotTimeline.to(el, { y: 0, scale: 1.1, duration: enterDuration * 0.6, ease: EASE })
+    slotTimeline.to(el, { y: 0, scale: DISPLAY_SCALE_PEAK, duration: enterAnim1Duration, ease: EASE })
   }
-  slotTimeline.to(el, { scale: 1, duration: enterDuration * 0.4, ease: EASE }, `+=0`)
+  slotTimeline.to(el, { scale: 1, duration: enterAnim2Duration, ease: EASE }, `+=0`)
 
   if (holdDuration > 0) {
     slotTimeline.to({}, { duration: holdDuration }, enterDuration)
   }
 
-  // (1-ratio) ~ 1：移出 — 一律往左；先 scale 1→1.1，再 x 移出
-  slotTimeline.to(el, { scale: 1.1, duration: exitDuration * 0.4, ease: EASE }, exitStart)
-  slotTimeline.to(el, { x: OFF_SCREEN_LEFT, duration: exitDuration * 0.6, ease: EASE }, exitStart + exitDuration * 0.4)
+  // 移出：動畫1 scale 1→PEAK，動畫2 往外移出同時 scale PEAK→OFF
+  const exitAnim1Duration = exitDuration * DISPLAY_EXIT_ANIM1_RATIO
+  const exitAnim2Duration = exitDuration * (1 - DISPLAY_EXIT_ANIM1_RATIO)
+  slotTimeline.to(el, { scale: DISPLAY_SCALE_PEAK, duration: exitAnim1Duration, ease: EASE }, exitStart)
+  slotTimeline.to(el, { x: OFF_SCREEN_LEFT, scale: DISPLAY_SCALE_OFF, duration: exitAnim2Duration, ease: EASE }, exitStart + exitAnim1Duration)
 }
 
 watch(

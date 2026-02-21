@@ -7,15 +7,40 @@
 export const HISTORY_POOL_SIZE = 9
 
 /** 每張便利貼播放秒數 */
-export const DISPLAY_SLOT_DURATION_SECONDS = 3
+export const DISPLAY_SLOT_DURATION_SECONDS = 5
 
 /** 每張播放毫秒數（由 DISPLAY_SLOT_DURATION_SECONDS 衍生） */
 export const DISPLAY_SLOT_DURATION_MS = DISPLAY_SLOT_DURATION_SECONDS * 1000
 
 /**
  * 動畫佔 slot 的比例（0~1）
- * 前 ratio：進入動畫（底部→中央，尺寸至 1.1 再回 1）
- * 後 ratio：移出動畫（中央尺寸 1→1.1，再往底部移出）
+ * 前 ratio：進入動畫（動畫1 移入+scale、動畫2 scale→1）
+ * 後 ratio：移出動畫（動畫1 scale→1.1、動畫2 移出+scale）
  * 中間 (1 - 2*ratio)：靜止
  */
-export const DISPLAY_ANIMATION_RATIO = 0.1
+export const DISPLAY_ANIMATION_RATIO = 0.2
+
+/**
+ * 畫面外／移入移出時的 scale（較大）
+ * 移入：從此值與位移同時變到 DISPLAY_SCALE_PEAK；移出：從 PEAK 與位移同時變到此值
+ */
+export const DISPLAY_SCALE_OFF = 0.5
+
+/**
+ * 動畫中間的 scale（移入時先到此再變 1，移出時從 1 先到此再與位移一起變 OFF）
+ */
+export const DISPLAY_SCALE_PEAK = 1.1
+
+/**
+ * 進入階段內「動畫1」所佔比例（0~1）
+ * 動畫1：從畫面外移入同時 scale DISPLAY_SCALE_OFF → DISPLAY_SCALE_PEAK
+ * 動畫2：scale DISPLAY_SCALE_PEAK → 1
+ */
+export const DISPLAY_ENTER_ANIM1_RATIO = 0.5
+
+/**
+ * 移出階段內「動畫1」所佔比例（0~1）
+ * 動畫1：scale 1 → DISPLAY_SCALE_PEAK
+ * 動畫2：往外移出同時 scale DISPLAY_SCALE_PEAK → DISPLAY_SCALE_OFF
+ */
+export const DISPLAY_EXIT_ANIM1_RATIO = 1 - DISPLAY_ENTER_ANIM1_RATIO
