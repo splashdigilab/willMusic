@@ -4,10 +4,9 @@ import type { Unsubscribe } from 'firebase/firestore'
 import type { QueuePendingItem, QueueHistoryItem } from '~/types'
 import {
   DISPLAY_SLOT_DURATION_MS,
-  DISPLAY_SLOT_DURATION_SECONDS
+  DISPLAY_SLOT_DURATION_SECONDS,
+  HISTORY_POOL_SIZE
 } from '~/data/display-config'
-
-const IDLE_POOL_SIZE = 20
 
 const SINGLETON_KEY = '__willmusic_display_controller__'
 
@@ -69,7 +68,7 @@ export type DisplayState = 'idle' | 'newSingle' | 'queueDrain'
  * 大螢幕顯示控制器
  * - 每張播放秒數唯一參數：~/data/display-config.ts 的 DISPLAY_SLOT_DURATION_SECONDS
  * - 全域規則：每張以該秒數為一單位，切換僅在 slot 結束時進行
- * - 狀態一：閒置輪播最新 20 張歷史；狀態二：新便利貼插入；狀態三：排隊消化
+ * - 狀態一：閒置輪播最新 HISTORY_POOL_SIZE 張歷史；狀態二：新便利貼插入；狀態三：排隊消化
  */
 export function useDisplayController() {
   const { listenToPendingQueue, getHistory, moveToHistory } = useFirestore()
@@ -84,10 +83,10 @@ export function useDisplayController() {
     return 'idle'
   })
 
-  /** 從歷史抓取最新 20 張並打亂，設為 idle 輪播名單 */
+  /** 從歷史抓取最新 HISTORY_POOL_SIZE 張並打亂，設為 idle 輪播名單 */
   const refreshIdleList = async () => {
     try {
-      const { items } = await getHistory(IDLE_POOL_SIZE)
+      const { items } = await getHistory(HISTORY_POOL_SIZE)
       s.idleList.value = shuffle(items)
       s.idleIndex = 0
       console.log('[useDisplayController] refreshIdleList:', items.length, 'items')

@@ -1,48 +1,70 @@
-/* 即時牆 - 最新 20 則 */
+/* ─── Live 即時牆 ────────────────────────────────────────────────────────────
+   全螢幕固定、不捲動。
+   便利貼的位置（px）與大小（px）完全由 JS 計算後以 inline style 傳入，
+   CSS 只負責 position / transform，不設任何 width / height，
+   確保沒有單位混用（% vs vw/vh）導致的重疊或超出問題。
+─────────────────────────────────────────────────────────────────────────── */
+
+/* 鎖住 body 與 #__nuxt，配合 JS 加的 class 防止任何捲動 */
+html.p-live-active,
+body.p-live-active {
+  overflow: hidden;
+  height: 100%;
+}
+
+#__nuxt.p-live-active {
+  overflow: hidden;
+  height: 100%;
+  min-height: 0;
+}
+
+/* 主容器：固定在視窗上，不捲動 */
 .p-live {
-  min-height: 100vh;
-  padding: 1rem 0 2rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.p-live__nav {
-  padding: 0.5rem 1rem;
-  text-align: right;
-}
-
-.p-live__nav-link {
-  color: rgba(255, 255, 255, 0.9);
-  text-decoration: none;
-  font-size: 0.875rem;
-
-  &:hover {
-    text-decoration: underline;
-  }
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background-color: white;
 }
 
 .p-live__container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1rem;
+  position: absolute;
+  inset: 0;
 }
 
-.p-live__wall-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1.5rem;
-  max-width: 1400px;
-  margin: 0 auto;
+.p-live__wall {
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
+/*
+  便利貼：left / top / width / height / transform 由 JS inline 給定（含隨機旋轉）
+*/
 .p-live__wall-item {
-  animation: p-live-fadeInUp 0.5s ease-out;
+  position: absolute;
+  /* 子元素填滿外層 JS 給的尺寸 */
+  .c-sticky-note-container--wall,
+  .c-sticky-note {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    margin: 0;
+  }
+  animation: p-live-fadeIn 0.4s ease-out;
 }
 
+/* ─── States ─────────────────────────────────────────────────────────────── */
 .p-live__loading-state,
 .p-live__empty-state {
-  text-align: center;
-  padding: 4rem 2rem;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   color: white;
+  text-align: center;
+  padding: 2rem;
 }
 
 .p-live__empty-icon {
@@ -60,9 +82,9 @@
   animation: p-live-spin 1s linear infinite;
 }
 
-@keyframes p-live-fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes p-live-fadeIn {
+  from { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rotate-deg)) scale(0.85); }
+  to   { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rotate-deg)) scale(1); }
 }
 
 @keyframes p-live-spin {
