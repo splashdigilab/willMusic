@@ -2,6 +2,7 @@ import { ref, computed, shallowRef } from 'vue'
 import type { Ref } from 'vue'
 import type { Unsubscribe } from 'firebase/firestore'
 import type { QueuePendingItem, QueueHistoryItem } from '~/types'
+import { deserializeNoteFromChannel } from '~/utils/screen-sync-payload'
 import {
   DISPLAY_SLOT_DURATION_MS,
   DISPLAY_SLOT_DURATION_SECONDS,
@@ -29,6 +30,13 @@ interface DisplayControllerSingleton {
   idleIndex: number
   completedPendingIds: Set<string>
   unsubscribe: Unsubscribe | null
+  syncOff: (() => void) | null
+  /** BORROW_DEPARTING 比 waitForLiveReady 先到時暫存 */
+  pendingBorrowedNote: QueueHistoryItem | null
+  /** 收到 BORROW_DEPARTING 時 resolve */
+  borrowDepartingResolve: ((note: QueueHistoryItem) => void) | null
+  /** 出場開始時提早借片，onComplete 前就緒則直接使用，避免空檔 */
+  prefetchedNextNote: QueueHistoryItem | null
 }
 
 function getOrCreateSingleton(): DisplayControllerSingleton {
@@ -41,7 +49,11 @@ function getOrCreateSingleton(): DisplayControllerSingleton {
       idleList: ref<QueueHistoryItem[]>([]),
       idleIndex: 0,
       completedPendingIds: new Set<string>(),
-      unsubscribe: null
+      unsubscribe: null,
+      syncOff: null,
+      pendingBorrowedNote: null,
+      borrowDepartingResolve: null,
+      prefetchedNextNote: null
     }
     console.log('[useDisplayController] Created new singleton')
   }
@@ -53,10 +65,8 @@ if (import.meta.hot) {
     const g = globalThis as any
     const s = g[SINGLETON_KEY] as DisplayControllerSingleton | undefined
     if (s) {
-      if (s.unsubscribe) {
-        s.unsubscribe()
-        s.unsubscribe = null
-      }
+      s.unsubscribe?.()
+      s.syncOff?.()
       delete g[SINGLETON_KEY]
     }
   })
@@ -66,12 +76,17 @@ export type DisplayState = 'idle' | 'newSingle' | 'queueDrain'
 
 /**
  * 大螢幕顯示控制器
- * - 每張播放秒數唯一參數：~/data/display-config.ts 的 DISPLAY_SLOT_DURATION_SECONDS
- * - 全域規則：每張以該秒數為一單位，切換僅在 slot 結束時進行
- * - 狀態一：閒置輪播最新 HISTORY_POOL_SIZE 張歷史；狀態二：新便利貼插入；狀態三：排隊消化
+ *
+ * 狀態一（pending 佇列有 note）：
+ *   endSlot → moveToHistory → 立即設 currentNote（pending note 進 display）
+ *
+ * 狀態二（idle）：
+ *   endSlot → send BORROW_REQUEST → 等 BORROW_DEPARTING（取得 note 資料）
+ *           收到 BORROW_DEPARTING 即 resolve，Display 出場結束即可接續播下一張
  */
 export function useDisplayController() {
   const { listenToPendingQueue, getHistory, moveToHistory } = useFirestore()
+  const { onMessage: syncOnMessage } = useScreenSync()
   const s = getOrCreateSingleton()
 
   const queueLength = computed(() => s.queue.value.length)
@@ -83,13 +98,11 @@ export function useDisplayController() {
     return 'idle'
   })
 
-  /** 從歷史抓取最新 HISTORY_POOL_SIZE 張並打亂，設為 idle 輪播名單 */
   const refreshIdleList = async () => {
     try {
       const { items } = await getHistory(HISTORY_POOL_SIZE)
       s.idleList.value = shuffle(items)
       s.idleIndex = 0
-      console.log('[useDisplayController] refreshIdleList:', items.length, 'items')
     } catch (e) {
       console.error('[useDisplayController] refreshIdleList error:', e)
       s.idleList.value = []
@@ -97,48 +110,50 @@ export function useDisplayController() {
     }
   }
 
-  /** 清空閒置名單（播完一輪或被打斷時） */
   const clearIdleList = () => {
     s.idleList.value = []
     s.idleIndex = 0
   }
 
-  /** 有效佇列：排除已送進歷史、尚未從 snapshot 移除的 id */
-  const effectiveQueue = () => s.queue.value.filter(q => !s.completedPendingIds.has(q.id ?? q.token ?? ''))
+  const effectiveQueue = () =>
+    s.queue.value.filter(q => !s.completedPendingIds.has(q.id ?? q.token ?? ''))
 
-  /** 取得下一個要播放的項目：優先佇列，否則從 idle 名單取（不足則先 refresh） */
-  const getNext = async (): Promise<{
-    note: QueuePendingItem | QueueHistoryItem | null
-    source: 'pending' | 'history'
-  }> => {
-    const pending = effectiveQueue()
-    if (pending.length > 0) {
-      const first = pending[0]
-      if (first) return { note: first, source: 'pending' }
-    }
+  const effectiveQueueLength = computed(() => effectiveQueue().length)
 
-    let list = s.idleList.value
-    if (list.length === 0) {
-      await refreshIdleList()
-      list = s.idleList.value
-    }
-    if (list.length === 0) {
-      return { note: null, source: 'history' }
-    }
-
-    const idx = s.idleIndex % list.length
-    const item = list[idx] ?? null
-    s.idleIndex = (s.idleIndex + 1) % list.length
-    if (s.idleIndex === 0) {
-      clearIdleList()
-    }
-    return { note: item, source: 'history' }
-  }
+  // ── BroadcastChannel 同步訊號處理 ─────────────────────────────────────────
 
   /**
-   * Slot 結束（由 display 在 GSAP timeline 完成時呼叫）：完成當前、取得下一張、更新畫面。
-   * 下一張的「計時」由 display 的 timeline 驅動，timeline 結束時再呼叫 endSlot。
+   * 出場動畫「開始時」呼叫：送出 BORROW_REQUEST，回傳 promise（收到 BORROW_DEPARTING 即 resolve）。
+   * 不等待 LIVE_EXIT_DONE，Display 出場結束即可接續播下一張；Live 出場與前一張入場可同時進行。
    */
+  const requestBorrowEarly = (): Promise<QueueHistoryItem> => {
+    send({ type: 'BORROW_REQUEST' })
+    return waitForLiveReady()
+  }
+
+  /** 收到 BORROW_DEPARTING 就 resolve（有 note 資料即可），Display 可立即接續播放，不等待 Live 出場動畫結束 */
+  const waitForLiveReady = (): Promise<QueueHistoryItem> => {
+    return new Promise<QueueHistoryItem>(resolve => {
+      const tryResolve = (n: QueueHistoryItem) => {
+        s.borrowDepartingResolve = null
+        s.prefetchedNextNote = n
+        resolve(n)
+      }
+
+      s.borrowDepartingResolve = tryResolve
+
+      if (s.pendingBorrowedNote) {
+        const note = s.pendingBorrowedNote
+        s.pendingBorrowedNote = null
+        tryResolve(note)
+      }
+    })
+  }
+
+  // ── Slot 主流程 ────────────────────────────────────────────────────────────
+
+  const { send } = useScreenSync()
+
   const endSlot = async () => {
     const current = s.currentNote.value
     const source = s.currentSource.value
@@ -156,13 +171,51 @@ export function useDisplayController() {
       }
     }
 
-    const { note, source: nextSource } = await getNext()
-    s.currentNote.value = note
-    s.currentSource.value = nextSource
+    const pending = effectiveQueue()
+
+    if (pending.length > 0) {
+      // 有排隊的 pending note：直接上場，不需要等 Live
+      const first = pending[0]!
+      s.currentNote.value = first
+      s.currentSource.value = 'pending'
+    } else {
+      // Idle：若有提早借好的 prefetched 直接使用；否則才 send + wait
+      if (s.prefetchedNextNote) {
+        const note = s.prefetchedNextNote
+        s.prefetchedNextNote = null
+        s.currentNote.value = note
+        s.currentSource.value = 'history'
+      } else {
+        s.currentNote.value = null
+        s.currentSource.value = null
+        send({ type: 'BORROW_REQUEST' })
+        try {
+          const note = await waitForLiveReady()
+          s.currentNote.value = note
+          s.currentSource.value = 'history'
+        } catch (e) {
+          console.error('[useDisplayController] waitForLiveReady error:', e)
+        }
+      }
+    }
   }
 
   const startListening = () => {
     if (s.unsubscribe) return
+
+    // BroadcastChannel：接收 Live 的動畫完成訊號
+    if (!s.syncOff) {
+      s.syncOff = syncOnMessage((msg) => {
+        if (msg.type === 'BORROW_DEPARTING') {
+          const note = deserializeNoteFromChannel(msg.note) as QueueHistoryItem
+          if (s.borrowDepartingResolve) {
+            s.borrowDepartingResolve(note)
+          } else {
+            s.pendingBorrowedNote = note
+          }
+        }
+      })
+    }
 
     s.unsubscribe = listenToPendingQueue((items) => {
       const prevLen = s.queue.value.length
@@ -175,22 +228,33 @@ export function useDisplayController() {
       for (const id of s.completedPendingIds) {
         if (!inSnapshot.has(id)) s.completedPendingIds.delete(id)
       }
+      // 不插播：有新 pending 時不打斷，等當下動畫跑完後 endSlot 再依佇列播下一張
     })
 
     if (!s.currentNote.value) {
-      getNext().then(({ note, source }) => {
-        s.currentNote.value = note
-        s.currentSource.value = source
-      })
+      // 第一張：如果有 pending 就直接上，否則等 Live
+      const pending = effectiveQueue()
+      if (pending.length > 0) {
+        s.currentNote.value = pending[0]!
+        s.currentSource.value = 'pending'
+      } else {
+        send({ type: 'BORROW_REQUEST' })
+        waitForLiveReady().then(note => {
+          if (!s.currentNote.value) {
+            s.currentNote.value = note
+            s.currentSource.value = 'history'
+          }
+        })
+      }
     }
     console.log('[useDisplayController] startListening')
   }
 
   const stopListening = () => {
-    if (s.unsubscribe) {
-      s.unsubscribe()
-      s.unsubscribe = null
-    }
+    s.unsubscribe?.()
+    s.unsubscribe = null
+    s.syncOff?.()
+    s.syncOff = null
   }
 
   return {
@@ -199,10 +263,19 @@ export function useDisplayController() {
     currentSource: computed(() => s.currentSource.value),
     displayState,
     queueLength,
+    effectiveQueueLength,
     startListening,
     stopListening,
     endSlot,
+    requestBorrowEarly,
     slotDurationMs: DISPLAY_SLOT_DURATION_MS,
     slotDurationSeconds: DISPLAY_SLOT_DURATION_SECONDS
   }
+}
+
+// ─── Helper ────────────────────────────────────────────────────────────────
+
+function getNoteId(note: QueuePendingItem | QueueHistoryItem | null): string {
+  if (!note) return ''
+  return (note as any).id ?? (note as any).token ?? ''
 }

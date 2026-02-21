@@ -1,8 +1,7 @@
 /* ─── Live 即時牆 ────────────────────────────────────────────────────────────
    全螢幕固定、不捲動。
-   便利貼的位置（px）與大小（px）完全由 JS 計算後以 inline style 傳入，
-   CSS 只負責 position / transform，不設任何 width / height，
-   確保沒有單位混用（% vs vw/vh）導致的重疊或超出問題。
+   便利貼的 left/top/width/height 由 JS inline style 傳入（px）。
+   transform（置中、旋轉、位移、縮放）完全由 GSAP 驅動，CSS 不設任何 transform。
 ─────────────────────────────────────────────────────────────────────────── */
 
 /* 鎖住 body 與 #__nuxt，配合 JS 加的 class 防止任何捲動 */
@@ -38,7 +37,8 @@ body.p-live-active {
 }
 
 /*
-  便利貼：left / top / width / height / transform 由 JS inline 給定（含隨機旋轉）
+  便利貼：left / top / width / height 由 JS inline 給定；
+  transform 完全由 GSAP 控制，CSS 不干預（移除 animation）。
 */
 .p-live__wall-item {
   position: absolute;
@@ -50,7 +50,6 @@ body.p-live-active {
     max-width: none;
     margin: 0;
   }
-  animation: p-live-fadeIn 0.4s ease-out;
 }
 
 /* ─── States ─────────────────────────────────────────────────────────────── */
@@ -80,11 +79,6 @@ body.p-live-active {
   border-radius: 50%;
   margin: 0 auto 1rem;
   animation: p-live-spin 1s linear infinite;
-}
-
-@keyframes p-live-fadeIn {
-  from { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rotate-deg)) scale(0.85); }
-  to   { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rotate-deg)) scale(1); }
 }
 
 @keyframes p-live-spin {
