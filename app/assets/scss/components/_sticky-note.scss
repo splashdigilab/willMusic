@@ -16,6 +16,7 @@
 }
 
 @mixin sticky-note-font-size {
+  font-family: 'ChenYuluoyan', sans-serif;
   font-size: calc(var(--font-size-pct, 4) * 1cqw);
   line-height: 1.6;
   white-space: pre-wrap;

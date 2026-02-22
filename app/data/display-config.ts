@@ -10,7 +10,7 @@
  */
 
 /** display 閒置輪播與 live 即時牆共用的歷史張數（同一份「最新 N 張」） */
-export const HISTORY_POOL_SIZE = 4
+export const HISTORY_POOL_SIZE = 16
 
 /** 每張便利貼「靜止不動」的秒數（可隨意調整） */
 export const HOLD_SECONDS = 3
