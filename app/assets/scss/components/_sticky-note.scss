@@ -37,9 +37,11 @@
 @mixin sticky-note-layer-text {
   z-index: 1;
 }
+
 @mixin sticky-note-layer-drawing {
   z-index: 2;
 }
+
 @mixin sticky-note-layer-sticker {
   z-index: 3;
 }
@@ -53,6 +55,18 @@
   container-type: inline-size;
   container-name: sticky-note;
 
+  /* 
+    擬真陰影效果（真實便利貼物理感）：
+    因為上方有背膠黏死，下方微微翹起，所以陰影重心必須偏下。
+    - 第一層：模擬整張紙0.1mm厚度緊貼牆壁的極細邊緣暗角
+    - 第二層：模擬下方紙張翹起，所產生的縱向漸層陰影
+  */
+  filter:
+    drop-shadow(0 1px 1px rgba(0, 0, 0, 0.05)) drop-shadow(0 8px 12px rgba(0, 0, 0, 0.15));
+  will-change: filter, transform;
+  transform: translateZ(0);
+  /* 提升硬體加速，防止 Safari 邊緣毛邊 */
+
   /* 內層：形狀由外層 mask-image 控制、背景圖片 */
   &__inner {
     position: relative;
@@ -60,14 +74,26 @@
     height: 100%;
     padding: 8%;
     overflow: hidden;
-    box-shadow:
-      0 4px 6px rgba(0, 0, 0, 0.1),
-      0 1px 3px rgba(0, 0, 0, 0.08);
 
-    &:hover {
-      box-shadow:
-        0 10px 20px rgba(0, 0, 0, 0.15),
-        0 3px 6px rgba(0, 0, 0, 0.1);
+    /* 
+      擬真紙張光影疊加層（模擬背膠與紙張彎曲）：
+      真實的便利貼上方 15% 處有一條背膠的物理分界，
+      下方因為沒有黏性而稍微翹起迎光，底部邊緣再轉暗。
+    */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      /* 由上到下的物理打光：極度柔化的薄霧光效，模擬真實無亮面紙張 */
+      background: linear-gradient(to bottom,
+          rgba(0, 0, 0, 0.02) 0%,
+          rgba(0, 0, 0, 0.03) 15%,
+          rgba(255, 255, 255, 0.06) 25%,
+          rgba(255, 255, 255, 0) 60%,
+          rgba(0, 0, 0, 0.04) 100%);
+      mix-blend-mode: normal;
     }
   }
 

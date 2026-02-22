@@ -27,6 +27,7 @@ body.is-editor-page #app {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+
   // Header
   &__header {
     display: flex;
@@ -38,8 +39,9 @@ body.is-editor-page #app {
     position: sticky;
     top: 0;
     z-index: 100;
-    position: relative; /* 為 title 絕對定位提供參考 */
-    border-radius:  0 0 1rem 1rem;
+    position: relative;
+    /* 為 title 絕對定位提供參考 */
+    border-radius: 0 0 1rem 1rem;
   }
 
   &__header-back-btn {
@@ -51,12 +53,13 @@ body.is-editor-page #app {
     top: 50%;
     transform: translateY(-50%);
     height: 2.5rem;
-    img{
+
+    img {
       height: 100%;
     }
   }
 
-  &__header-logo{
+  &__header-logo {
     height: 1.5rem;
     object-fit: contain;
     cursor: pointer;
@@ -72,7 +75,8 @@ body.is-editor-page #app {
     align-items: center;
     justify-content: center;
     padding: 0.5rem;
-    touch-action: pan-x pan-y; /* 允許 pan、禁用 pinch-zoom，讓 touchmove 能觸發且不縮放畫面 */
+    touch-action: pan-x pan-y;
+    /* 允許 pan、禁用 pinch-zoom，讓 touchmove 能觸發且不縮放畫面 */
   }
 
   &__canvas-container {
@@ -86,15 +90,43 @@ body.is-editor-page #app {
     container-type: inline-size;
     container-name: editor-canvas;
     touch-action: pan-x pan-y;
+
+    /* 
+      編輯器預覽：模擬實體便利貼黏在牆壁上的陰影。
+      因為子層 .p-editor__canvas 會套用 mask-image，陰影必須放在這層（Wrapper）。
+    */
+    filter:
+      drop-shadow(0 1px 1px rgba(0, 0, 0, 0.05)) drop-shadow(0 8px 12px rgba(0, 0, 0, 0.15));
+    will-change: filter, transform;
+    transform: translateZ(0);
+    /* 防止 Safari 邊緣毛邊 */
   }
 
-  /* 可裁切層：背景、文字、貼紙（會被 clip-path 裁切） */
+  /* 可裁切層：背景、文字、貼紙（由內聯 style 套用 mask-image） */
   &__canvas {
     position: absolute;
     inset: 0;
     overflow: hidden;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     cursor: default;
+
+    /* 
+      模擬實體便利貼光影（與 StickyNote 共用物理打光邏輯）
+    */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      /* 確保光影在最底層背景圖之上，文字內容之下 */
+      background: linear-gradient(to bottom,
+          rgba(0, 0, 0, 0.02) 0%,
+          rgba(0, 0, 0, 0.03) 15%,
+          rgba(255, 255, 255, 0.06) 25%,
+          rgba(255, 255, 255, 0) 60%,
+          rgba(0, 0, 0, 0.04) 100%);
+      mix-blend-mode: normal;
+    }
   }
 
   /* UI 層：編輯框置頂，不被裁切（繪圖模式時全部不接收點擊） */
@@ -107,6 +139,7 @@ body.is-editor-page #app {
 
   /* 繪圖模式：UI 層與文字區塊不接收點擊，由繪圖層獨佔 */
   &__canvas-container.is-draw-mode {
+
     .p-editor__canvas-ui,
     .p-editor__canvas-ui * {
       pointer-events: none !important;
@@ -149,6 +182,7 @@ body.is-editor-page #app {
       pointer-events: auto;
       cursor: pointer;
     }
+
     @include sn.sticky-note-sticker-size;
     display: flex;
     align-items: center;
@@ -335,7 +369,7 @@ body.is-editor-page #app {
 
     &.is-active {
       border-bottom-color: #FF99B2;
-      
+
       .p-editor__tab-label {
         color: var.$color-grey;
         font-weight: bold;
@@ -452,6 +486,7 @@ body.is-editor-page #app {
     &::-webkit-scrollbar {
       display: none;
     }
+
     scrollbar-width: none;
   }
 
@@ -507,6 +542,7 @@ body.is-editor-page #app {
     &::-webkit-scrollbar {
       display: none;
     }
+
     scrollbar-width: none;
   }
 
@@ -547,14 +583,16 @@ body.is-editor-page #app {
     &::-webkit-scrollbar {
       display: none;
     }
+
     scrollbar-width: none;
   }
 
   &__background-btn {
     @include btn.btn-square;
-    position: relative;    
+    position: relative;
+
     &.is-active {
-      .p-editor__background-img{
+      .p-editor__background-img {
         opacity: 0.5;
       }
     }
@@ -595,6 +633,7 @@ body.is-editor-page #app {
     &::-webkit-scrollbar {
       display: none;
     }
+
     scrollbar-width: none;
   }
 
@@ -609,7 +648,7 @@ body.is-editor-page #app {
     border-radius: 0;
 
     &.is-active {
-      .p-editor__shape-icon{
+      .p-editor__shape-icon {
         opacity: 0.5;
       }
     }
@@ -661,6 +700,7 @@ body.is-editor-page #app {
     &::-webkit-scrollbar {
       display: none;
     }
+
     scrollbar-width: none;
   }
 

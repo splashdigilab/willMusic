@@ -2,10 +2,10 @@
   <div
     ref="noteRef"
     class="c-sticky-note"
-    :style="noteStyles"
+    :style="wrapperStyles"
     :data-shape="note.style.shape || 'rounded'"
   >
-    <div class="c-sticky-note__inner">
+    <div class="c-sticky-note__inner" :style="innerStyles">
       <div 
         class="c-sticky-note__content-wrap"
         :style="contentWrapStyle"
@@ -68,18 +68,24 @@ const shapeMaskUrl = computed(() => {
   return s ? s.svg : '/svg/shapes/square.svg'
 })
 
-// 統一的便利貼樣式（使用 % 比例，確保各頁面一致）
-const noteStyles = computed(() => {
+// 外層容器：負責位置與字體大小，並且加上 drop-shadow（不可含有 mask）
+const wrapperStyles = computed(() => {
   const fontPct = 4
+  return {
+    color: props.note.style.textColor,
+    textAlign: props.note.style.textAlign || 'center',
+    fontFamily: props.note.style.fontFamily || 'inherit',
+    '--font-size-pct': fontPct
+  }
+})
+
+// 內層容器：負責形狀裁切與背景圖片（mask 會切掉此層所有內容，所以不可放 drop-shadow）
+const innerStyles = computed(() => {
   const maskUrl = shapeMaskUrl.value
   return {
     backgroundImage: `url(${props.note.style.backgroundImage})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
-    color: props.note.style.textColor,
-    textAlign: props.note.style.textAlign || 'center',
-    fontFamily: props.note.style.fontFamily || 'inherit',
-    '--font-size-pct': fontPct,
     maskImage: `url(${maskUrl})`,
     maskSize: '100% 100%',
     maskRepeat: 'no-repeat',
