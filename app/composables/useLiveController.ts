@@ -14,6 +14,7 @@ export interface SlotPx {
 
 export type LiveItemState =
   | 'visible'        // 正常顯示在牆上
+  | 'reserved'       // 已被 BORROW_REQUEST 預選，等待 TRANSITION_START 觸發出場動畫
   | 'exiting-right'  // 向右飛出（被 Display 借走，動畫中）
   | 'absent'         // 目前在 Display（slot 保留，DOM 移除）
   | 'entering-right' // 從右飛入（新 pending 或 idle 歸還）
@@ -79,7 +80,7 @@ function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-    ;[a[i], a[j]] = [a[j] as T, a[i] as T]
+      ;[a[i], a[j]] = [a[j] as T, a[i] as T]
   }
   return a
 }
@@ -178,7 +179,10 @@ export function useLiveController() {
     for (const fbNote of data) {
       const id = getNoteKey(fbNote)
       if (!currentKeys.has(id) && !s.localTokens.has(fbNote.token)) {
-        if (s.items.value.filter(i => i.state !== 'absent' && i.state !== 'removing-top').length < HISTORY_POOL_SIZE) {
+        const activeCount = s.items.value.filter(
+          i => i.state !== 'removing-top'
+        ).length
+        if (activeCount < HISTORY_POOL_SIZE) {
           s.items.value = [
             ...s.items.value,
             {
@@ -209,11 +213,16 @@ export function useLiveController() {
 
   // ── 狀態操作（由 live.vue 協調動畫後呼叫） ─────────────────────────────────
 
-  /** 隨機挑一張 visible 的 note 借給 Display（排除 removing-top / exiting-right / absent / entering-*） */
+  /** 隨機挑一張 visible 的 note 借給 Display（排除 reserved / removing-top / exiting-right / absent / entering-*） */
   const pickVisible = (): LiveItem | null => {
     const visible = s.items.value.filter(i => i.state === 'visible')
     if (visible.length === 0) return null
     return visible[Math.floor(Math.random() * visible.length)] ?? null
+  }
+
+  /** 找到已被 reserved 的 note（由 BORROW_REQUEST 預選，等待 TRANSITION_START） */
+  const findReserved = (): LiveItem | null => {
+    return s.items.value.find(i => i.state === 'reserved') ?? null
   }
 
   const setItemState = (key: string, state: LiveItemState) => {
@@ -225,12 +234,11 @@ export function useLiveController() {
   }
 
   /**
-   * 新 pending note 從 Display 飛來：
-   * - 加入 items（state: entering-right）
-   * - 若已達 HISTORY_POOL_SIZE，標記最舊可見的那張為 removing-top
-   * - 回傳 { arriving, removed }，由 live.vue 執行 GSAP 後再呼叫 removeItem(removed.key)
+   * 規則四：當 pending note 在 Display 剛開始出場時，踢出 Live 最舊的便利貼（如有），
+   * 並為此 pending note 建立 absent 站位，等 DISPLAY_EXIT_DONE 再進場。
+   * - 回傳 { arriving, removed }，其中 arriving 狀態為 'absent'
    */
-  const addNote = (note: QueuePendingItem): { arriving: LiveItem; removed: LiveItem | null } => {
+  const evictOldestAndCreatePlaceholder = (note: QueuePendingItem): { arriving: LiveItem; removed: LiveItem | null } => {
     const histNote: QueueHistoryItem = {
       ...note,
       status: 'played',
@@ -238,35 +246,41 @@ export function useLiveController() {
     }
     s.localTokens.add(note.token)
 
-    const visible = s.items.value.filter(i => i.state === 'visible')
+    // 為了避免干擾正在 Display 播放或進出場動畫的便利貼，只從「乖乖貼在牆上」的裡面抓最舊的一張
+    const evictionCandidates = s.items.value.filter(
+      i => i.state === 'visible' || i.state === 'reserved'
+    )
     let removed: LiveItem | null = null
-    let slotIndex: number
 
-    if (visible.length >= HISTORY_POOL_SIZE) {
-      // 最後一筆 = 最舊（Firebase 回傳為 desc，items 陣列依此順序）
-      removed = visible[visible.length - 1] ?? null
-      slotIndex = removed?.slotIndex ?? nextFreeSlotIndex()
+    // 如果牆上加上即將回來的 absent 總數達到上限，就必須擠出一張
+    // 這裡 active.length 計算全體（但排除已在離場的 removing-top）
+    const totalActive = s.items.value.filter(i => i.state !== 'removing-top').length
+
+    if (totalActive >= HISTORY_POOL_SIZE) {
+      // 從候選名單依 playedAt 找出最早上傳的 note 移除
+      const oldestVisible = evictionCandidates
+        .filter(i => i.note.playedAt !== null)
+        .sort((a, b) => {
+          const ta = a.note.playedAt?.toMillis() ?? Infinity
+          const tb = b.note.playedAt?.toMillis() ?? Infinity
+          return ta - tb
+        })[0] ?? null
+      removed = oldestVisible
       if (removed) {
         removed.state = 'removing-top'
         triggerRef(s.items)
       }
-    } else {
-      slotIndex = nextFreeSlotIndex()
     }
 
+    // 新便利貼取得 removed 釋放的 slot（如有），否則取空閒 slot
+    const slotIndex = removed ? removed.slotIndex : nextFreeSlotIndex()
     const key = getNoteKey(note) || `arriving-${Date.now()}`
-    const arriving: LiveItem = { key, note: histNote, slotIndex, state: 'entering-right' }
-    // 插在「被移出那張」的陣列位置，新便利貼會佔同一個 slot、不會疊在其他張上面
-    if (removed) {
-      const idx = s.items.value.findIndex(i => i.key === removed.key)
-      if (idx >= 0) {
-        s.items.value = [...s.items.value.slice(0, idx), arriving, ...s.items.value.slice(idx)]
-      } else {
-        s.items.value = [...s.items.value, arriving]
-      }
-    } else {
-      s.items.value = [...s.items.value, arriving]
-    }
+
+    // 與舊版 addNote 的核心差異：這裡建立的站位是 absent，不立即觸發 entering-right
+    const arriving: LiveItem = { key, note: histNote, slotIndex, state: 'absent' }
+
+    // 一律 append 到最後：避免在 removed 前面插入導致 Vue 重算 DOM key、stale element reference
+    s.items.value = [...s.items.value, arriving]
     triggerRef(s.items)
 
     return { arriving, removed }
@@ -285,8 +299,10 @@ export function useLiveController() {
     getSlot,
     setViewport,
     pickVisible,
+    findReserved,
     setItemState,
-    addNote,
+    reconcileFromFirebase,
+    evictOldestAndCreatePlaceholder,
     removeItem,
     startListening,
     stopListening

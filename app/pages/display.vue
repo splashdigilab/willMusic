@@ -68,12 +68,10 @@ import { useDisplayController } from '~/composables/useDisplayController'
 import { toCloneableNotePayload } from '~/utils/screen-sync-payload'
 import { useScreenSync } from '~/composables/useScreenSync'
 import {
-  DISPLAY_SLOT_DURATION_MS,
-  DISPLAY_ANIMATION_RATIO,
+  HOLD_SECONDS,
+  HALF_TRANSITION_SECONDS,
   DISPLAY_SCALE_OFF,
-  DISPLAY_SCALE_PEAK,
-  DISPLAY_ENTER_ANIM1_RATIO,
-  DISPLAY_EXIT_ANIM1_RATIO
+  DISPLAY_SCALE_PEAK
 } from '~/data/display-config'
 
 const {
@@ -130,21 +128,21 @@ const OFF_SCREEN_BOTTOM = '100vh'
 const OFF_SCREEN_LEFT = '-100vw'
 
 /**
- * 入場方向：
- * - pending（新便利貼）：從下方進入
- * - history（idle 從 Live 借來）：從左側進入（Live 在螢幕左方）
+ * 動畫時序（依照 DISPLAY_LIVE_ANIMATION_RULES.md）：
+ *
+ * ┌─── 後半 (HALF_TRANSITION_SECONDS) ──→ 進場
+ * │     fromHistory → 從「畫面左邊外、中間」進場
+ * │     fromPending → 從「畫面下面外、中間」進場
+ * ├─── HOLD_SECONDS ──→ 靜止不動
+ * └─── 前半 (HALF_TRANSITION_SECONDS) ──→ 出場
+ *       往「畫面左邊外、中間」出場
+ *       出場開始時送 TRANSITION_START 給 Live（同步觸發 Live 前半）
  */
 function runSlotTimeline(el: HTMLElement, fromHistory: boolean) {
   if (slotTimeline) {
     slotTimeline.kill()
     slotTimeline = null
   }
-
-  const durationSec = DISPLAY_SLOT_DURATION_MS / 1000
-  const enterDuration = durationSec * DISPLAY_ANIMATION_RATIO
-  const exitDuration = durationSec * DISPLAY_ANIMATION_RATIO
-  const holdDuration = durationSec - enterDuration - exitDuration
-  const exitStart = enterDuration + holdDuration
 
   // 初始位置
   if (fromHistory) {
@@ -164,44 +162,78 @@ function runSlotTimeline(el: HTMLElement, fromHistory: boolean) {
       slotTimeline = null
       const noteId = getNoteId(noteAtStart)
 
-      if (sourceAtStart === 'history') {
-        send({ type: 'DISPLAY_EXIT_DONE', noteId })
-        endSlot()
-      } else if (sourceAtStart === 'pending') {
-        send({ type: 'NEW_NOTE_ARRIVING', note: toCloneableNotePayload(noteAtStart as QueuePendingItem) })
-        endSlot()
-      } else {
-        endSlot()
-      }
+      // 規則二：所有從 display 出場後的便利貼（不論是 history 或是 pending），
+      // 出場完畢後一律通知 Live，讓 Live 將其從右側飛回/飛進原位。
+      send({ type: 'DISPLAY_EXIT_DONE', noteId })
+      endSlot()
     }
   })
 
-  // 進入：動畫1 移入同時 scale OFF→PEAK，動畫2 scale PEAK→1
-  const enterAnim1Duration = enterDuration * DISPLAY_ENTER_ANIM1_RATIO
-  const enterAnim2Duration = enterDuration * (1 - DISPLAY_ENTER_ANIM1_RATIO)
+  // ── 進場（後半：HALF_TRANSITION_SECONDS）──────────────────────────────────
   if (fromHistory) {
-    slotTimeline.to(el, { x: 0, scale: DISPLAY_SCALE_PEAK, duration: enterAnim1Duration, ease: EASE })
+    slotTimeline.to(el, { x: 0, y: 0, scale: DISPLAY_SCALE_PEAK, duration: HALF_TRANSITION_SECONDS * 0.6, ease: EASE })
+    slotTimeline.to(el, { scale: 1, duration: HALF_TRANSITION_SECONDS * 0.4, ease: EASE })
   } else {
-    slotTimeline.to(el, { y: 0, scale: DISPLAY_SCALE_PEAK, duration: enterAnim1Duration, ease: EASE })
-  }
-  slotTimeline.to(el, { scale: 1, duration: enterAnim2Duration, ease: EASE }, `+=0`)
-
-  if (holdDuration > 0) {
-    slotTimeline.to({}, { duration: holdDuration }, enterDuration)
+    slotTimeline.to(el, { x: 0, y: 0, scale: DISPLAY_SCALE_PEAK, duration: HALF_TRANSITION_SECONDS * 0.6, ease: EASE })
+    slotTimeline.to(el, { scale: 1, duration: HALF_TRANSITION_SECONDS * 0.4, ease: EASE })
   }
 
-  // 移出：動畫1 scale 1→PEAK，動畫2 往左移出同時 scale PEAK→OFF
-  const exitAnim1Duration = exitDuration * DISPLAY_EXIT_ANIM1_RATIO
-  const exitAnim2Duration = exitDuration * (1 - DISPLAY_EXIT_ANIM1_RATIO)
-  slotTimeline.to(el, { scale: DISPLAY_SCALE_PEAK, duration: exitAnim1Duration, ease: EASE }, exitStart)
-  slotTimeline.to(el, { x: OFF_SCREEN_LEFT, scale: DISPLAY_SCALE_OFF, duration: exitAnim2Duration, ease: EASE }, exitStart + exitAnim1Duration)
-
-  // 出場開始時向 Live 借下一張：僅當「當前是借來的（idle）且 queue 空」才提早借。
-  // 若當前是最後一則 pending（會送 NEW_NOTE_ARRIVING），不在這裡借片，改由 onComplete → endSlot() 再 BORROW_REQUEST，
-  // 這樣 Live 會先處理 NEW_NOTE_ARRIVING（最舊改 removing-top）再收 BORROW_REQUEST，才不會把「被移出那張」借去 Display。
+  // ── 靜止開始：提早向 Live 借下一張（BORROW_REQUEST）──────────────────────
+  // 不論 history 或 pending，只要 queue 空就借，確保 exitStart 時 reserved 已就緒
+  const holdStart = HALF_TRANSITION_SECONDS
   slotTimeline.add(() => {
-    if (fromHistory && effectiveQueueLength.value === 0) requestBorrowEarly()
+    // 如果下一張需要從 Live 借：在 hold 開始就預借
+    // pending note 自己還在 queue 裡（尚未 completed），所以 <= 1 代表「除了自己沒別的了」
+    const needsBorrow = sourceAtStart === 'pending'
+      ? effectiveQueueLength.value <= 1
+      : effectiveQueueLength.value === 0
+    if (needsBorrow) {
+      requestBorrowEarly()
+    }
+  }, holdStart)
+
+  // ── 靜止 ────────────────────────────────────────────────────────────────────
+  if (HOLD_SECONDS > 0) {
+    slotTimeline.to({}, { duration: HOLD_SECONDS }, holdStart)
+  }
+
+  // ── 出場（前半：HALF_TRANSITION_SECONDS）──────────────────────────────────
+  const exitStart = HALF_TRANSITION_SECONDS + HOLD_SECONDS
+
+  // 出場開始時向 Live 送出 TRANSITION_START（同步觸發 Live 前半動畫）
+  slotTimeline.add(() => {
+    const noteId = getNoteId(noteAtStart)
+    const isExitingPending = sourceAtStart === 'pending'
+    
+    // 如果目前是 pending，且 queue length > 1 (扣掉自己還有別人)，下一個就是 pending
+    // 如果目前是 history，且 queue length > 0，下一個就是 pending
+    const nextSrc = (isExitingPending && effectiveQueueLength.value > 1) || (!isExitingPending && effectiveQueueLength.value > 0) 
+      ? 'pending' : 'history'
+
+    if (!isExitingPending && nextSrc === 'history') {
+      // 規則一/二：idle 輪播，Live 出場 reserved note
+      send({ 
+        type: 'TRANSITION_START', 
+        noteId, 
+        nextSource: 'history',
+        isExitingPending: false
+      })
+    } else if (!isExitingPending && nextSrc === 'pending') {
+      // 規則三：history 播完接下來是 pending，Live 前半不需要任何動作
+    } else if (isExitingPending) {
+      // 規則四：pending 出場，Live 需要擠出最舊的，並處理下一個
+      send({
+        type: 'TRANSITION_START',
+        noteId,
+        nextSource: nextSrc,
+        isExitingPending: true,
+        exitingPendingNote: toCloneableNotePayload(noteAtStart as QueuePendingItem)
+      })
+    }
   }, exitStart)
+
+  slotTimeline.to(el, { scale: DISPLAY_SCALE_PEAK, duration: HALF_TRANSITION_SECONDS * 0.4, ease: EASE }, exitStart)
+  slotTimeline.to(el, { x: OFF_SCREEN_LEFT, scale: DISPLAY_SCALE_OFF, duration: HALF_TRANSITION_SECONDS * 0.6, ease: EASE }, exitStart + HALF_TRANSITION_SECONDS * 0.4)
 }
 
 watch(

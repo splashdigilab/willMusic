@@ -9,9 +9,18 @@ export type ScreenSyncMessage =
   | { type: 'BORROW_REQUEST' }
   /** Live → Display：已選好這張並開始出場動畫，夾帶 note 資料供 Display 預先渲染 */
   | { type: 'BORROW_DEPARTING'; note: SerializedNote }
-  /** Live → Display：Live 出場動畫結束，Display 可開始從左側入場 */
-  | { type: 'LIVE_EXIT_DONE'; noteId: string }
-  /** Display → Live：idle note 出場完畢，Live 可讓此 note 從右側飛回原 slot */
+  /**
+   * Display → Live：過場開始，Live 應同步執行前半動畫
+   *   nextSource='history'：下一張是歷史便利貼（規則一/二前半）
+   *   nextSource='pending'：下一張是新便利貼（規則三）
+   *   isExitingPending=true：目前正在從 Display 出場的是新便利貼，Live 需要擠出最舊的並留空位（規則四）
+   */
+  | {
+    type: 'TRANSITION_START'
+    noteId: string
+    nextSource: 'history' | 'pending'
+    isExitingPending: boolean
+    exitingPendingNote?: SerializedNote
+  }
+  /** Display → Live：idle note 出場完畢，Live 可讓此 note 從右側飛回原 slot（規則一/二/三後半） */
   | { type: 'DISPLAY_EXIT_DONE'; noteId: string }
-  /** Display → Live：新 pending note 展示完畢，含完整 note 資料，Live 從右側接入 */
-  | { type: 'NEW_NOTE_ARRIVING'; note: SerializedNote }

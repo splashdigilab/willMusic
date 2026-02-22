@@ -124,7 +124,7 @@ export function useDisplayController() {
 
   /**
    * 出場動畫「開始時」呼叫：送出 BORROW_REQUEST，回傳 promise（收到 BORROW_DEPARTING 即 resolve）。
-   * 不等待 LIVE_EXIT_DONE，Display 出場結束即可接續播下一張；Live 出場與前一張入場可同時進行。
+   * Display 出場結束即可接續播下一張；Live 出場由 TRANSITION_START 同步觸發。
    */
   const requestBorrowEarly = (): Promise<QueueHistoryItem> => {
     send({ type: 'BORROW_REQUEST' })
@@ -175,6 +175,14 @@ export function useDisplayController() {
 
     if (pending.length > 0) {
       // 有排隊的 pending note：直接上場，不需要等 Live
+      // 若已有提早借好的 idle note（原本要上場的），必須通知 Live 讓它回去
+      if (s.prefetchedNextNote) {
+        const skippedNoteId = getNoteId(s.prefetchedNextNote)
+        send({ type: 'DISPLAY_EXIT_DONE', noteId: skippedNoteId })
+        s.prefetchedNextNote = null
+        console.log(`[useDisplayController] Prefetched note ${skippedNoteId} skipped due to pending note, returning to Live.`)
+      }
+
       const first = pending[0]!
       s.currentNote.value = first
       s.currentSource.value = 'pending'
@@ -191,6 +199,9 @@ export function useDisplayController() {
         send({ type: 'BORROW_REQUEST' })
         try {
           const note = await waitForLiveReady()
+          // 通知 Live 將 reserved note 出場
+          const noteId = getNoteId(note)
+          send({ type: 'TRANSITION_START', noteId, nextSource: 'history', isExitingPending: false })
           s.currentNote.value = note
           s.currentSource.value = 'history'
         } catch (e) {
@@ -241,6 +252,9 @@ export function useDisplayController() {
         send({ type: 'BORROW_REQUEST' })
         waitForLiveReady().then(note => {
           if (!s.currentNote.value) {
+            // 第一次借 note：通知 Live 立即將 reserved note 出場（前半）
+            const noteId = getNoteId(note)
+            send({ type: 'TRANSITION_START', noteId, nextSource: 'history', isExitingPending: false })
             s.currentNote.value = note
             s.currentSource.value = 'history'
           }

@@ -44,10 +44,7 @@ import type { LiveItem, SlotPx } from '~/composables/useLiveController'
 import { useScreenSync } from '~/composables/useScreenSync'
 import { toCloneableNotePayload, deserializeNoteFromChannel } from '~/utils/screen-sync-payload'
 import {
-  DISPLAY_SLOT_DURATION_SECONDS,
-  DISPLAY_ANIMATION_RATIO,
-  DISPLAY_ENTER_ANIM1_RATIO,
-  DISPLAY_EXIT_ANIM1_RATIO,
+  HALF_TRANSITION_SECONDS,
   LIVE_SCALE_OFF,
   LIVE_SCALE_PEAK
 } from '~/data/display-config'
@@ -57,7 +54,7 @@ import {
 const { isInAppBrowser, showWarning, browserName, instructions, showBrowserWarning, closeWarning } = useInAppBrowser()
 const {
   items, loading, getSlot, setViewport,
-  pickVisible, setItemState, addNote, removeItem,
+  pickVisible, findReserved, setItemState, evictOldestAndCreatePlaceholder, removeItem,
   startListening, stopListening
 } = useLiveController()
 const { send, onMessage } = useScreenSync()
@@ -100,7 +97,7 @@ const registerEl = (key: string, rawEl: Element | ComponentPublicInstance | null
         x: -(vw + slot.size / 2), scale: LIVE_SCALE_OFF, opacity: 1
       })
     } else {
-      // visible / exiting / removing：靜止或由後續 GSAP to() 驅動
+      // visible / reserved / exiting / removing：靜止或由後續 GSAP to() 驅動
       gsap.set(el, {
         xPercent: -50, yPercent: -50,
         rotation: slot.rotateDeg,
@@ -114,7 +111,7 @@ const registerEl = (key: string, rawEl: Element | ComponentPublicInstance | null
 
 const itemPositionStyle = (item: LiveItem) => {
   const s = getSlot(item.slotIndex)
-  // 堆疊：removing-top 最高（移出動畫在上層）；其餘依 slotIndex，新張同 slot 不會疊在上面
+  // 堆疊：removing-top 最高（移出動畫在上層）；其餘依 slotIndex
   const zIndex = item.state === 'removing-top' ? 1000 + item.slotIndex : 1 + item.slotIndex
   return {
     left: `${s.cx}px`,
@@ -126,169 +123,211 @@ const itemPositionStyle = (item: LiveItem) => {
   }
 }
 
-// ─── GSAP 動畫工具（與 Display 同 phase 時長與 anim1/anim2 比例）──────────────
+// ─── GSAP 動畫工具（使用 HALF_TRANSITION_SECONDS 做前半 / 後半）──────────────
 
-/** 單一 phase 時長（入場或出場），與 Display 一致 */
-const LIVE_PHASE_DURATION = DISPLAY_SLOT_DURATION_SECONDS * DISPLAY_ANIMATION_RATIO
 const EASE = 'power2.inOut'
 
-/** 向右飛出（Live → Display）：動畫1 scale 1→PEAK，動畫2 往「畫面右邊外中間」移出 + scale PEAK→OFF */
+/**
+ * 向右飛出：前半 HALF_TRANSITION_SECONDS
+ * 從「原本貼的位置」→「畫面右邊外、中間」
+ */
 function animExitRight(el: HTMLElement, slot: SlotPx): Promise<void> {
   const vw = window.innerWidth
   const vh = window.innerHeight
   const rightOffX = vw + slot.size * 1.5 - slot.cx
   const rightOffY = vh / 2 - slot.cy
-  const anim1Duration = LIVE_PHASE_DURATION * DISPLAY_EXIT_ANIM1_RATIO
-  const anim2Duration = LIVE_PHASE_DURATION * (1 - DISPLAY_EXIT_ANIM1_RATIO)
+  const anim1 = HALF_TRANSITION_SECONDS * 0.4
+  const anim2 = HALF_TRANSITION_SECONDS * 0.6
   return new Promise(resolve => {
-    gsap.to(el, { scale: LIVE_SCALE_PEAK, duration: anim1Duration, ease: EASE })
+    gsap.to(el, { scale: LIVE_SCALE_PEAK, duration: anim1, ease: EASE })
     gsap.to(el, {
       x: rightOffX,
       y: rightOffY,
       scale: LIVE_SCALE_OFF,
-      duration: anim2Duration,
+      duration: anim2,
       ease: EASE,
-      delay: anim1Duration,
+      delay: anim1,
       onComplete: resolve
     })
   })
 }
 
-/** 從「畫面右邊外中間」飛入（Display → Live）：動畫1 移入 + scale OFF→PEAK，動畫2 scale PEAK→1 */
+/**
+ * 從右飛入：後半 HALF_TRANSITION_SECONDS
+ * 從「畫面右邊外中間」→ 原位
+ */
 function animEnterRight(el: HTMLElement, slot: SlotPx): Promise<void> {
-  const anim1Duration = LIVE_PHASE_DURATION * DISPLAY_ENTER_ANIM1_RATIO
-  const anim2Duration = LIVE_PHASE_DURATION * (1 - DISPLAY_ENTER_ANIM1_RATIO)
+  const anim1 = HALF_TRANSITION_SECONDS * 0.6
+  const anim2 = HALF_TRANSITION_SECONDS * 0.4
   return new Promise(resolve => {
     gsap.to(el, {
       x: 0,
       y: 0,
       scale: LIVE_SCALE_PEAK,
-      duration: anim1Duration,
+      duration: anim1,
       ease: EASE
     })
     gsap.to(el, {
       scale: 1,
-      duration: anim2Duration,
+      duration: anim2,
       ease: EASE,
-      delay: anim1Duration,
+      delay: anim1,
       onComplete: resolve
     })
   })
 }
 
-function animEnterLeft(el: HTMLElement, size: number, rotateDeg: number): Promise<void> {
-  const anim1Duration = LIVE_PHASE_DURATION * DISPLAY_ENTER_ANIM1_RATIO
-  const anim2Duration = LIVE_PHASE_DURATION * (1 - DISPLAY_ENTER_ANIM1_RATIO)
-  return new Promise(resolve => {
-    gsap.to(el, {
-      x: 0,
-      scale: LIVE_SCALE_PEAK,
-      duration: anim1Duration,
-      ease: EASE
-    })
-    gsap.to(el, {
-      scale: 1,
-      duration: anim2Duration,
-      ease: EASE,
-      delay: anim1Duration,
-      onComplete: resolve
-    })
-  })
-}
-
-/** 往畫面上面中間移出並消失（最舊被擠掉）：動畫1 scale 1→PEAK，動畫2 往上看不見 + scale PEAK→OFF */
+/**
+ * 往上移出並消失：前半 HALF_TRANSITION_SECONDS
+ * 最舊被擠掉 → 從原位 →「畫面上方外、中間」
+ */
 function animRemoveTop(el: HTMLElement, slot: SlotPx): Promise<void> {
   const vw = window.innerWidth
   const topOffX = vw / 2 - slot.cx
   const topOffY = -slot.cy - slot.size - 80
-  const anim1Duration = LIVE_PHASE_DURATION * DISPLAY_EXIT_ANIM1_RATIO
-  const anim2Duration = LIVE_PHASE_DURATION * (1 - DISPLAY_EXIT_ANIM1_RATIO)
+  const anim1 = HALF_TRANSITION_SECONDS * 0.4
+  const anim2 = HALF_TRANSITION_SECONDS * 0.6
   return new Promise(resolve => {
-    gsap.to(el, { scale: LIVE_SCALE_PEAK, duration: anim1Duration, ease: EASE })
+    gsap.to(el, { scale: LIVE_SCALE_PEAK, duration: anim1, ease: EASE })
     gsap.to(el, {
       x: topOffX,
       y: topOffY,
       scale: LIVE_SCALE_OFF,
-      duration: anim2Duration,
+      duration: anim2,
       ease: EASE,
-      delay: anim1Duration,
+      delay: anim1,
       onComplete: resolve
     })
   })
 }
 
-// ─── BroadcastChannel 協調 ────────────────────────────────────────────────────
+// ─── BroadcastChannel 協調（序列化訊息處理，避免並發衝突） ─────────────────
 
 let offSync: (() => void) | null = null
+let msgProcessing = false
+const msgQueue: ScreenSyncMessage[] = []
+
+async function processMsgQueue() {
+  if (msgProcessing) return
+  msgProcessing = true
+  while (msgQueue.length > 0) {
+    const msg = msgQueue.shift()!
+    try {
+      await handleMsg(msg)
+    } catch (err) {
+      console.error('[Live] Error processing message:', msg, err)
+    }
+  }
+  msgProcessing = false
+}
+
+async function handleMsg(msg: ScreenSyncMessage) {
+  switch (msg.type) {
+
+    /**
+     * Display 請求借一張 note（idle 輪播）
+     * 預選一張標記為 reserved，回傳 note 資料供 Display 準備
+     * 不觸發出場動畫——等 TRANSITION_START 同步
+     */
+    case 'BORROW_REQUEST': {
+      // 如果上一輪的 reserved 還沒被 TRANSITION_START 消化，先歸還
+      const stale = findReserved()
+      if (stale) {
+        setItemState(stale.key, 'visible')
+      }
+      const item = pickVisible()
+      if (!item) return
+      setItemState(item.key, 'reserved')
+      send({ type: 'BORROW_DEPARTING', note: toCloneableNotePayload(item.note) })
+      break
+    }
+
+    /**
+     * Display 出場開始（前半），Live 同步動畫
+     * 嚴格遵循使用者的 7 條規則
+     */
+    case 'TRANSITION_START': {
+      const reserved = findReserved()
+      const frontPromises: Promise<void>[] = []
+      let removed: LiveItem | null = null
+
+      // 規則四（前半）：當 pending note 出場時，擠出最舊的便利貼，並為該 pending 準備空位
+      if (msg.isExitingPending && msg.exitingPendingNote) {
+        const note = deserializeNoteFromChannel(msg.exitingPendingNote) as QueuePendingItem
+        const res = evictOldestAndCreatePlaceholder(note)
+        removed = res.removed
+      }
+
+      // 規則一 / 規則四：若下一張要播的是歷史便利貼，reserved 要往右出場
+      if (msg.nextSource === 'history' && reserved) {
+        setItemState(reserved.key, 'exiting-right')
+      }
+
+      // 在所有狀態都改完後，await 一次 nextTick 讓 Vue 更新 DOM
+      await nextTick()
+
+      // 啟動動畫
+      if (removed) {
+        const removedEl = elMap.get(removed.key)
+        const removedSlot = getSlot(removed.slotIndex)
+        if (removedEl) frontPromises.push(animRemoveTop(removedEl, removedSlot))
+      }
+
+      if (msg.nextSource === 'history' && reserved) {
+        const reservedEl = elMap.get(reserved.key)
+        const reservedSlot = getSlot(reserved.slotIndex)
+        if (reservedEl) frontPromises.push(animExitRight(reservedEl, reservedSlot))
+      }
+
+      // 規則三：如果 frontPromises 為空，表示 history→pending，Live 靜止不動
+
+      if (frontPromises.length > 0) await Promise.all(frontPromises)
+
+      // 結算狀態
+      if (removed) removeItem(removed.key)
+      if (msg.nextSource === 'history' && reserved) setItemState(reserved.key, 'absent')
+
+      break
+    }
+
+    /**
+     * 規則二：所有從 Display 出場完畢的便利貼，一律從 Live 右側飛入
+     */
+    case 'DISPLAY_EXIT_DONE': {
+      const item = items.value.find(i => {
+        const n = i.note as any
+        return (n.id && n.id === msg.noteId) || (n.token && n.token === msg.noteId) || (i.key === msg.noteId)
+      })
+      if (!item) {
+        console.warn(`[Live] 找不到 DISPLAY_EXIT_DONE 的 noteId: ${msg.noteId}`)
+        return
+      }
+
+      // 如果該 note 仍然是 reserved（Display 借了它但沒用上），直接恢復 visible
+      if (item.state === 'reserved') {
+        setItemState(item.key, 'visible')
+        return
+      }
+
+      const slot = getSlot(item.slotIndex)
+      setItemState(item.key, 'entering-right')
+      await nextTick()
+
+      const el = elMap.get(item.key)
+      if (el) {
+        gsap.killTweensOf(el)
+        await animEnterRight(el, slot)
+      }
+      setItemState(item.key, 'visible')
+      break
+    }
+  }
+}
 
 const setupSync = () => {
-  offSync = onMessage(async (msg) => {
-    switch (msg.type) {
-
-      // Display 請求借一張 note 做 idle 輪播（不 await 出場動畫，讓 DISPLAY_EXIT_DONE 可同時觸發前一張入場）
-      case 'BORROW_REQUEST': {
-        const item = pickVisible()
-        if (!item) return
-        const noteId = getNoteKey(item.note)
-        const slot = getSlot(item.slotIndex)
-
-        send({ type: 'BORROW_DEPARTING', note: toCloneableNotePayload(item.note) })
-
-        setItemState(item.key, 'exiting-right')
-        await nextTick()
-        const el = elMap.get(item.key)
-        if (el) {
-          animExitRight(el, slot).then(() => {
-            setItemState(item.key, 'absent')
-            send({ type: 'LIVE_EXIT_DONE', noteId })
-          })
-        } else {
-          setItemState(item.key, 'absent')
-          send({ type: 'LIVE_EXIT_DONE', noteId })
-        }
-        break
-      }
-
-      // Display idle 展示結束，note 飛回 Live（從右飛入原 slot）
-      case 'DISPLAY_EXIT_DONE': {
-        const item = items.value.find(i => getNoteKey(i.note) === msg.noteId)
-        if (!item) return
-        const slot = getSlot(item.slotIndex)
-
-        // absent → entering-right：重新渲染此元素，registerEl 設定起始位置
-        setItemState(item.key, 'entering-right')
-        await nextTick()
-        const el = elMap.get(item.key)
-        if (el) await animEnterRight(el, slot)
-        setItemState(item.key, 'visible')
-        break
-      }
-
-      // Display 播完新 pending note，便利貼從右飛入 Live（新張佔最舊那張的 slot，最舊往上看不見移出）
-      case 'NEW_NOTE_ARRIVING': {
-        const note = deserializeNoteFromChannel(msg.note) as QueuePendingItem
-        const { arriving, removed } = addNote(note)
-        await nextTick()
-        // 等 Vue 更新 DOM 並跑完 ref 回調再取元素（必要時多等一幀），確保 removedEl 可播移出動畫
-        const getEl = (key: string) => elMap.get(key)
-        for (let i = 0; i < 5; i++) {
-          if (getEl(arriving.key) && (!removed || getEl(removed.key))) break
-          await new Promise<void>(r => setTimeout(r, 16))
-        }
-
-        const arrivingSlot = getSlot(arriving.slotIndex)
-        const arrivingEl = getEl(arriving.key)
-        const removedEl = removed ? getEl(removed.key) : null
-        const removedSlot = removed ? getSlot(removed.slotIndex) : null
-
-        // 先讓最舊那張往上移出，完成後再讓新便利貼從右飛入
-        if (removedEl && removedSlot) await animRemoveTop(removedEl, removedSlot)
-        if (removed) removeItem(removed.key)
-        if (arrivingEl) await animEnterRight(arrivingEl, arrivingSlot)
-        setItemState(arriving.key, 'visible')
-        break
-      }
-    }
+  offSync = onMessage((msg) => {
+    msgQueue.push(msg)
+    processMsgQueue()
   })
 }
 
