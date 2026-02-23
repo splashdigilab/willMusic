@@ -29,6 +29,35 @@
       </div>
     </div>
 
+    <!-- Submit Confirmation Modal -->
+    <div v-if="showSubmitModal" class="p-editor__modal-overlay" @click="showSubmitModal = false">
+      <div class="p-editor__modal-content" @click.stop>
+        <h2 class="p-editor__modal-title">確認上傳</h2>
+        <p class="p-editor__modal-message">請確認您的便利貼樣貌，上傳後將無法修改。</p>
+        
+        <div class="p-editor__preview-wrapper">
+          <StickyNote v-if="previewNoteData" :note="previewNoteData" />
+        </div>
+
+        <div class="p-editor__modal-actions">
+          <button 
+            class="p-editor__action-btn p-editor__action-btn--secondary" 
+            @click="showSubmitModal = false"
+            :disabled="isSubmitting"
+          >
+            取消
+          </button>
+          <button 
+            class="p-editor__action-btn p-editor__action-btn--primary" 
+            @click="confirmSubmit"
+            :disabled="isSubmitting"
+          >
+            {{ isSubmitting ? '上傳中...' : '確認上傳' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Canvas Area -->
     <div class="p-editor__canvas-section">
       <div
@@ -346,9 +375,9 @@
           type="button"
           class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full" 
           :disabled="isSubmitting"
-          @click="handleSubmit"
+          @click="openSubmitModal"
         >
-          {{ isSubmitting ? '提交中...' : '上傳大螢幕' }}
+          上傳大螢幕
         </button>
       </template>
     </div>
@@ -372,6 +401,7 @@ import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
 import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '@unhead/vue'
+import StickyNote from '~/components/StickyNote.vue'
 
 useHead({
   meta: [
@@ -417,6 +447,7 @@ const isTextEditMode = computed(() => textBlockSelected.value || activeTab.value
 
 const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)
+const showSubmitModal = ref(false)
 
 // 手繪筆刷
 const drawMode = ref(false)
@@ -745,13 +776,43 @@ const handleDraftDecision = async (useDraft: boolean) => {
 
 const isSubmitting = ref(false)
 
-const handleSubmit = async () => {
-  if (isSubmitting.value) return
-
+const openSubmitModal = () => {
   if (!content.value.trim()) {
     alert('請輸入文字內容')
     return
   }
+  
+  const token = loadToken()
+  if (!token) {
+    alert('缺少 Token，請使用正確的連結訪問')
+    return
+  }
+
+  showSubmitModal.value = true
+}
+
+const previewNoteData = computed(() => {
+  const style: StickyNoteStyle = {
+    backgroundImage: backgroundImage.value,
+    shape: shape.value,
+    textColor: textColor.value,
+    textAlign: textAlign.value,
+    stickers: stickers.value,
+    textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
+  }
+  if (drawingData.value) style.drawing = drawingData.value
+
+  return {
+    id: 'preview',
+    content: content.value.trim(),
+    style: style,
+    timestamp: Date.now(),
+    status: 'waiting'
+  } as any
+})
+
+const confirmSubmit = async () => {
+  if (isSubmitting.value) return
 
   const token = loadToken()
   if (!token) {
@@ -767,22 +828,14 @@ const handleSubmit = async () => {
     const isValid = await validateToken(token)
     if (!isValid) {
       alert('Token 無效或已使用，請使用新的連結')
+      showSubmitModal.value = false
       return
     }
 
-    const style: StickyNoteStyle = {
-      backgroundImage: backgroundImage.value,
-      shape: shape.value,
-      textColor: textColor.value,
-      textAlign: textAlign.value,
-      stickers: stickers.value,
-      textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
-    }
-    if (drawingData.value) style.drawing = drawingData.value
-
-    await createNote({ content: content.value.trim(), style }, token)
+    await createNote({ content: previewNoteData.value.content, style: previewNoteData.value.style }, token)
 
     clearDraft()
+    showSubmitModal.value = false
     router.push('/queue-status')
   } catch (e: any) {
     console.error('提交失敗:', e)

@@ -151,6 +151,26 @@ body.is-editor-page #app {
     }
   }
 
+  &__preview-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    margin: 0 auto 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+
+    :deep(.c-sticky-note) {
+      position: relative !important;
+      left: 0 !important;
+      top: 0 !important;
+      transform: none !important;
+      width: 100% !important;
+      height: 100% !important;
+    }
+  }
+
   /* 貼紙內容（可裁切，最頂層） */
   &__sticker-content {
     position: absolute;
