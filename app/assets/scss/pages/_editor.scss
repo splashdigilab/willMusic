@@ -750,6 +750,11 @@ body.is-editor-page #app {
       }
     }
 
+    &--share {
+      background: var.$will-red;
+      color: white;
+    }
+
     // 繪圖模式的完成按鈕（較寬）
     &--complete {
       flex-grow: 1;

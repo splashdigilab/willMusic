@@ -340,6 +340,15 @@
       </div>
     </div>
 
+    <!-- Hidden node for high-res export (html-to-image) -->
+    <div style="position: fixed; left: -9999px; top: -9999px; pointer-events: none;">
+      <div ref="exportNodeRef" style="width: 1080px; height: 1080px; background: transparent; display: flex; justify-content: center; align-items: center;">
+        <div style="width: 100%; height: 100%; position: relative;">
+          <StickyNote v-if="previewNoteData" :note="previewNoteData" style="position: absolute; left: 0; top: 0; transform: none; width: 100%; height: 100%;" />
+        </div>
+      </div>
+    </div>
+
     <!-- Bottom Actions -->
     <div class="p-editor__bottom-actions">
       <!-- 繪圖模式：上一步 / 完成繪圖 / 下一步 -->
@@ -373,8 +382,16 @@
       <template v-else>
         <button
           type="button"
+          class="p-editor__action-btn p-editor__action-btn--share" 
+          :disabled="isSubmitting || isSharing"
+          @click="handleShare"
+        >
+          {{ isSharing ? '處理中...' : '下載 / 分享便利貼' }}
+        </button>
+        <button
+          type="button"
           class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full" 
-          :disabled="isSubmitting"
+          :disabled="isSubmitting || isSharing"
           @click="openSubmitModal"
         >
           上傳大螢幕
@@ -448,6 +465,9 @@ const isTextEditMode = computed(() => textBlockSelected.value || activeTab.value
 const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)
 const showSubmitModal = ref(false)
+
+const isSharing = ref(false)
+const exportNodeRef = ref<HTMLElement | null>(null)
 
 // 手繪筆刷
 const drawMode = ref(false)
@@ -842,6 +862,47 @@ const confirmSubmit = async () => {
     alert(`提交失敗：${e?.message || '請稍後再試'}`)
   } finally {
     isSubmitting.value = false
+  }
+}
+
+import { toPng } from 'html-to-image'
+
+const handleShare = async () => {
+  if (isSharing.value || !exportNodeRef.value) return
+  isSharing.value = true
+
+  try {
+    await nextTick()
+    // Give external SVGs a tiny bit of time to render
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    const dataUrl = await toPng(exportNodeRef.value, {
+      pixelRatio: 1, 
+      cacheBust: true,
+      skipFonts: false
+    })
+
+    const blob = await (await fetch(dataUrl)).blob()
+    const file = new File([blob], 'willmusic-note.png', { type: 'image/png' })
+
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        title: 'WillMusic 便利貼',
+        text: '這是我剛畫好的便利貼！',
+        files: [file]
+      })
+    } else {
+      // Fallback
+      const link = document.createElement('a')
+      link.download = 'willmusic-note.png'
+      link.href = dataUrl
+      link.click()
+    }
+  } catch (error) {
+    console.error('分享失敗:', error)
+    alert('圖片生成失敗，請稍後再試')
+  } finally {
+    isSharing.value = false
   }
 }
 
