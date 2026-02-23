@@ -1,11 +1,6 @@
 <template>
   <div class="p-admin">
     <div class="p-admin__container">
-      <header class="p-admin__header">
-        <h1 class="p-admin__title">WillMusic Sky Memo - 管理後台</h1>
-        <p class="p-admin__subtitle">Token 管理系統</p>
-      </header>
-
       <div class="p-admin__content">
         <!-- Token 生成器 -->
         <section class="p-admin__card">
@@ -47,50 +42,39 @@
           </div>
         </section>
 
-        <!-- 統計資訊（即時更新） -->
+        <!-- 所有便利貼 -->
         <section class="p-admin__card">
-          <h2 class="p-admin__card-title">系統統計</h2>
-          <div class="p-admin__stats-grid">
-            <div class="p-admin__stat-item">
-              <div class="p-admin__stat-value">{{ stats.pendingCount }}</div>
-              <div class="p-admin__stat-label">待處理佇列</div>
+          <h2 class="p-admin__card-title">所有便利貼管理</h2>
+          <div class="p-admin__notes-container">
+            
+            <div class="p-admin__notes-section">
+              <h3 class="p-admin__notes-subtitle">待處理 ({{ pendingNotes.length }})</h3>
+              <div v-if="pendingNotes.length === 0" class="p-admin__empty-state">目前沒有待處理的便利貼</div>
+              <ul v-else class="p-admin__note-list">
+                <li v-for="note in pendingNotes" :key="note.id" class="p-admin__note-item">
+                  <div class="p-admin__note-info">
+                    <span class="p-admin__note-text">{{ note.content }}</span>
+                    <span class="p-admin__note-time">{{ formatTime(note.timestamp) }}</span>
+                  </div>
+                  <button @click="deleteNote(note.id, true)" class="p-admin__btn-delete">刪除</button>
+                </li>
+              </ul>
             </div>
-            <div class="p-admin__stat-item">
-              <div class="p-admin__stat-value">{{ stats.historyCount }}</div>
-              <div class="p-admin__stat-label">歷史紀錄總數</div>
-            </div>
-            <div class="p-admin__stat-item">
-              <div class="p-admin__stat-value">{{ stats.unusedTokens }}</div>
-              <div class="p-admin__stat-label">未使用 Token</div>
-            </div>
-            <div class="p-admin__stat-item">
-              <div class="p-admin__stat-value">{{ stats.usedTokens }}</div>
-              <div class="p-admin__stat-label">已使用 Token</div>
-            </div>
-          </div>
-        </section>
 
-        <!-- 清理工具 -->
-        <section class="p-admin__card">
-          <h2 class="p-admin__card-title">清理工具</h2>
-          <div class="p-admin__cleanup-tools">
-            <p class="p-admin__warning-text">
-              ⚠️ 危險操作：請謹慎使用以下功能
-            </p>
-            <button
-              @click="clearPendingQueue"
-              class="p-admin__btn p-admin__btn--danger"
-              :disabled="isClearing"
-            >
-              清空待處理佇列
-            </button>
-            <button
-              @click="clearHistory"
-              class="p-admin__btn p-admin__btn--danger"
-              :disabled="isClearing"
-            >
-              清空歷史紀錄
-            </button>
+            <div class="p-admin__notes-section">
+              <h3 class="p-admin__notes-subtitle">歷史紀錄 ({{ historyNotes.length }})</h3>
+              <div v-if="historyNotes.length === 0" class="p-admin__empty-state">目前沒有歷史紀錄</div>
+              <ul v-else class="p-admin__note-list">
+                <li v-for="note in historyNotes" :key="note.id" class="p-admin__note-item">
+                  <div class="p-admin__note-info">
+                    <span class="p-admin__note-text">{{ note.content }}</span>
+                    <span class="p-admin__note-time">{{ formatTime(note.playedAt || note.timestamp) }}</span>
+                  </div>
+                  <button @click="deleteNote(note.id, false)" class="p-admin__btn-delete">刪除</button>
+                </li>
+              </ul>
+            </div>
+
           </div>
         </section>
       </div>
@@ -103,7 +87,9 @@ import {
   collection,
   getDocs,
   doc,
-  writeBatch,
+  deleteDoc,
+  query,
+  orderBy,
   onSnapshot
 } from 'firebase/firestore'
 import QRCode from 'qrcode'
@@ -172,97 +158,52 @@ const copyToken = (token: string) => {
   alert('編輯連結已複製到剪貼簿')
 }
 
-// 統計資訊（即時監聽）
-const stats = ref({
-  pendingCount: 0,
-  historyCount: 0,
-  unusedTokens: 0,
-  usedTokens: 0
-})
+// 便利貼清單
+const pendingNotes = ref<any[]>([])
+const historyNotes = ref<any[]>([])
+let notesUnsubscribes: Array<() => void> = []
 
-let statsUnsubscribes: Array<() => void> = []
-
-// 保留以相容可能的殘留引用（統計已改為即時監聽）
-const loadStats = () => {
-  // 即時監聽中，無需手動載入
-}
-
-const startStatsListeners = () => {
-  statsUnsubscribes.push(
-    onSnapshot(collection(db, 'queue_pending'), (snapshot) => {
-      stats.value.pendingCount = snapshot.size
+const startNotesListeners = () => {
+  const pendingQ = query(collection(db, 'queue_pending'), orderBy('timestamp', 'asc'))
+  notesUnsubscribes.push(
+    onSnapshot(pendingQ, (snapshot) => {
+      pendingNotes.value = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
     })
   )
-  statsUnsubscribes.push(
-    onSnapshot(collection(db, 'queue_history'), (snapshot) => {
-      stats.value.historyCount = snapshot.size
-    })
-  )
-  statsUnsubscribes.push(
-    onSnapshot(collection(db, 'tokens'), (snapshot) => {
-      stats.value.unusedTokens = snapshot.docs.filter(
-        d => d.data().status === 'unused'
-      ).length
-      stats.value.usedTokens = snapshot.docs.filter(
-        d => d.data().status === 'used'
-      ).length
+
+  const historyQ = query(collection(db, 'queue_history'), orderBy('playedAt', 'desc'))
+  notesUnsubscribes.push(
+    onSnapshot(historyQ, (snapshot) => {
+      historyNotes.value = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
     })
   )
 }
 
-// 清理工具
-const isClearing = ref(false)
-
-const clearPendingQueue = async () => {
-  if (!confirm('確定要清空待處理佇列嗎？此操作無法復原！')) return
-
-  isClearing.value = true
+const deleteNote = async (id: string, isPending: boolean) => {
+  if (!confirm('確定要刪除這張便利貼嗎？')) return
   try {
-    const snapshot = await getDocs(collection(db, 'queue_pending'))
-    const batch = writeBatch(db)
-
-    snapshot.docs.forEach(document => {
-      batch.delete(doc(db, 'queue_pending', document.id))
-    })
-
-    await batch.commit()
-    alert('待處理佇列已清空')
+    const colName = isPending ? 'queue_pending' : 'queue_history'
+    await deleteDoc(doc(db, colName, id))
   } catch (error) {
-    console.error('Error clearing queue:', error)
-    alert('清空失敗')
-  } finally {
-    isClearing.value = false
+    console.error('Error deleting note:', error)
+    alert('刪除失敗')
   }
 }
 
-const clearHistory = async () => {
-  if (!confirm('確定要清空歷史紀錄嗎？此操作無法復原！')) return
-
-  isClearing.value = true
-  try {
-    const snapshot = await getDocs(collection(db, 'queue_history'))
-    const batch = writeBatch(db)
-
-    snapshot.docs.forEach(document => {
-      batch.delete(doc(db, 'queue_history', document.id))
-    })
-
-    await batch.commit()
-    alert('歷史紀錄已清空')
-  } catch (error) {
-    console.error('Error clearing history:', error)
-    alert('清空失敗')
-  } finally {
-    isClearing.value = false
-  }
+const formatTime = (ts: any) => {
+  if (!ts) return ''
+  const date = ts.toDate ? ts.toDate() : new Date(ts)
+  return date.toLocaleString('zh-TW', {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+  })
 }
 
 onMounted(() => {
-  startStatsListeners()
+  startNotesListeners()
 })
 
 onUnmounted(() => {
-  statsUnsubscribes.forEach(unsub => unsub())
+  notesUnsubscribes.forEach(unsub => unsub())
   clearQrCode()
 })
 </script>

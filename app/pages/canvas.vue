@@ -49,7 +49,7 @@ gsap.registerPlugin(Flip)
 
 /* ─── URL 參數 ─── */
 const route = useRoute()
-const maxNotes   = computed(() => Number(route.query.count) || 20)
+const maxNotes   = computed(() => Number(route.query.count) || 16)
 const displaySec = computed(() => Number(route.query.duration) || 5)
 
 /* ─── Conductor ─── */
@@ -70,7 +70,7 @@ const positionMap = reactive<Record<string, { left: number; top: number; rot: nu
 /** padding (px) 用於 live-zone 內邊距 */
 const PADDING = 8
 /** note 之間最小間距 (px) */
-const GAP = 8
+const GAP = 16
 
 /**
  * 根據 live-zone 尺寸和最大便利貼數量，計算每張便利貼邊長 (px)
@@ -157,7 +157,9 @@ function recalcPositions() {
   const freeCells = allCells.filter(c => !usedCells.has(`${c.col},${c.row}`))
   for (let i = freeCells.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-    ;[freeCells[i], freeCells[j]] = [freeCells[j], freeCells[i]]
+    const temp = freeCells[i]!
+    freeCells[i] = freeCells[j]!
+    freeCells[j] = temp
   }
 
   // 為沒有位置的便利貼分配空閒格子
@@ -166,7 +168,7 @@ function recalcPositions() {
     if (positionMap[id]) continue
     if (freeCellIdx >= freeCells.length) break
 
-    const cell = freeCells[freeCellIdx++]
+    const cell = freeCells[freeCellIdx++]!
     const centerX = cell.col * cellW + cellW / 2 - size / 2
     const centerY = cell.row * cellH + cellH / 2 - size / 2
 
@@ -282,11 +284,16 @@ onMounted(() => {
             pointerEvents: 'none'
           })
           canvasRef.value!.appendChild(clone)
+
+          const lRect = liveZoneRef.value!.getBoundingClientRect()
+          const targetLeaveX = lRect.left + lRect.width / 2
+          const targetLeaveY = lRect.top - 150
+
           gsap.to(clone, {
-            y: -item.rect.top - item.rect.height - 100,
-            x: (window.innerWidth / 4) - item.rect.left - (item.rect.width / 2),
+            x: targetLeaveX - centerX,
+            y: targetLeaveY - centerY,
             opacity: 0,
-            scale: 1,
+            scale: 0.3,
             duration: 1.2,
             ease: 'power3.in',
             onComplete: () => clone.remove()
@@ -305,7 +312,30 @@ onMounted(() => {
 
         onEnter(elements: Element[]) {
           return gsap.from(elements, {
-            y: '100vh',
+            x: (i, el) => {
+              const rect = el.getBoundingClientRect()
+              const centerX = rect.left + rect.width / 2
+              if (el.classList.contains('p-canvas__note-wrap--display')) {
+                const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
+                const dRect = dZone.getBoundingClientRect()
+                return (dRect.left + dRect.width / 2) - centerX
+              } else {
+                const lRect = liveZoneRef.value!.getBoundingClientRect()
+                return (lRect.left + lRect.width / 2) - centerX
+              }
+            },
+            y: (i, el) => {
+              const rect = el.getBoundingClientRect()
+              const centerY = rect.top + rect.height / 2
+              if (el.classList.contains('p-canvas__note-wrap--display')) {
+                const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
+                const dRect = dZone.getBoundingClientRect()
+                return (dRect.bottom + 200) - centerY
+              } else {
+                const lRect = liveZoneRef.value!.getBoundingClientRect()
+                return (lRect.top - 200) - centerY
+              }
+            },
             opacity: 0,
             scale: 0.3,
             duration: 1.2,
@@ -333,7 +363,3 @@ onUnmounted(() => {
   document.body.style.overflow = ''
 })
 </script>
-
-<style scoped>
-/* 樣式統一放在 app/assets/scss/pages/_canvas.scss */
-</style>

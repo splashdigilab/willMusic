@@ -41,6 +41,7 @@ interface ConductorState {
     borrowedId: string | null
     // internals
     unsubPending: (() => void) | null
+    unsubHistory: (() => void) | null
     unsubState: (() => void) | null
     timer: ReturnType<typeof setTimeout> | null
     lastTickTime: number
@@ -68,6 +69,7 @@ function getSingleton(): ConductorState {
             mode: 'waiting',
             borrowedId: null,
             unsubPending: null,
+            unsubHistory: null,
             unsubState: null,
             timer: null,
             lastTickTime: 0,
@@ -110,20 +112,66 @@ export function useConductor() {
             `[Conductor] start  gridMax=${s.gridMax}  loop=${s.loopMs}ms`
         )
 
-        // 1) 從 queue_history 載入最多 gridMax 張
-        try {
-            const q = query(
-                collection(db, 'queue_history'),
-                orderBy('playedAt', 'desc'),
-                limit(s.gridMax)
+        // 1) 從 queue_history 載入最多 gridMax 張並監聽遠端刪除
+        const q = query(
+            collection(db, 'queue_history'),
+            orderBy('playedAt', 'desc'),
+            limit(s.gridMax)
+        )
+
+        await new Promise<void>((resolve) => {
+            let isFirst = true
+            s.unsubHistory = onSnapshot(
+                q,
+                (snapshot) => {
+                    if (isFirst) {
+                        isFirst = false
+                        // 初次載入
+                        s.liveGrid = snapshot.docs.map(
+                            d => ({ id: d.id, ...d.data() } as QueueHistoryItem)
+                        )
+                        resolve()
+                        return
+                    }
+
+                    // 後續更新：只處理被遠端刪除或擠出的項目，避免打斷本地已 unshift() 正在執行的 FLIP 動畫
+                    const changes = snapshot.docChanges()
+                    const hasRemovals = changes.some(change => change.type === 'removed')
+
+                    if (hasRemovals) {
+                        // 如果有刪除，觸發動畫 hook (擷取當前狀態)
+                        s.onBefore?.()
+
+                        let removedCount = 0
+                        changes.forEach((change) => {
+                            if (change.type === 'removed') {
+                                const deletedId = change.doc.id
+                                const beforeLen = s.liveGrid.length
+                                s.liveGrid = s.liveGrid.filter(n => noteId(n) !== deletedId)
+                                if (s.liveGrid.length < beforeLen) removedCount++
+                            }
+                        })
+
+                        // 補上新拉到的歷史資料
+                        if (removedCount > 0 && s.liveGrid.length < s.gridMax) {
+                            const existingIds = new Set(s.liveGrid.map(n => noteId(n)))
+                            for (const d of snapshot.docs) {
+                                if (!existingIds.has(d.id) && s.liveGrid.length < s.gridMax) {
+                                    s.liveGrid.push({ id: d.id, ...d.data() } as QueueHistoryItem)
+                                }
+                            }
+                        }
+
+                        // 觸發動畫 hook (執行 Flip 動畫)
+                        s.onAfter?.()
+                    }
+                },
+                (error) => {
+                    console.error('[Conductor] history listener error', error)
+                    if (isFirst) resolve() // 避免卡死
+                }
             )
-            const snap = await getDocs(q)
-            s.liveGrid = snap.docs.map(
-                d => ({ id: d.id, ...d.data() } as QueueHistoryItem)
-            )
-        } catch (e) {
-            console.error('[Conductor] history fetch failed', e)
-        }
+        })
 
         // 2) 即時監聽 queue_pending
         const pq = query(
@@ -144,9 +192,8 @@ export function useConductor() {
             }
         })
 
-        // 3) 啟動第一次 tick + 定時迴圈
+        // 3) 啟動第一次 tick
         tick()
-        scheduleTick(s.loopMs)
     }
 
     /* ── stopConductor ── */
@@ -154,6 +201,8 @@ export function useConductor() {
         s.isConductor = false
         s.unsubPending?.()
         s.unsubPending = null
+        s.unsubHistory?.()
+        s.unsubHistory = null
         if (s.timer) { clearTimeout(s.timer); s.timer = null }
         s.onBefore = null
         s.onAfter = null
@@ -216,11 +265,11 @@ export function useConductor() {
             s.nowPlaying = null
         }
 
-        // ▸ Phase 4: 廣播
-        broadcast()
-
         // ▸ Phase 5: 呼叫 AFTER hook（canvas 在此執行 Flip.from）
         s.onAfter?.()
+
+        // ▸ Phase 6: 自動排程下一次回合
+        scheduleTick(s.loopMs)
     }
 
     /** 排程下一次 tick（使用 setTimeout 以便重新排程） */
@@ -228,7 +277,6 @@ export function useConductor() {
         if (s.timer) clearTimeout(s.timer)
         s.timer = setTimeout(() => {
             tick()
-            scheduleTick(s.loopMs)
         }, delayMs)
     }
 
