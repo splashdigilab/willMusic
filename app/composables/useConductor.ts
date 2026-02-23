@@ -44,6 +44,8 @@ interface ConductorState {
     unsubHistory: (() => void) | null
     unsubState: (() => void) | null
     timer: ReturnType<typeof setTimeout> | null
+    animTimer: ReturnType<typeof setTimeout> | null
+    isAnimating: boolean
     lastTickTime: number
     completedIds: Set<string>
     // callbacks (stored so tick() can call them)
@@ -72,6 +74,8 @@ function getSingleton(): ConductorState {
             unsubHistory: null,
             unsubState: null,
             timer: null,
+            animTimer: null,
+            isAnimating: false,
             lastTickTime: 0,
             completedIds: new Set(),
             onBefore: null,
@@ -143,9 +147,13 @@ export function useConductor() {
                         s.onBefore?.()
 
                         let removedCount = 0
+                        let nowPlayingRemoved = false
                         changes.forEach((change) => {
                             if (change.type === 'removed') {
                                 const deletedId = change.doc.id
+                                if (s.nowPlaying && noteId(s.nowPlaying) === deletedId) {
+                                    nowPlayingRemoved = true
+                                }
                                 const beforeLen = s.liveGrid.length
                                 s.liveGrid = s.liveGrid.filter(n => noteId(n) !== deletedId)
                                 if (s.liveGrid.length < beforeLen) removedCount++
@@ -160,6 +168,14 @@ export function useConductor() {
                                     s.liveGrid.push({ id: d.id, ...d.data() } as QueueHistoryItem)
                                 }
                             }
+                        }
+
+                        // 若被刪除的剛好是正在展示的歷史便利貼，強制換首
+                        if (nowPlayingRemoved) {
+                            s.nowPlaying = null
+                            s.borrowedId = null
+                            if (s.timer) clearTimeout(s.timer)
+                            tick(true)
                         }
 
                         // 觸發動畫 hook (執行 Flip 動畫)
@@ -179,9 +195,34 @@ export function useConductor() {
             orderBy('timestamp', 'asc')
         )
         s.unsubPending = onSnapshot(pq, snap => {
+            const changes = snap.docChanges()
+            let nowPlayingRemoved = false
+
+            changes.forEach(change => {
+                if (change.type === 'removed') {
+                    const deletedId = change.doc.id
+                    if (s.nowPlaying && noteId(s.nowPlaying) === deletedId) {
+                        nowPlayingRemoved = true
+                    }
+                }
+            })
+
+            if (nowPlayingRemoved) {
+                s.onBefore?.()
+            }
+
             s.queuePending = snap.docs
                 .map(d => ({ id: d.id, ...d.data() } as QueuePendingItem))
                 .filter(q => !s.completedIds.has(noteId(q)))
+
+            if (nowPlayingRemoved) {
+                s.nowPlaying = null
+                s.mode = 'waiting'
+                if (s.timer) clearTimeout(s.timer)
+                tick(true)
+                s.onAfter?.()
+                return
+            }
 
             // 如果在 idle 模式下偵測到新的 pending，重新排程 tick
             // 讓當前展示結束後立刻進入 live push，不用多等一個完整週期
@@ -204,16 +245,24 @@ export function useConductor() {
         s.unsubHistory?.()
         s.unsubHistory = null
         if (s.timer) { clearTimeout(s.timer); s.timer = null }
+        if (s.animTimer) { clearTimeout(s.animTimer); s.animTimer = null }
+        s.isAnimating = false
         s.onBefore = null
         s.onAfter = null
     }
 
     /* ── tick：每 N 秒執行一次 ── */
-    const tick = () => {
+    const tick = (skipHooks = false, force = false) => {
+        // 如果正在進行動畫（且非強制中斷刪除），則進入排隊等待
+        if (s.isAnimating && !force) {
+            scheduleTick(100)
+            return
+        }
+
         s.lastTickTime = Date.now()
 
         // ▸ Phase 1: 呼叫 BEFORE hook（canvas 在此擷取 FLIP state）
-        s.onBefore?.()
+        if (!skipHooks) s.onBefore?.()
 
         // 記住上一回合，準備收尾
         const prevMode = s.mode
@@ -250,11 +299,15 @@ export function useConductor() {
             s.nowPlaying = { ...next }
             s.completedIds.add(noteId(next))
         } else if (s.liveGrid.length > 0) {
-            // ─ 狀態二：Idle Borrow（排除剛放入的那張，避免連續顯示） ─
+            // ─ 狀態二：Idle Borrow（排除剛放入的那張與上一張，避免連續顯示） ─
             s.mode = 'idle'
-            const candidates = justPushedId
-                ? s.liveGrid.filter(n => noteId(n) !== justPushedId)
-                : s.liveGrid
+            const prevPlayingId = prevPlaying ? noteId(prevPlaying) : null
+
+            const candidates = s.liveGrid.filter(n => {
+                const id = noteId(n)
+                return id !== justPushedId && id !== prevPlayingId
+            })
+
             const pool = candidates.length > 0 ? candidates : s.liveGrid
             const idx = Math.floor(Math.random() * pool.length)
             const borrowed = pool[idx]!
@@ -266,7 +319,14 @@ export function useConductor() {
         }
 
         // ▸ Phase 5: 呼叫 AFTER hook（canvas 在此執行 Flip.from）
-        s.onAfter?.()
+        if (!skipHooks) {
+            s.onAfter?.()
+            s.isAnimating = true
+            if (s.animTimer) clearTimeout(s.animTimer)
+            s.animTimer = setTimeout(() => {
+                s.isAnimating = false
+            }, 1250) // 等待 CSS Flip 動畫播放完畢 (1.2s + 緩衝)
+        }
 
         // ▸ Phase 6: 自動排程下一次回合
         scheduleTick(s.loopMs)

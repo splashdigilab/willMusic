@@ -49,7 +49,7 @@ gsap.registerPlugin(Flip)
 
 /* ─── URL 參數 ─── */
 const route = useRoute()
-const maxNotes   = computed(() => Number(route.query.count) || 16)
+const maxNotes   = computed(() => Number(route.query.count) || 4)
 const displaySec = computed(() => Number(route.query.duration) || 5)
 
 /* ─── Conductor ─── */
@@ -285,19 +285,36 @@ onMounted(() => {
           })
           canvasRef.value!.appendChild(clone)
 
-          const lRect = liveZoneRef.value!.getBoundingClientRect()
-          const targetLeaveX = lRect.left + lRect.width / 2
-          const targetLeaveY = lRect.top - 150
+          if (item.clone.classList.contains('p-canvas__note-wrap--display')) {
+            const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
+            const dRect = dZone.getBoundingClientRect()
+            const targetLeaveX = dRect.left + dRect.width / 2
+            const targetLeaveY = dRect.top - 150
 
-          gsap.to(clone, {
-            x: targetLeaveX - centerX,
-            y: targetLeaveY - centerY,
-            opacity: 0,
-            scale: 0.3,
-            duration: 1.2,
-            ease: 'power3.in',
-            onComplete: () => clone.remove()
-          })
+            gsap.to(clone, {
+              x: targetLeaveX - centerX,
+              y: targetLeaveY - centerY,
+              opacity: 0,
+              scale: 0.3,
+              duration: 1.2,
+              ease: 'power3.in',
+              onComplete: () => clone.remove()
+            })
+          } else {
+            const lRect = liveZoneRef.value!.getBoundingClientRect()
+            const targetLeaveX = lRect.left + lRect.width / 2
+            const targetLeaveY = lRect.top - 150
+
+            gsap.to(clone, {
+              x: targetLeaveX - centerX,
+              y: targetLeaveY - centerY,
+              opacity: 0,
+              scale: 0.3,
+              duration: 1.2,
+              ease: 'power3.in',
+              onComplete: () => clone.remove()
+            })
+          }
         }
       }
 
@@ -330,7 +347,11 @@ onMounted(() => {
               if (el.classList.contains('p-canvas__note-wrap--display')) {
                 const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
                 const dRect = dZone.getBoundingClientRect()
-                return (dRect.bottom + 200) - centerY
+                if (displayState.value.mode === 'live') {
+                  return (dRect.bottom + 200) - centerY
+                } else {
+                  return (dRect.top - 200) - centerY
+                }
               } else {
                 const lRect = liveZoneRef.value!.getBoundingClientRect()
                 return (lRect.top - 200) - centerY
