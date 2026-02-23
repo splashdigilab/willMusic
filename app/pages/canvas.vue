@@ -49,7 +49,7 @@ gsap.registerPlugin(Flip)
 
 /* ─── URL 參數 ─── */
 const route = useRoute()
-const maxNotes   = computed(() => Number(route.query.count) || 4)
+const maxNotes   = computed(() => Number(route.query.count) || 16)
 const displaySec = computed(() => Number(route.query.duration) || 5)
 
 /* ─── Conductor ─── */

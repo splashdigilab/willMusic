@@ -50,29 +50,33 @@
             <div class="p-admin__notes-section">
               <h3 class="p-admin__notes-subtitle">待處理 ({{ pendingNotes.length }})</h3>
               <div v-if="pendingNotes.length === 0" class="p-admin__empty-state">目前沒有待處理的便利貼</div>
-              <ul v-else class="p-admin__note-list">
-                <li v-for="note in pendingNotes" :key="note.id" class="p-admin__note-item">
-                  <div class="p-admin__note-info">
-                    <span class="p-admin__note-text">{{ note.content }}</span>
-                    <span class="p-admin__note-time">{{ formatTime(note.timestamp) }}</span>
+              <div v-else class="p-admin__note-grid">
+                <div v-for="note in pendingNotes" :key="note.id" class="p-admin__note-card">
+                  <div class="p-admin__note-visual">
+                    <StickyNote :note="note" />
                   </div>
-                  <button @click="deleteNote(note.id, true)" class="p-admin__btn-delete">刪除</button>
-                </li>
-              </ul>
+                  <div class="p-admin__note-meta">
+                    <span class="p-admin__note-time">{{ formatTime(note.timestamp) }}</span>
+                    <button @click="deleteNote(note.id, true)" class="p-admin__btn-delete">刪除</button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="p-admin__notes-section">
               <h3 class="p-admin__notes-subtitle">歷史紀錄 ({{ historyNotes.length }})</h3>
               <div v-if="historyNotes.length === 0" class="p-admin__empty-state">目前沒有歷史紀錄</div>
-              <ul v-else class="p-admin__note-list">
-                <li v-for="note in historyNotes" :key="note.id" class="p-admin__note-item">
-                  <div class="p-admin__note-info">
-                    <span class="p-admin__note-text">{{ note.content }}</span>
-                    <span class="p-admin__note-time">{{ formatTime(note.playedAt || note.timestamp) }}</span>
+              <div v-else class="p-admin__note-grid">
+                <div v-for="note in historyNotes" :key="note.id" class="p-admin__note-card">
+                  <div class="p-admin__note-visual">
+                    <StickyNote :note="note" />
                   </div>
-                  <button @click="deleteNote(note.id, false)" class="p-admin__btn-delete">刪除</button>
-                </li>
-              </ul>
+                  <div class="p-admin__note-meta">
+                    <span class="p-admin__note-time">{{ formatTime(note.playedAt || note.timestamp) }}</span>
+                    <button @click="deleteNote(note.id, false)" class="p-admin__btn-delete">刪除</button>
+                  </div>
+                </div>
+              </div>
             </div>
 
           </div>
@@ -93,6 +97,7 @@ import {
   onSnapshot
 } from 'firebase/firestore'
 import QRCode from 'qrcode'
+import StickyNote from '~/components/StickyNote.vue'
 
 definePageMeta({
   layout: false
