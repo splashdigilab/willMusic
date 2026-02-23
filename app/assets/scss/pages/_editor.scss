@@ -139,15 +139,11 @@ body.is-editor-page #app {
   }
 
   &__canvas-text {
-    display: inline-block;
-    min-width: 1em;
-    min-height: 1.5em;
     @include sn.sticky-note-text-block-width;
-    padding: 0.5em 0.75em;
+    @include sn.sticky-note-text-box;
     outline: none;
     word-break: break-word;
     @include sn.sticky-note-font-size;
-    box-sizing: border-box;
 
     &.is-empty::before {
       content: attr(data-placeholder);
@@ -168,9 +164,7 @@ body.is-editor-page #app {
     }
 
     @include sn.sticky-note-sticker-size;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    @include sn.sticky-note-sticker-layout;
   }
 
   &__sticker-img {
@@ -217,11 +211,8 @@ body.is-editor-page #app {
 
     /* sizer：與 canvas-text 完全相同尺寸，撐開編輯框 */
     &-sizer {
-      display: inline-block;
-      min-width: 1em;
-      min-height: 1.5em;
       @include sn.sticky-note-text-block-width;
-      padding: 0.5em 0.75em;
+      @include sn.sticky-note-text-box;
       word-break: break-word;
       @include sn.sticky-note-font-size;
       visibility: hidden;
@@ -230,9 +221,7 @@ body.is-editor-page #app {
 
     &--sticker {
       @include sn.sticky-note-sticker-size;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      @include sn.sticky-note-sticker-layout;
     }
 
     &.is-selected {

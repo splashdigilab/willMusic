@@ -15,6 +15,15 @@
   max-width: calc(80cqw / var(--text-scale, 1));
 }
 
+/** 統一文字輸入框之邊界範圍與計算邏輯，確保 editor 的換行點跟 canvas 一致 */
+@mixin sticky-note-text-box {
+  display: inline-block;
+  min-width: 1em;
+  min-height: 1.5em;
+  padding: 0.5em 0.75em;
+  box-sizing: border-box;
+}
+
 @mixin sticky-note-font-size {
   font-family: 'ChenYuluoyan', sans-serif;
   font-size: calc(var(--font-size-pct, 4) * 1cqw);
@@ -26,6 +35,12 @@
   font-size: calc(var(--font-size-pct, 4) * 2 * 1cqw);
   width: calc(var(--font-size-pct, 4) * 2 * 1cqw);
   height: calc(var(--font-size-pct, 4) * 2 * 1cqw);
+}
+
+@mixin sticky-note-sticker-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @mixin sticky-note-sticker-img {
@@ -116,6 +131,7 @@
   /* 內容文字區域 - 換行寬度只與 scale 有關，與 editor 共用 mixin */
   &__content {
     @include sticky-note-text-block-width;
+    @include sticky-note-text-box;
     word-break: break-word;
     @include sticky-note-font-size;
   }
@@ -128,9 +144,7 @@
     pointer-events: none;
     user-select: none;
     line-height: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    @include sticky-note-sticker-layout;
 
     &-img {
       @include sticky-note-sticker-img;

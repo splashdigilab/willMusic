@@ -68,7 +68,7 @@ const getId = (item: any): string => item?.id ?? item?.token ?? ''
 const positionMap = reactive<Record<string, { left: number; top: number; rot: number }>>({})
 
 /** padding (px) 用於 live-zone 內邊距 */
-const PADDING = 30
+const PADDING = 8
 /** note 之間最小間距 (px) */
 const GAP = 8
 
