@@ -42,7 +42,8 @@ interface ConductorState {
     // internals
     unsubPending: (() => void) | null
     unsubState: (() => void) | null
-    timer: ReturnType<typeof setInterval> | null
+    timer: ReturnType<typeof setTimeout> | null
+    lastTickTime: number
     completedIds: Set<string>
     // callbacks (stored so tick() can call them)
     onBefore: (() => void) | null
@@ -69,6 +70,7 @@ function getSingleton(): ConductorState {
             unsubPending: null,
             unsubState: null,
             timer: null,
+            lastTickTime: 0,
             completedIds: new Set(),
             onBefore: null,
             onAfter: null,
@@ -132,11 +134,19 @@ export function useConductor() {
             s.queuePending = snap.docs
                 .map(d => ({ id: d.id, ...d.data() } as QueuePendingItem))
                 .filter(q => !s.completedIds.has(noteId(q)))
+
+            // 如果在 idle 模式下偵測到新的 pending，重新排程 tick
+            // 讓當前展示結束後立刻進入 live push，不用多等一個完整週期
+            if (s.mode === 'idle' && s.queuePending.length > 0) {
+                const elapsed = Date.now() - s.lastTickTime
+                const remaining = Math.max(0, s.loopMs - elapsed)
+                scheduleTick(remaining)
+            }
         })
 
         // 3) 啟動第一次 tick + 定時迴圈
         tick()
-        s.timer = setInterval(tick, s.loopMs)
+        scheduleTick(s.loopMs)
     }
 
     /* ── stopConductor ── */
@@ -144,13 +154,15 @@ export function useConductor() {
         s.isConductor = false
         s.unsubPending?.()
         s.unsubPending = null
-        if (s.timer) { clearInterval(s.timer); s.timer = null }
+        if (s.timer) { clearTimeout(s.timer); s.timer = null }
         s.onBefore = null
         s.onAfter = null
     }
 
     /* ── tick：每 N 秒執行一次 ── */
     const tick = () => {
+        s.lastTickTime = Date.now()
+
         // ▸ Phase 1: 呼叫 BEFORE hook（canvas 在此擷取 FLIP state）
         s.onBefore?.()
 
@@ -162,10 +174,12 @@ export function useConductor() {
         s.borrowedId = null
 
         // ▸ Phase 2: 處理上一回合的收尾
+        let justPushedId: string | null = null
         if (prevPlaying) {
             if (prevMode === 'live') {
                 // Live Push 收尾：展示完畢 → 飛進 grid[0]，推擠其他
                 s.liveGrid.unshift(prevPlaying)
+                justPushedId = noteId(prevPlaying)
                 if (s.liveGrid.length > s.gridMax) s.liveGrid.pop()
                 // 寫入 Firestore
                 try {
@@ -187,10 +201,14 @@ export function useConductor() {
             s.nowPlaying = { ...next }
             s.completedIds.add(noteId(next))
         } else if (s.liveGrid.length > 0) {
-            // ─ 狀態二：Idle Borrow ─
+            // ─ 狀態二：Idle Borrow（排除剛放入的那張，避免連續顯示） ─
             s.mode = 'idle'
-            const idx = Math.floor(Math.random() * s.liveGrid.length)
-            const borrowed = s.liveGrid[idx]!
+            const candidates = justPushedId
+                ? s.liveGrid.filter(n => noteId(n) !== justPushedId)
+                : s.liveGrid
+            const pool = candidates.length > 0 ? candidates : s.liveGrid
+            const idx = Math.floor(Math.random() * pool.length)
+            const borrowed = pool[idx]!
             s.nowPlaying = { ...borrowed }
             s.borrowedId = noteId(borrowed)
         } else {
@@ -203,6 +221,15 @@ export function useConductor() {
 
         // ▸ Phase 5: 呼叫 AFTER hook（canvas 在此執行 Flip.from）
         s.onAfter?.()
+    }
+
+    /** 排程下一次 tick（使用 setTimeout 以便重新排程） */
+    const scheduleTick = (delayMs: number) => {
+        if (s.timer) clearTimeout(s.timer)
+        s.timer = setTimeout(() => {
+            tick()
+            scheduleTick(s.loopMs)
+        }, delayMs)
     }
 
     /* ── broadcast ── */

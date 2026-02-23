@@ -49,7 +49,7 @@ gsap.registerPlugin(Flip)
 
 /* ─── URL 參數 ─── */
 const route = useRoute()
-const maxNotes   = computed(() => Number(route.query.count) || 4)
+const maxNotes   = computed(() => Number(route.query.count) || 20)
 const displaySec = computed(() => Number(route.query.duration) || 5)
 
 /* ─── Conductor ─── */
@@ -203,7 +203,14 @@ function getScatterStyle(flipId: string) {
    ══════════════════════════════════════════════ */
 
 let flipSnapshot: any = null
-let capturedElements: { flipId: string; rect: DOMRect; clone: HTMLElement }[] = []
+let capturedElements: { 
+  flipId: string; 
+  rect: DOMRect; 
+  offsetWidth: number; 
+  offsetHeight: number; 
+  transform: string; 
+  clone: HTMLElement 
+}[] = []
 
 onMounted(() => {
   document.body.style.margin = '0'
@@ -221,9 +228,13 @@ onMounted(() => {
       document.querySelectorAll('.p-canvas__note-wrap').forEach(el => {
         const flipId = el.getAttribute('data-flip-id')
         if (flipId) {
+          const rect = el.getBoundingClientRect()
           capturedElements.push({
             flipId,
-            rect: el.getBoundingClientRect(),
+            rect,
+            offsetWidth: (el as HTMLElement).offsetWidth,
+            offsetHeight: (el as HTMLElement).offsetHeight,
+            transform: window.getComputedStyle(el).transform,
             clone: el.cloneNode(true) as HTMLElement
           })
         }
@@ -248,22 +259,34 @@ onMounted(() => {
       for (const item of capturedElements) {
         if (!currentIds.has(item.flipId)) {
           const clone = item.clone
+          clone.classList.add('is-leaving')
+          clone.removeAttribute('data-flip-id')
+          
+          // Calculate the visual center from the bounding box
+          const centerX = item.rect.left + item.rect.width / 2
+          const centerY = item.rect.top + item.rect.height / 2
+          // Find the top/left of the un-transformed box so it stays centered
+          const fixedLeft = centerX - item.offsetWidth / 2
+          const fixedTop = centerY - item.offsetHeight / 2
+
+          clone.style.margin = '0'
+
           Object.assign(clone.style, {
             position: 'fixed',
-            left:   `${item.rect.left}px`,
-            top:    `${item.rect.top}px`,
-            width:  `${item.rect.width}px`,
-            height: `${item.rect.height}px`,
+            left:   `${fixedLeft}px`,
+            top:    `${fixedTop}px`,
+            width:  `${item.offsetWidth}px`,
+            height: `${item.offsetHeight}px`,
+            transform: item.transform,
             zIndex: '50',
             pointerEvents: 'none'
           })
           canvasRef.value!.appendChild(clone)
-
           gsap.to(clone, {
             y: -item.rect.top - item.rect.height - 100,
             x: (window.innerWidth / 4) - item.rect.left - (item.rect.width / 2),
             opacity: 0,
-            scale: 0.3,
+            scale: 1,
             duration: 1.2,
             ease: 'power3.in',
             onComplete: () => clone.remove()
@@ -273,7 +296,7 @@ onMounted(() => {
 
       // ▸ FLIP 動畫
       Flip.from(flipSnapshot, {
-        targets: '.p-canvas__note-wrap',
+        targets: '.p-canvas__note-wrap:not(.is-leaving)',
         duration: 1.2,
         ease: 'power2.inOut',
         absolute: true,
