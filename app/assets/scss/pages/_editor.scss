@@ -262,7 +262,7 @@ body.is-editor-page #app {
   &__edit-frame-delete {
     position: absolute;
     top: 0;
-    right: 0;
+    left: 0;
     width: 24px;
     height: 24px;
     background: #f43f5e;
@@ -274,10 +274,10 @@ body.is-editor-page #app {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s ease;
-    transform: translate(50%, -50%) scale(var(--inverse-scale, 1));
-    transform-origin: top right;
+    transform: translate(-50%, -50%) scale(var(--inverse-scale, 1));
+    transform-origin: top left;
     backface-visibility: hidden;
+    line-height: 1;
   }
 
   &__edit-frame-transform-handle {
