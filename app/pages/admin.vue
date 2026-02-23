@@ -94,7 +94,8 @@ import {
   deleteDoc,
   query,
   orderBy,
-  onSnapshot
+  onSnapshot,
+  setDoc
 } from 'firebase/firestore'
 import QRCode from 'qrcode'
 import StickyNote from '~/components/StickyNote.vue'
@@ -122,6 +123,11 @@ const clearQrCode = () => {
   }
   currentToken.value = null
   qrTimeLeft.value = 60
+  
+  // 廣播清除 Token
+  try {
+    setDoc(doc(db, 'system', 'active_token'), { token: null, expiresAt: null })
+  } catch (e) { console.error('Error clearing active_token:', e) }
 }
 
 const generateToken = async () => {
@@ -141,6 +147,14 @@ const generateToken = async () => {
         color: { dark: '#000000', light: '#FFFFFF' }
       })
     }
+
+    // 廣播給 /qrcode 頁面
+    try {
+      await setDoc(doc(db, 'system', 'active_token'), {
+        token: tokenId,
+        expiresAt: Date.now() + 60000
+      })
+    } catch (e) { console.error('Error broadcasting active_token:', e) }
 
     qrTimeLeft.value = 60
     qrTimer = setInterval(() => {
