@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getFirestore } from 'firebase/firestore'
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
 
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
@@ -22,7 +22,16 @@ export default defineNuxtPlugin(() => {
 
   try {
     const app = initializeApp(firebaseConfig)
-    const db = getFirestore(app)
+
+    // Use the new way to enable offline persistence in Firebase 10+
+    let db;
+    if (import.meta.client) {
+      db = initializeFirestore(app, {
+        localCache: persistentLocalCache(/*settings*/{ tabManager: persistentMultipleTabManager() })
+      })
+    } else {
+      db = getFirestore(app)
+    }
 
     return {
       provide: {

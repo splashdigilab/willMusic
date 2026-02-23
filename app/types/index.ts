@@ -104,3 +104,13 @@ export interface CreateNoteForm {
   content: string
   style: StickyNoteStyle
 }
+
+/**
+ * 大螢幕推播狀態資料 (Conductor)
+ */
+export interface CurrentStateData {
+  mode: 'live' | 'idle' | 'waiting'
+  now_playing: QueueHistoryItem | QueuePendingItem | null
+  live_grid: (QueueHistoryItem | QueuePendingItem)[]
+  updated_at: number
+}

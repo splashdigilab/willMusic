@@ -1,0 +1,64 @@
+/*
+  Canvas Page Layout
+  100vw = 左 50vw (live-zone 隨機散落) + 右 50vw (display-zone)
+*/
+
+.p-canvas {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+}
+
+/* ─── 左半：隨機散落區 ─── */
+.p-canvas__live-zone {
+    width: 50vw;
+    height: 100vh;
+    position: relative;
+    /* 內部 note-wrap 用 position:absolute */
+    box-sizing: border-box;
+    /* ⚠️ 不可加 overflow:hidden，否則 FLIP 跨區飛行動畫會被裁切 */
+    background: radial-gradient(circle at center,
+            rgba(255, 255, 255, 0.03) 0%,
+            transparent 100%);
+}
+
+/* scatter-slot: 只是 v-for 的容器殼，不做排版 */
+.p-canvas__scatter-slot {
+    /* 不設尺寸與 position，讓內部 note-wrap 自己 absolute */
+}
+
+/* 便利貼外層包裝（FLIP 追蹤目標） */
+.p-canvas__note-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* ⚠️ 不加 transition：GSAP FLIP 自行接管 */
+}
+
+/* ─── 右半：單張展示區 ─── */
+.p-canvas__display-zone {
+    width: 50vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    position: relative;
+    background: radial-gradient(circle at center,
+            rgba(255, 255, 255, 0.05) 0%,
+            transparent 80%);
+}
+
+/* 展示區便利貼放大 */
+.p-canvas__note-wrap--display {
+    width: min(60vh, 40vw);
+    height: min(60vh, 40vw);
+}
+
+/* 等待提示 */
+.p-canvas__empty-state {
+    opacity: 0.5;
+    font-size: 2rem;
+    letter-spacing: 0.2em;
+}
