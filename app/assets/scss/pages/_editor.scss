@@ -95,11 +95,7 @@ body.is-editor-page #app {
       編輯器預覽：模擬實體便利貼黏在牆壁上的陰影。
       因為子層 .p-editor__canvas 會套用 mask-image，陰影必須放在這層（Wrapper）。
     */
-    filter:
-      drop-shadow(0 1px 1px rgba(0, 0, 0, 0.05)) drop-shadow(0 8px 12px rgba(0, 0, 0, 0.15));
-    will-change: filter, transform;
-    transform: translateZ(0);
-    /* 防止 Safari 邊緣毛邊 */
+    @include sn.sticky-note-shadow;
   }
 
   /* 可裁切層：背景、文字、貼紙（由內聯 style 套用 mask-image） */
@@ -113,19 +109,7 @@ body.is-editor-page #app {
       模擬實體便利貼光影（與 StickyNote 共用物理打光邏輯）
     */
     &::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 0;
-      /* 確保光影在最底層背景圖之上，文字內容之下 */
-      background: linear-gradient(to bottom,
-          rgba(0, 0, 0, 0.02) 0%,
-          rgba(0, 0, 0, 0.03) 15%,
-          rgba(255, 255, 255, 0.06) 25%,
-          rgba(255, 255, 255, 0) 60%,
-          rgba(0, 0, 0, 0.04) 100%);
-      mix-blend-mode: normal;
+      @include sn.sticky-note-lighting-overlay;
     }
   }
 
