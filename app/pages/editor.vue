@@ -71,9 +71,11 @@
         @touchend.capture="onCanvasTouchEnd"
         @touchcancel.capture="onCanvasTouchEnd"
       >
-        <!-- 可裁切層：背景、文字內容、貼紙圖片 -->
-        <div class="p-editor__canvas p-editor__canvas--stage" :style="canvasStyle">
-          <!-- 文字內容（可裁切） -->
+        <!-- 虛擬縮放層：永遠固定 600px 大小 -->
+        <div class="p-editor__canvas-scaler" :style="[scalerStyle, wrapperStyles]">
+          <!-- 可裁切層：背景、文字內容、貼紙圖片 -->
+          <div class="p-editor__canvas p-editor__canvas--stage" :style="canvasStyle">
+            <!-- 文字內容（可裁切） -->
           <div
             ref="textBlockRef"
             class="p-editor__text-content"
@@ -137,7 +139,7 @@
             @touchstart.stop="selectTextBlock"
           >
             <!-- 隱藏 sizer：與 contenteditable 同字體/padding，讓編輯框寬高與文字一致；空白時用 placeholder 撐開寬度 -->
-            <span class="p-editor__edit-frame-sizer" aria-hidden="true">{{ content || '在這裡輸入文字...' }}</span>
+            <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="textStyle">{{ content || '在這裡輸入文字...' }}</span>
             <div 
               v-show="isTextEditMode"
               class="p-editor__edit-frame-drag-bar"
@@ -190,6 +192,7 @@
             </div>
           </div>
           </template>
+        </div>
         </div>
       </div>
     </div>
@@ -410,6 +413,7 @@ import { BACKGROUND_IMAGES } from '~/data/backgrounds'
 import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_TABS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
 import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
+import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 import { useTextBlockInteraction } from '~/composables/useTextBlockInteraction'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
 import { useCanvasPinch } from '~/composables/useCanvasPinch'
@@ -554,36 +558,18 @@ watch(drawMode, (v) => {
   }
 })
 
-// mask-image 直接使用 Illustrator 輸出的 SVG（無需 clipPath），遮罩 = 形狀的填色區域
-const shapeMaskUrl = computed(() => {
-  const shapeData = getShapeById(shape.value)
-  const s = shapeData ?? getShapeById(DEFAULT_SHAPE_ID)
-  return s ? s.svg : '/svg/shapes/square.svg'
-})
+const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
+  shape: shape.value || DEFAULT_SHAPE_ID,
+  textColor: textColor.value,
+  textAlign: textAlign.value,
+  backgroundImage: backgroundImage.value
+}))
 
-const canvasStyle = computed(() => {
-  const fontPct = 4
-  const maskUrl = shapeMaskUrl.value
-  return {
-    backgroundImage: `url(${backgroundImage.value})`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    maskImage: `url(${maskUrl})`,
-    maskSize: '100% 100%',
-    maskRepeat: 'no-repeat',
-    maskPosition: 'center',
-    WebkitMaskImage: `url(${maskUrl})`,
-    WebkitMaskSize: '100% 100%',
-    WebkitMaskRepeat: 'no-repeat',
-    WebkitMaskPosition: 'center',
-    '--font-size-pct': fontPct
-  }
-})
+const { wrapperStyles, innerStyles: canvasStyle } = useStickyNoteStyle(noteStyleProps)
 
 const textStyle = computed(() => ({
-  color: textColor.value,
+  ...wrapperStyles.value,
   '--text-color': textColor.value,
-  textAlign: textAlign.value
 }))
 
 
@@ -932,10 +918,7 @@ const handleExitConfirm = () => {
 // Lifecycle
 const initFabricBrush = () => {
   if (typeof window === 'undefined' || !canvasRef.value || !drawingCanvasRef.value || !drawingLayerRef.value) return
-  const rect = canvasRef.value.getBoundingClientRect()
-  const size = Math.min(rect.width, rect.height)
-  if (size < 10) return
-  fabricBrush.init(drawingCanvasRef.value, size, size)
+  fabricBrush.init(drawingCanvasRef.value, 600, 600)
   fabricBrush.setOnUndoRedoChange(() => {
     drawCanUndo.value = fabricBrush.canUndo()
     drawCanRedo.value = fabricBrush.canRedo()
@@ -952,7 +935,9 @@ const initFabricBrush = () => {
   drawCanRedo.value = fabricBrush.canRedo()
 }
 
-
+const scalerStyle = ref({ transform: 'scale(1)' })
+const VIRTUAL_SIZE = 600
+let resizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
   // 處理 Token
@@ -967,29 +952,27 @@ onMounted(() => {
     showDraftModal.value = true
   }
 
+  // Scale observer
+  if (canvasRef.value) {
+    resizeObserver = new ResizeObserver(entries => {
+      const entry = entries[0]
+      if (entry && entry.contentRect.width > 0) {
+        const scale = entry.contentRect.width / VIRTUAL_SIZE
+        scalerStyle.value = { transform: `scale(${scale})` }
+      }
+    })
+    resizeObserver.observe(canvasRef.value)
+  }
+
   // 初始化 Fabric 手繪
   nextTick(() => {
     initFabricBrush()
-    const ro = canvasRef.value ? new ResizeObserver(() => {
-      nextTick(() => {
-        if (!canvasRef.value || !drawingCanvasRef.value) return
-        const rect = canvasRef.value.getBoundingClientRect()
-        const size = Math.min(rect.width, rect.height)
-        if (fabricBrush.isInitialized()) {
-          fabricBrush.resize(size, size)
-        } else {
-          initFabricBrush()
-        }
-      })
-    }) : null
-    if (canvasRef.value && ro) {
-      ro.observe(canvasRef.value)
-      onUnmounted(() => {
-        ro.disconnect()
-        fabricBrush.dispose()
-      })
-    }
   })
+})
+
+onUnmounted(() => {
+  if (resizeObserver) resizeObserver.disconnect()
+  fabricBrush.dispose()
 })
 
 // Auto-save on changes

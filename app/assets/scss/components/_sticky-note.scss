@@ -97,16 +97,31 @@
   mix-blend-mode: normal;
 }
 
+/* 
+  共通虛擬畫布縮放層 (Virtual Scaler)
+  用於鎖定 600px 實體渲染大小，解開瀏覽器字體限制
+*/
+@mixin sticky-note-virtual-scaler($container-name: sticky-note) {
+  width: 600px;
+  height: 600px;
+  container-type: inline-size;
+  container-name: $container-name;
+}
+
 .c-sticky-note {
   position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
 
-  /* 啟用 container query，讓內部可使用 cqw 單位 */
-  container-type: inline-size;
-  container-name: sticky-note;
+  &__scaler {
+    @include sticky-note-virtual-scaler(sticky-note);
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
 
-  @include sticky-note-shadow;
+    @include sticky-note-shadow;
+  }
 
   /* 內層：形狀由外層 mask-image 控制、背景圖片 */
   &__inner {

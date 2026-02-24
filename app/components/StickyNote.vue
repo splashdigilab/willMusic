@@ -2,10 +2,10 @@
   <div
     ref="noteRef"
     class="c-sticky-note"
-    :style="wrapperStyles"
     :data-shape="note.style.shape || 'rounded'"
   >
-    <div class="c-sticky-note__inner" :style="innerStyles">
+    <div class="c-sticky-note__scaler" :style="[scalerStyle, wrapperStyles]">
+      <div class="c-sticky-note__inner" :style="innerStyles">
       <div 
         class="c-sticky-note__content-wrap"
         :style="contentWrapStyle"
@@ -36,6 +36,7 @@
         class="c-sticky-note__drawing"
       />
     </div>
+    </div>
   </div>
 </template>
 
@@ -45,6 +46,7 @@ import type { QueuePendingItem, QueueHistoryItem, StickerInstance } from '~/type
 import { STICKER_LIBRARY } from '~/data/stickers'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
 import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
+import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 
 interface Props {
   note: QueuePendingItem | QueueHistoryItem
@@ -61,51 +63,15 @@ const stickers = computed(() => {
   return props.note.style?.stickers || []
 })
 
-const getAbsoluteUrl = (url?: string) => {
-  if (!url) return ''
-  if (url.startsWith('http') || url.startsWith('data:')) return url
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}${url.startsWith('/') ? '' : '/'}${url}`
-  }
-  return url
-}
+const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
+  shape: props.note.style.shape || DEFAULT_SHAPE_ID,
+  textColor: props.note.style.textColor,
+  textAlign: props.note.style.textAlign || 'center',
+  fontFamily: props.note.style.fontFamily || 'inherit',
+  backgroundImage: props.note.style.backgroundImage
+}))
 
-// mask-image 直接使用 Illustrator 輸出的 SVG（無需 clipPath），遮罩 = 形狀的填色區域
-const shapeMaskUrl = computed(() => {
-  const shapeData = getShapeById(props.note.style?.shape || DEFAULT_SHAPE_ID)
-  const s = shapeData ?? getShapeById(DEFAULT_SHAPE_ID)
-  return getAbsoluteUrl(s ? s.svg : '/svg/shapes/square.svg')
-})
-
-// 外層容器：負責位置與字體大小，並且加上 drop-shadow（不可含有 mask）
-const wrapperStyles = computed(() => {
-  const fontPct = 4
-  return {
-    color: props.note.style.textColor,
-    textAlign: props.note.style.textAlign || 'center',
-    fontFamily: props.note.style.fontFamily || 'inherit',
-    '--font-size-pct': fontPct
-  }
-})
-
-// 內層容器：負責形狀裁切與背景圖片（mask 會切掉此層所有內容，所以不可放 drop-shadow）
-const innerStyles = computed(() => {
-  const maskUrl = shapeMaskUrl.value
-  const bgUrl = getAbsoluteUrl(props.note.style.backgroundImage)
-  return {
-    backgroundImage: `url(${bgUrl})`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    maskImage: `url(${maskUrl})`,
-    maskSize: '100% 100%',
-    maskRepeat: 'no-repeat',
-    maskPosition: 'center',
-    WebkitMaskImage: `url(${maskUrl})`,
-    WebkitMaskSize: '100% 100%',
-    WebkitMaskRepeat: 'no-repeat',
-    WebkitMaskPosition: 'center'
-  }
-})
+const { wrapperStyles, innerStyles } = useStickyNoteStyle(noteStyleProps)
 
 const contentWrapStyle = computed(() => {
   const t = props.note.style?.textTransform
@@ -118,8 +84,23 @@ const contentWrapStyle = computed(() => {
 
 const getStickerData = (type: string) => STICKER_LIBRARY.find(s => s.id === type)
 
-// GSAP 動畫（如果需要）
+// GSAP 動畫（如果需要）與縮放監聽
+const scalerStyle = ref({ transform: 'scale(1)' })
+const VIRTUAL_SIZE = 600
+let resizeObserver: ResizeObserver | null = null
+
 onMounted(() => {
+  if (noteRef.value) {
+    resizeObserver = new ResizeObserver(entries => {
+      const entry = entries[0]
+      if (entry && entry.contentRect.width > 0) {
+        const scale = entry.contentRect.width / VIRTUAL_SIZE
+        scalerStyle.value = { transform: `scale(${scale})` }
+      }
+    })
+    resizeObserver.observe(noteRef.value)
+  }
+
   if (props.animate && import.meta.client && noteRef.value) {
     gsap.from(noteRef.value, {
       scale: 0,
@@ -128,6 +109,12 @@ onMounted(() => {
       duration: 0.6,
       ease: 'back.out(1.7)'
     })
+  }
+})
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
   }
 })
 </script>
