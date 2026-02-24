@@ -869,24 +869,31 @@ const handleShare = async () => {
 
   try {
     await nextTick()
-    // Give external SVGs a tiny bit of time to render
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // 第一次熱機渲染 (Double-pass render workaround)
-    // 解決 html-to-image 偶發性背景透明、mask-image 或 background-image 尚未 caching 完畢的問題 (特別是 iOS Safari)
-    try {
-      await toPng(exportNodeRef.value, { pixelRatio: 1, skipFonts: true, cacheBust: true })
-      await new Promise(resolve => setTimeout(resolve, 150))
-    } catch (e) {
-      console.warn('Initial html-to-image pass failed, continuing anyway', e)
+
+    // 1. 強制預載背景圖片，確保瀏覽器快取中已經具備該圖，防止 html-to-image 抓不到
+    const bgUrl = previewNoteData.value?.style?.backgroundImage
+    if (bgUrl) {
+      await new Promise((resolve) => {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = resolve
+        img.onerror = resolve
+        img.src = bgUrl
+      })
     }
 
+    // 2. 針對 iOS 的預熱 Hack (Warm-up)
+    // 多呼叫一次可以強迫 html-to-image 進行資源綁定，避免機率性破圖
+    await toPng(exportNodeRef.value, { cacheBust: true, skipFonts: true }).catch(() => {})
+
+    // 給予渲染緩衝時間
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    // 3. 正式輸出
     const dataUrl = await toPng(exportNodeRef.value, {
-      pixelRatio: 1.5, // 提高品質
-      skipFonts: false,
-      cacheBust: true, // 確保抓到最新的圖層狀態
-      // @ts-ignore: html-to-image options support but TS definitions might lack it
-      useCORS: true // 確保外部素材跨域可以加載
+      pixelRatio: 2, // 提升匯出畫質
+      cacheBust: true,
+      skipFonts: false
     })
 
     const blob = await (await fetch(dataUrl)).blob()
