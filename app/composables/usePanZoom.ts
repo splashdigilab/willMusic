@@ -1,4 +1,5 @@
 import { ref, watch, onMounted, onUnmounted, type Ref } from 'vue'
+import { gsap } from 'gsap'
 
 export interface PanZoomState {
     x: number
@@ -12,6 +13,7 @@ interface UsePanZoomOptions {
     initialX?: number
     initialY?: number
     initialScale?: number
+    initialCenter?: boolean
     onTransformChange?: (state: PanZoomState) => void
 }
 
@@ -247,10 +249,14 @@ export function usePanZoom(
     const centerContent = () => {
         if (!containerRef.value) return
         const rect = containerRef.value.getBoundingClientRect()
-        state.value.x = rect.width / 2
-        state.value.y = rect.height / 2
-        state.value.scale = 1
-        updateTransform()
+        // 因為 transform-origin 左上角，所以置中時的 x/y 位移就是螢幕的一半乘上 (1 - scale)
+        gsap.to(state.value, {
+            x: (rect.width / 2) * (1 - 1), // 也就是 0
+            y: (rect.height / 2) * (1 - 1), // 也就是 0
+            scale: 1,
+            duration: 0.8,
+            ease: 'power3.out'
+        })
     }
 
     onMounted(() => {
@@ -271,6 +277,12 @@ export function usePanZoom(
             el.addEventListener('touchmove', onTouchMove, { passive: false })
             el.addEventListener('touchend', onTouchEnd)
             el.addEventListener('touchcancel', onTouchEnd)
+
+            if (options.initialCenter) {
+                const rect = el.getBoundingClientRect()
+                state.value.x = (rect.width / 2) * (1 - state.value.scale)
+                state.value.y = (rect.height / 2) * (1 - state.value.scale)
+            }
 
             updateTransform()
         }

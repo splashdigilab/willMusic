@@ -48,7 +48,7 @@ import StickyNote from '~/components/StickyNote.vue'
 
 definePageMeta({ layout: false })
 
-const { listenToTodayHistory } = useFirestore()
+const { listenToHistory } = useFirestore()
 
 // ====== UI Refs ======
 const containerRef = ref<HTMLElement | null>(null)
@@ -58,7 +58,8 @@ const canvasRef = ref<HTMLElement | null>(null)
 const { centerContent } = usePanZoom(containerRef, canvasRef, {
   minScale: 0.1,
   maxScale: 3,
-  initialScale: 1
+  initialScale: 2,
+  initialCenter: true
 })
 
 // ====== Data ======
@@ -66,7 +67,7 @@ const displayItems = ref<QueueHistoryItem[]>([])
 
 // ====== Layout Math: Fermat's Spiral with Collision Detection ======
 const ITEM_SIZE = 150 
-const MARGIN = 50 // Increase margin significantly
+const MARGIN = -20 // Increase margin significantly
 // Ensure the collision radius accounts for the maximum possible bounding box of a rotated square
 // A 150x150 square rotated 45 degrees has a diagonal of 150 * sqrt(2) ≈ 212
 const MAX_BOUNDING_BOX = ITEM_SIZE * Math.SQRT2
@@ -245,7 +246,7 @@ let unsubHistory: any
 
 onMounted(() => {
   // 聽歷史
-  unsubHistory = listenToTodayHistory((items) => {
+  unsubHistory = listenToHistory(100, (items) => {
     displayItems.value = items
   })
 })
@@ -254,87 +255,3 @@ onUnmounted(() => {
   if (unsubHistory) unsubHistory()
 })
 </script>
-
-<style scoped>
-/* 將於 src 抽離為 _index.scss，這裡做基本佔位確保初次渲染正確 */
-.p-index {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-  background-color: var(--color-background, #f5f5f5);
-}
-
-.p-index__tips {
-  position: absolute;
-  top: 2rem;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-  z-index: 10;
-  pointer-events: none;
-  background: rgba(255, 255, 255, 0.7);
-  padding: 1rem 2rem;
-  border-radius: 99px;
-  backdrop-filter: blur(8px);
-}
-
-.p-index__canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  /* 由 usePanZoom 控制 transform */
-  will-change: transform;
-}
-
-.p-index__note-wrap {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 150px;
-  height: 150px;
-  margin-left: -75px;
-  margin-top: -75px;
-  opacity: 0;
-  transform: translate(0px, 0px) scale(0);
-}
-
-.p-index__controls {
-  position: absolute;
-  bottom: 2rem;
-  right: 2rem;
-  z-index: 100;
-  display: flex;
-  gap: 1rem;
-}
-
-.c-btn--icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: white;
-  border: 1px solid #ddd;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  color: #333;
-}
-
-.c-btn--fab {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 56px;
-  padding: 0 1.5rem;
-  border-radius: 99px;
-  background: #333;
-  color: white;
-  text-decoration: none;
-  font-weight: bold;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}
-</style>
