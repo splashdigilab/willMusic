@@ -1,11 +1,5 @@
 <template>
   <div class="p-index" ref="containerRef">
-    <!-- 背景/提示 -->
-    <div class="p-index__tips">
-      <h1>Wall of Notes</h1>
-      <p>Scroll or pinch to zoom. Drag to pan.</p>
-    </div>
-
     <!-- 畫布內容區，負責所有 transforms -->
     <TransitionGroup 
       tag="div" 
