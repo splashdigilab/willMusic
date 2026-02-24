@@ -4,8 +4,8 @@ import type { StickerInstance } from '~/types'
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
-const SCALE_MIN = 0.3
-const SCALE_MAX = 3
+const SCALE_MIN = 1
+const SCALE_MAX = 5
 const RAD_TO_DEG = 180 / Math.PI
 
 export interface UseCanvasPinchOptions {

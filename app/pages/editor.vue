@@ -778,7 +778,7 @@ const resetEditorToInitial = () => {
   fabricBrush.clear()
   textX.value = 50
   textY.value = 50
-  textScale.value = 1
+  textScale.value = 2
   textRotation.value = 0
   syncContentToDom('')
 }
