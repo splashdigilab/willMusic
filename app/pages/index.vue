@@ -152,60 +152,39 @@ const playReflowSequence = async () => {
   const elements = Array.from(canvasEl.querySelectorAll('.p-index__note-wrap'))
   if (!elements.length) return
 
-  if (isFirstRender) {
-    // Recalculate layout cache for current number of items to ensure everyone has a spot
-    calculatePositions(displayItems.value.length)
-    elements.forEach((el, index) => {
-      const pos = getStoredPosition(index)
-      const element = el as HTMLElement
-      element.style.zIndex = `${1000 - index}`
+  // 1. Recalculate layout cache for current number of items to ensure everyone has a spot
+  calculatePositions(displayItems.value.length)
 
-      // First Load: Fly in
-      gsap.to(element, {
-        x: pos.x,
-        y: pos.y,
-        scale: 1,
-        opacity: 1,
-        rotation: (Math.random() - 0.5) * 15,
-        duration: 1.2 + Math.random() * 0.5,
-        ease: 'power3.out',
-        delay: index * 0.05
-      })
+  // 2. Animate elements directly to target positions
+  // This avoids the mobile GPU overdraw crash caused by stacking 100+ items at (0,0)
+  elements.forEach((el, index) => {
+    const pos = getStoredPosition(index)
+    const element = el as HTMLElement
+    element.style.zIndex = `${1000 - index}`
+
+    // Deterministic rotation based on ID so existing notes don't visually wiggle on reflows
+    const idStr = element.dataset.id || String(index)
+    let hash = 0
+    for(let i = 0; i < idStr.length; i++) hash = idStr.charCodeAt(i) + ((hash << 5) - hash)
+    const targetRotation = (hash % 30) - 15
+
+    const delay = isFirstRender ? index * 0.05 : 0
+    const duration = isFirstRender ? 1.2 + (hash % 5) * 0.1 : 0.8
+
+    gsap.to(element, {
+      x: pos.x,
+      y: pos.y,
+      scale: 1,
+      opacity: 1,
+      rotation: targetRotation,
+      duration: duration,
+      ease: 'power3.out',
+      delay: delay,
+      overwrite: 'auto'
     })
-    isFirstRender = false
-    return
-  }
-
-  // Reflow sequence: Collapse to center THEN fan out
-  // 1. Move everything to center
-  gsap.to(elements, {
-    x: 0,
-    y: 0,
-    duration: 0.6,
-    ease: 'back.in(1.2)',
-    onComplete: () => {
-      // 2. Recalculate layout depending on new length
-      calculatePositions(displayItems.value.length)
-      
-      // 3. Fan out to new positions
-      elements.forEach((el, index) => {
-        const pos = getStoredPosition(index)
-        const element = el as HTMLElement
-        element.style.zIndex = `${1000 - index}`
-        
-        gsap.to(element, {
-          x: pos.x,
-          y: pos.y,
-          scale: 1,
-          opacity: 1,
-          rotation: (Math.random() - 0.5) * 15,
-          duration: 1.0 + Math.random() * 0.4,
-          ease: 'power3.out',
-          delay: Math.random() * 0.1
-        })
-      })
-    }
   })
+
+  isFirstRender = false
 }
 
 let leavingCount = 0
