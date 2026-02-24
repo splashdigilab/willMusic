@@ -61,11 +61,20 @@ const stickers = computed(() => {
   return props.note.style?.stickers || []
 })
 
+const getAbsoluteUrl = (url?: string) => {
+  if (!url) return ''
+  if (url.startsWith('http') || url.startsWith('data:')) return url
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${url.startsWith('/') ? '' : '/'}${url}`
+  }
+  return url
+}
+
 // mask-image 直接使用 Illustrator 輸出的 SVG（無需 clipPath），遮罩 = 形狀的填色區域
 const shapeMaskUrl = computed(() => {
   const shapeData = getShapeById(props.note.style?.shape || DEFAULT_SHAPE_ID)
   const s = shapeData ?? getShapeById(DEFAULT_SHAPE_ID)
-  return s ? s.svg : '/svg/shapes/square.svg'
+  return getAbsoluteUrl(s ? s.svg : '/svg/shapes/square.svg')
 })
 
 // 外層容器：負責位置與字體大小，並且加上 drop-shadow（不可含有 mask）
@@ -82,8 +91,9 @@ const wrapperStyles = computed(() => {
 // 內層容器：負責形狀裁切與背景圖片（mask 會切掉此層所有內容，所以不可放 drop-shadow）
 const innerStyles = computed(() => {
   const maskUrl = shapeMaskUrl.value
+  const bgUrl = getAbsoluteUrl(props.note.style.backgroundImage)
   return {
-    backgroundImage: `url(${props.note.style.backgroundImage})`,
+    backgroundImage: `url(${bgUrl})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     maskImage: `url(${maskUrl})`,

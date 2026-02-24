@@ -152,7 +152,7 @@ export const useFirestore = () => {
             for (const orphanId of orphanIds) {
               if (orphanId) {
                 console.warn(`[listenToHistory] Self-healing: deleting orphan ${orphanId} (token=${token})`)
-                deleteDoc(doc(db, 'queue_history', orphanId)).catch(() => {})
+                deleteDoc(doc(db, 'queue_history', orphanId)).catch(() => { })
               }
             }
           }
@@ -162,6 +162,38 @@ export const useFirestore = () => {
       },
       (error) => {
         console.error('Error listening to history:', error)
+      }
+    )
+  }
+
+  /**
+   * 即時監聽「今日」所有歷史紀錄（以當天凌晨 00:00 為分界）
+   */
+  const listenToTodayHistory = (
+    callback: (items: QueueHistoryItem[]) => void
+  ): Unsubscribe => {
+    const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD
+    const todayParams = todayStr.split('-')
+    // Get start of today
+    const startOfToday = new Date(parseInt(todayParams[0] || '0'), parseInt(todayParams[1] || '0') - 1, parseInt(todayParams[2] || '0'), 0, 0, 0, 0)
+
+    const q = query(
+      collection(db, 'queue_history'),
+      where('playedAt', '>=', startOfToday),
+      orderBy('playedAt', 'desc')
+    )
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const rawItems: QueueHistoryItem[] = snapshot.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        } as QueueHistoryItem))
+        callback(deduplicateByToken(rawItems))
+      },
+      (error) => {
+        console.error('Error listening to today history:', error)
       }
     )
   }
@@ -330,6 +362,7 @@ export const useFirestore = () => {
     createNote,
     listenToPendingQueue,
     listenToHistory,
+    listenToTodayHistory,
     getHistory,
     moveToHistory,
     cleanupDuplicateHistory,

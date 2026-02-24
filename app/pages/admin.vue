@@ -57,7 +57,12 @@
                   </div>
                   <div class="p-admin__note-meta">
                     <span class="p-admin__note-time">{{ formatTime(note.timestamp) }}</span>
-                    <button @click="deleteNote(note.id, true)" class="p-admin__btn-delete">刪除</button>
+                    <button 
+                      @click="openDeleteModal(note.id, true)" 
+                      class="p-admin__btn-delete"
+                    >
+                      刪除
+                    </button>
                   </div>
                 </div>
               </div>
@@ -73,7 +78,12 @@
                   </div>
                   <div class="p-admin__note-meta">
                     <span class="p-admin__note-time">{{ formatTime(note.playedAt || note.timestamp) }}</span>
-                    <button @click="deleteNote(note.id, false)" class="p-admin__btn-delete">刪除</button>
+                    <button 
+                      @click="openDeleteModal(note.id, false)" 
+                      class="p-admin__btn-delete"
+                    >
+                      刪除
+                    </button>
                   </div>
                 </div>
               </div>
@@ -83,6 +93,18 @@
         </section>
       </div>
     </div>
+
+    <AppModal
+      v-model="deleteModalOpen"
+      title="確認刪除"
+      message="確定要刪除這張便利貼嗎？刪除後無法復原。"
+      confirmText="確定刪除"
+      cancelText="取消"
+      confirmButtonClass="c-button--danger"
+      :loading="isDeleting"
+      @confirm="confirmDelete"
+      @cancel="deleteModalOpen = false"
+    />
   </div>
 </template>
 
@@ -98,7 +120,7 @@ import {
   setDoc
 } from 'firebase/firestore'
 import QRCode from 'qrcode'
-import StickyNote from '~/components/StickyNote.vue'
+import AppModal from '~/components/AppModal.vue'
 
 definePageMeta({
   layout: false
@@ -198,14 +220,28 @@ const startNotesListeners = () => {
   )
 }
 
-const deleteNote = async (id: string, isPending: boolean) => {
-  if (!confirm('確定要刪除這張便利貼嗎？')) return
+// Delete Modal State
+const deleteModalOpen = ref(false)
+const deleteModalData = ref<{ id: string, isPending: boolean } | null>(null)
+const isDeleting = ref(false)
+
+const openDeleteModal = (id: string, isPending: boolean) => {
+  deleteModalData.value = { id, isPending }
+  deleteModalOpen.value = true
+}
+
+const confirmDelete = async () => {
+  if (!deleteModalData.value) return
+  isDeleting.value = true
   try {
-    const colName = isPending ? 'queue_pending' : 'queue_history'
-    await deleteDoc(doc(db, colName, id))
+    const colName = deleteModalData.value.isPending ? 'queue_pending' : 'queue_history'
+    await deleteDoc(doc(db, colName, deleteModalData.value.id))
+    deleteModalOpen.value = false
   } catch (error) {
     console.error('Error deleting note:', error)
     alert('刪除失敗')
+  } finally {
+    isDeleting.value = false
   }
 }
 

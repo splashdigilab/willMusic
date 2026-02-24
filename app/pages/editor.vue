@@ -11,52 +11,52 @@
     </header>
 
     <!-- Draft Modal -->
-    <div v-if="showDraftModal" class="p-editor__modal-overlay" @click="handleDraftDecision(false)">
-      <div class="p-editor__modal-content" @click.stop>
-        <div class="p-editor__modal-icon">📝</div>
-        <h2 class="p-editor__modal-title">發現草稿</h2>
-        <p class="p-editor__modal-message">
-          您有一份未完成的草稿，要繼續編輯還是重新開始？
-        </p>
-        <div class="p-editor__modal-actions">
-          <button class="p-editor__action-btn p-editor__action-btn--secondary" @click="handleDraftDecision(false)">
-            重新開始
-          </button>
-          <button class="p-editor__action-btn p-editor__action-btn--primary" @click="handleDraftDecision(true)">
-            使用草稿
-          </button>
-        </div>
-      </div>
-    </div>
+    <AppModal
+      v-model="showDraftModal"
+      icon="📝"
+      title="發現草稿"
+      message="您有一份未完成的草稿，要繼續編輯還是重新開始？"
+      confirmText="使用草稿"
+      cancelText="重新開始"
+      @confirm="handleDraftDecision(true)"
+      @cancel="handleDraftDecision(false)"
+    />
+
+    <!-- Exit Confirmation Modal -->
+    <AppModal
+      v-model="showExitModal"
+      title="確定離開？"
+      message="目前的進度已經為您自動儲存為草稿。確定要離開編輯器嗎？"
+      confirmText="確定離開"
+      cancelText="留在本頁"
+      @confirm="handleExitConfirm"
+      @cancel="showExitModal = false"
+    />
+
+    <!-- Alert Modal -->
+    <AppModal
+      v-model="showAlertModal"
+      icon="⚠️"
+      title="提示"
+      :message="alertMessage"
+      confirmText="關閉"
+      :cancelText="''"
+      @confirm="showAlertModal = false"
+    />
 
     <!-- Submit Confirmation Modal -->
-    <div v-if="showSubmitModal" class="p-editor__modal-overlay" @click="showSubmitModal = false">
-      <div class="p-editor__modal-content" @click.stop>
-        <h2 class="p-editor__modal-title">確認上傳</h2>
-        <p class="p-editor__modal-message">請確認您的便利貼樣貌，上傳後將無法修改。</p>
-        
-        <div class="p-editor__preview-wrapper">
-          <StickyNote v-if="previewNoteData" :note="previewNoteData" />
-        </div>
-
-        <div class="p-editor__modal-actions">
-          <button 
-            class="p-editor__action-btn p-editor__action-btn--secondary" 
-            @click="showSubmitModal = false"
-            :disabled="isSubmitting"
-          >
-            取消
-          </button>
-          <button 
-            class="p-editor__action-btn p-editor__action-btn--primary" 
-            @click="confirmSubmit"
-            :disabled="isSubmitting"
-          >
-            {{ isSubmitting ? '上傳中...' : '確認上傳' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <AppModal
+      v-model="showSubmitModal"
+      title="確認上傳"
+      message="請確認您的便利貼樣貌，上傳後將無法修改。"
+      :loading="isSubmitting"
+      @confirm="confirmSubmit"
+      @cancel="showSubmitModal = false"
+    >
+      <template #preview>
+        <StickyNote v-if="previewNoteData" :note="previewNoteData" />
+      </template>
+    </AppModal>
 
     <!-- Canvas Area -->
     <div class="p-editor__canvas-section">
@@ -419,6 +419,7 @@ import { useFabricBrush } from '~/composables/useFabricBrush'
 import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '@unhead/vue'
 import StickyNote from '~/components/StickyNote.vue'
+import AppModal from '~/components/AppModal.vue'
 
 useHead({
   meta: [
@@ -464,7 +465,16 @@ const isTextEditMode = computed(() => textBlockSelected.value || activeTab.value
 
 const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)
+const showExitModal = ref(false)
 const showSubmitModal = ref(false)
+
+const showAlertModal = ref(false)
+const alertMessage = ref('')
+
+const showAlert = (msg: string) => {
+  alertMessage.value = msg
+  showAlertModal.value = true
+}
 
 const isSharing = ref(false)
 const exportNodeRef = ref<HTMLElement | null>(null)
@@ -798,13 +808,13 @@ const isSubmitting = ref(false)
 
 const openSubmitModal = () => {
   if (!content.value.trim()) {
-    alert('請輸入文字內容')
+    showAlert('請輸入文字內容')
     return
   }
   
   const token = loadToken()
   if (!token) {
-    alert('缺少 Token，請使用正確的連結訪問')
+    showAlert('缺少 Token，請使用正確的連結訪問')
     return
   }
 
@@ -836,7 +846,7 @@ const confirmSubmit = async () => {
 
   const token = loadToken()
   if (!token) {
-    alert('缺少 Token，請使用正確的連結訪問')
+    showAlert('缺少 Token，請使用正確的連結訪問')
     return
   }
 
@@ -847,7 +857,7 @@ const confirmSubmit = async () => {
 
     const isValid = await validateToken(token)
     if (!isValid) {
-      alert('Token 無效或已使用，請使用新的連結')
+      showAlert('Token 無效或已使用，請使用新的連結')
       showSubmitModal.value = false
       return
     }
@@ -859,7 +869,7 @@ const confirmSubmit = async () => {
     router.push('/queue-status')
   } catch (e: any) {
     console.error('提交失敗:', e)
-    alert(`提交失敗：${e?.message || '請稍後再試'}`)
+    showAlert(`提交失敗：${e?.message || '請稍後再試'}`)
   } finally {
     isSubmitting.value = false
   }
@@ -878,7 +888,6 @@ const handleShare = async () => {
     
     const dataUrl = await toPng(exportNodeRef.value, {
       pixelRatio: 1, 
-      cacheBust: true,
       skipFonts: false
     })
 
@@ -900,7 +909,7 @@ const handleShare = async () => {
     }
   } catch (error) {
     console.error('分享失敗:', error)
-    alert('圖片生成失敗，請稍後再試')
+    showAlert('圖片生成失敗，請稍後再試')
   } finally {
     isSharing.value = false
   }
@@ -908,10 +917,15 @@ const handleShare = async () => {
 
 const goBack = () => {
   if (content.value || stickers.value.length > 0) {
-    if (confirm('離開前要儲存草稿嗎？')) {
-      saveDraftData()
-    }
+    showExitModal.value = true
+  } else {
+    router.push('/home')
   }
+}
+
+const handleExitConfirm = () => {
+  saveDraftData()
+  showExitModal.value = false
   router.push('/home')
 }
 
