@@ -249,11 +249,12 @@ export function usePanZoom(
     const centerContent = () => {
         if (!containerRef.value) return
         const rect = containerRef.value.getBoundingClientRect()
+        const targetScale = options.initialScale ?? 1
         // 因為 transform-origin 左上角，所以置中時的 x/y 位移就是螢幕的一半乘上 (1 - scale)
         gsap.to(state.value, {
-            x: (rect.width / 2) * (1 - 1), // 也就是 0
-            y: (rect.height / 2) * (1 - 1), // 也就是 0
-            scale: 1,
+            x: (rect.width / 2) * (1 - targetScale),
+            y: (rect.height / 2) * (1 - targetScale),
+            scale: targetScale,
             duration: 0.8,
             ease: 'power3.out'
         })

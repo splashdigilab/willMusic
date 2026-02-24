@@ -71,9 +71,6 @@
 @mixin sticky-note-shadow {
   filter:
     drop-shadow(0 1px 1px rgba(0, 0, 0, 0.05)) drop-shadow(0 8px 12px rgba(0, 0, 0, 0.15));
-  will-change: filter, transform;
-  transform: translateZ(0);
-  /* 提升硬體加速，防止 Safari 邊緣毛邊 */
 }
 
 /* 

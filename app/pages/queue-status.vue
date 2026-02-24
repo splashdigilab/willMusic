@@ -188,7 +188,3 @@ onUnmounted(() => {
   }
 })
 </script>
-
-<style scoped>
-/* 所有樣式已移至 app/assets/scss/pages/_queue-status.scss */
-</style>

@@ -56,9 +56,9 @@ const canvasRef = ref<HTMLElement | null>(null)
 
 // ====== Pan & Zoom ======
 const { centerContent } = usePanZoom(containerRef, canvasRef, {
-  minScale: 0.1,
+  minScale: 0.5,
   maxScale: 3,
-  initialScale: 2,
+  initialScale: 1.5,
   initialCenter: true
 })
 
@@ -78,14 +78,32 @@ interface Position { x: number; y: number }
 const layoutCache = ref<Position[]>([])
 
 // Helper to check if a new position collides with any existing positions
-const isColliding = (pos: Position, existingPositions: Position[]): boolean => {
-  for (const existing of existingPositions) {
-    const dx = pos.x - existing.x
-    const dy = pos.y - existing.y
-    const distanceSquared = dx * dx + dy * dy
-    // If distance is less than 2 * radius, they overlap
-    if (distanceSquared < (COLLISION_RADIUS * 2) * (COLLISION_RADIUS * 2)) {
-      return true
+// Optimize to O(1) by using Spatial Grid Partitioning
+const getGridKey = (x: number, y: number, cellSize: number) => {
+  return `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`
+}
+
+const isCollidingOptimized = (
+  pos: Position,
+  grid: Map<string, Position[]>,
+  cellSize: number
+): boolean => {
+  const cellX = Math.floor(pos.x / cellSize)
+  const cellY = Math.floor(pos.y / cellSize)
+  
+  // Check center cell and all 8 surrounding cells
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      const neighbors = grid.get(`${cellX + dx},${cellY + dy}`)
+      if (neighbors) {
+        for (const existing of neighbors) {
+          const distX = pos.x - existing.x
+          const distY = pos.y - existing.y
+          if (distX * distX + distY * distY < (COLLISION_RADIUS * 2) * (COLLISION_RADIUS * 2)) {
+            return true
+          }
+        }
+      }
     }
   }
   return false
@@ -97,6 +115,8 @@ const isColliding = (pos: Position, existingPositions: Position[]): boolean => {
  */
 const calculatePositions = (itemCount: number) => {
   const positions: Position[] = []
+  const grid = new Map<string, Position[]>()
+  const cellSize = COLLISION_RADIUS * 2 // Define grid size as the maximum possible collision diameter
   
   // c is the step multiplier.
   const c = 35 
@@ -104,7 +124,10 @@ const calculatePositions = (itemCount: number) => {
 
   for (let i = 0; i < itemCount; i++) {
     if (i === 0) {
-      positions.push({ x: 0, y: 0 })
+      const pos = { x: 0, y: 0 }
+      positions.push(pos)
+      const key = getGridKey(pos.x, pos.y, cellSize)
+      grid.set(key, [pos])
       spiralIndex++
       continue
     }
@@ -122,13 +145,16 @@ const calculatePositions = (itemCount: number) => {
         y: r * Math.sin(theta)
       }
 
-      if (!isColliding(currentPos, positions)) {
+      if (!isCollidingOptimized(currentPos, grid, cellSize)) {
         found = true
       }
       spiralIndex++
     }
     
     positions.push(currentPos)
+    const key = getGridKey(currentPos.x, currentPos.y, cellSize)
+    if (!grid.has(key)) grid.set(key, [])
+    grid.get(key)!.push(currentPos)
   }
 
   layoutCache.value = positions
@@ -143,48 +169,84 @@ const getStoredPosition = (index: number) => {
 
 // ====== Animation Logic ======
 let isFirstRender = true
+let isReflowing = false
 
 const playReflowSequence = async () => {
+  if (isReflowing) return
+  isReflowing = true
+
   await nextTick()
   const canvasEl = canvasRef.value ? ((canvasRef.value as any).$el || canvasRef.value) : null
-  if (!canvasEl) return
+  if (!canvasEl) {
+    isReflowing = false
+    return
+  }
 
   const elements = Array.from(canvasEl.querySelectorAll('.p-index__note-wrap'))
-  if (!elements.length) return
+  if (!elements.length) {
+    isReflowing = false
+    return
+  }
 
-  // 1. Recalculate layout cache for current number of items to ensure everyone has a spot
-  calculatePositions(displayItems.value.length)
+  if (isFirstRender) {
+    // Recalculate layout cache for current number of items to ensure everyone has a spot
+    calculatePositions(displayItems.value.length)
+    elements.forEach((el, index) => {
+      const pos = getStoredPosition(index)
+      const element = el as HTMLElement
+      element.style.zIndex = `${1000 - index}`
 
-  // 2. Animate elements directly to target positions
-  // This avoids the mobile GPU overdraw crash caused by stacking 100+ items at (0,0)
-  elements.forEach((el, index) => {
-    const pos = getStoredPosition(index)
-    const element = el as HTMLElement
-    element.style.zIndex = `${1000 - index}`
+      // First Load: Fly in
+      // 效能優化：限制延遲上限，避免 iOS 因為過長 queue 而崩潰
+      const animDelay = Math.min(index * 0.05, 1.5)
 
-    // Deterministic rotation based on ID so existing notes don't visually wiggle on reflows
-    const idStr = element.dataset.id || String(index)
-    let hash = 0
-    for(let i = 0; i < idStr.length; i++) hash = idStr.charCodeAt(i) + ((hash << 5) - hash)
-    const targetRotation = (hash % 30) - 15
-
-    const delay = isFirstRender ? index * 0.05 : 0
-    const duration = isFirstRender ? 1.2 + (hash % 5) * 0.1 : 0.8
-
-    gsap.to(element, {
-      x: pos.x,
-      y: pos.y,
-      scale: 1,
-      opacity: 1,
-      rotation: targetRotation,
-      duration: duration,
-      ease: 'power3.out',
-      delay: delay,
-      overwrite: 'auto'
+      gsap.to(element, {
+        x: pos.x,
+        y: pos.y,
+        scale: 1,
+        opacity: 1,
+        rotation: (Math.random() - 0.5) * 15,
+        duration: 1.2 + Math.random() * 0.5,
+        ease: 'power3.out',
+        delay: animDelay
+      })
     })
-  })
+    isFirstRender = false
+    isReflowing = false
+    return
+  }
 
-  isFirstRender = false
+  // Reflow sequence: Collapse to center THEN fan out
+  // 1. Move everything to center
+  gsap.to(elements, {
+    x: 0,
+    y: 0,
+    duration: 0.6,
+    ease: 'back.in(1.2)',
+    onComplete: () => {
+      // 2. Recalculate layout depending on new length
+      calculatePositions(displayItems.value.length)
+      
+      // 3. Fan out to new positions
+      elements.forEach((el, index) => {
+        const pos = getStoredPosition(index)
+        const element = el as HTMLElement
+        element.style.zIndex = `${1000 - index}`
+        
+        gsap.to(element, {
+          x: pos.x,
+          y: pos.y,
+          scale: 1,
+          opacity: 1,
+          rotation: (Math.random() - 0.5) * 15,
+          duration: 1.0 + Math.random() * 0.4,
+          ease: 'power3.out',
+          delay: Math.random() * 0.1
+        })
+      })
+      isReflowing = false
+    }
+  })
 }
 
 let leavingCount = 0
@@ -225,7 +287,7 @@ let unsubHistory: any
 
 onMounted(() => {
   // 聽歷史
-  unsubHistory = listenToHistory(100, (items) => {
+  unsubHistory = listenToHistory(300, (items) => {
     displayItems.value = items
   })
 })
