@@ -410,27 +410,27 @@ body.is-editor-page #app {
     height: 8px;
     border-radius: 3px;
     appearance: none;
-    background: #bfbfbf;
+    background: #B3B3B3;
     outline: none;
     cursor: pointer;
 
     &::-webkit-slider-thumb {
       appearance: none;
-      width: 1.25rem;
-      height: 1.25rem;
+      width: 1.5rem;
+      height: 1.5rem;
       border-radius: 50%;
       background: white;
-      border: 2px solid #bfbfbf;
+      border: 2px solid #B3B3B3;
       cursor: pointer;
       // box-shadow: var(--shadow-soft);
     }
 
     &::-moz-range-thumb {
-      width: 1.25rem;
-      height: 1.25rem;
+      width: 1.5rem;
+      height: 1.5rem;
       border-radius: 50%;
       background: white;
-      border: 2px solid #bfbfbf;
+      border: 2px solid #B3B3B3;
       cursor: pointer;
       // box-shadow: var(--shadow-soft);
     }
@@ -521,6 +521,7 @@ body.is-editor-page #app {
     background: transparent;
     border: none;
     border-radius: 0;
+
 
     &.is-active .p-editor__align-icon {
       opacity: 0.5;
@@ -624,7 +625,7 @@ body.is-editor-page #app {
     display: block;
     width: 100%;
     height: 100%;
-    background-color: var.$color-grey;
+    background-color: #B3B3B3;
     mask-image: var(--shape-svg);
     mask-size: contain;
     mask-repeat: no-repeat;
@@ -675,6 +676,8 @@ body.is-editor-page #app {
     border: 1px solid #e5e5e5;
     background: white;
     padding: 0.5rem;
+    width: 40px;
+    height: 40px;
 
     &-img {
       width: 100%;

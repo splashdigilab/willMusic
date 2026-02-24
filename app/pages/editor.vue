@@ -3,6 +3,9 @@
     <!-- Header -->
     <AppHeader show-back relative @back="goBack" />
 
+    <!-- Tutorial Modal -->
+    <EditorTutorialModal v-model="showTutorialModal" />
+
     <!-- Draft Modal -->
     <AppModal
       v-model="showDraftModal"
@@ -417,6 +420,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '@unhead/vue'
 import StickyNote from '~/components/StickyNote.vue'
 import AppModal from '~/components/AppModal.vue'
+import EditorTutorialModal from '~/components/EditorTutorialModal.vue'
 
 useHead({
   meta: [
@@ -462,6 +466,7 @@ const isTextEditMode = computed(() => textBlockSelected.value || activeTab.value
 
 const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)
+const showTutorialModal = ref(false)
 const showExitModal = ref(false)
 const showSubmitModal = ref(false)
 
@@ -962,6 +967,12 @@ onMounted(() => {
   const existingDraft = loadDraft()
   if (existingDraft) {
     showDraftModal.value = true
+  } else {
+    // 沒有草稿時，檢查是否看過教學
+    const hasSeen = localStorage.getItem('hasSeenWillMusicTutorial')
+    if (!hasSeen) {
+      showTutorialModal.value = true
+    }
   }
 
   // Scale observer
