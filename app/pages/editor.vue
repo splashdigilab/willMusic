@@ -1,14 +1,7 @@
 <template>
   <div class="p-editor">
     <!-- Header -->
-    <header class="p-editor__header">
-      <button class="p-editor__header-back-btn" @click="goBack">
-        <img src="/back-btn.svg" alt="">
-      </button>
-      <div class="p-editor__header-logo">
-        <img src="/logo.svg" alt="logo" />
-      </div>
-    </header>
+    <AppHeader show-back @back="goBack" />
 
     <!-- Draft Modal -->
     <AppModal
@@ -924,7 +917,7 @@ const goBack = () => {
   if (content.value || stickers.value.length > 0) {
     showExitModal.value = true
   } else {
-    router.push('/home')
+    router.push('/')
   }
 }
 

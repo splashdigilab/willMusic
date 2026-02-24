@@ -1,6 +1,8 @@
 /*
   Index Page Layout (Dynamic Canvas with Fermat Spiral)
 */
+@use '../base/variables' as var;
+@use '../components/button' as btn;
 
 .p-index {
     position: relative;
@@ -33,16 +35,30 @@
 
 .p-index__controls {
     position: absolute;
-    bottom: 2rem;
-    right: 2rem;
+    bottom: calc(2rem + env(safe-area-inset-bottom, 1rem));
+    /* Support iOS safe area */
+    left: 1rem;
+    right: 1rem;
     z-index: 100;
     display: flex;
+    flex-direction: column;
+    align-items: flex-end;
     gap: 1rem;
 }
 
+.p-index__controls-top {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+}
+
+.p-index__fab {
+    width: 100%;
+}
+
 .c-btn--icon {
-    width: 56px;
-    height: 56px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
     background: white;
     border: 1px solid #ddd;
@@ -55,15 +71,7 @@
 }
 
 .c-btn--fab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 56px;
-    padding: 0 1.5rem;
-    border-radius: 99px;
-    background: #333;
+    @include btn.btn-action;
+    background: var.$color-grey;
     color: white;
-    text-decoration: none;
-    font-weight: bold;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }

@@ -1,5 +1,9 @@
 <template>
   <div class="p-index" ref="containerRef">
+    
+    <!-- Header (Similar to Editor) -->
+    <AppHeader />
+
     <!-- 畫布內容區，負責所有 transforms -->
     <TransitionGroup 
       tag="div" 
@@ -21,18 +25,20 @@
 
     <!-- UI Controls -->
     <div class="p-index__controls">
-      <button class="c-btn c-btn--icon" @click="centerContent" title="置中">
-        <!-- Center Icon -->
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19 12h2"></path>
-          <path d="M3 12h2"></path>
-          <path d="M12 3v2"></path>
-          <path d="M12 19v2"></path>
-        </svg>
-      </button>
-      <NuxtLink to="/editor" class="c-btn c-btn--fab">
-        ✏️ 寫張便利貼
+      <div class="p-index__controls-top">
+        <button class="c-btn c-btn--icon p-index__center-btn" @click="centerContent" title="置中">
+          <!-- Center Icon -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19 12h2"></path>
+            <path d="M3 12h2"></path>
+            <path d="M12 3v2"></path>
+            <path d="M12 19v2"></path>
+          </svg>
+        </button>
+      </div>
+      <NuxtLink to="/editor" class="c-btn c-btn--fab p-index__fab">
+        專屬便利貼
       </NuxtLink>
     </div>
   </div>

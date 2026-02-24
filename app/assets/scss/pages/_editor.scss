@@ -28,42 +28,6 @@ body.is-editor-page #app {
   flex-direction: column;
   overflow: hidden;
 
-  // Header
-  &__header {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem 1rem;
-    background: white;
-    box-shadow: var(--shadow-default);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    position: relative;
-    /* 為 title 絕對定位提供參考 */
-    border-radius: 0 0 1rem 1rem;
-  }
-
-  &__header-back-btn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    position: absolute;
-    left: 0.5rem;
-    top: 50%;
-    transform: translateY(-50%);
-    height: 2.5rem;
-
-    img {
-      height: 100%;
-    }
-  }
-
-  &__header-logo {
-    height: 1.5rem;
-    object-fit: contain;
-    cursor: pointer;
-  }
 
   // Canvas Section - 撐滿剩餘空間，直向撐滿寬度、橫向撐滿高度
   &__canvas-section {
