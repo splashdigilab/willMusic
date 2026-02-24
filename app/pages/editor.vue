@@ -872,9 +872,21 @@ const handleShare = async () => {
     // Give external SVGs a tiny bit of time to render
     await new Promise(resolve => setTimeout(resolve, 500))
     
+    // 第一次熱機渲染 (Double-pass render workaround)
+    // 解決 html-to-image 偶發性背景透明、mask-image 或 background-image 尚未 caching 完畢的問題 (特別是 iOS Safari)
+    try {
+      await toPng(exportNodeRef.value, { pixelRatio: 1, skipFonts: true, cacheBust: true })
+      await new Promise(resolve => setTimeout(resolve, 150))
+    } catch (e) {
+      console.warn('Initial html-to-image pass failed, continuing anyway', e)
+    }
+
     const dataUrl = await toPng(exportNodeRef.value, {
-      pixelRatio: 1, 
-      skipFonts: false
+      pixelRatio: 1.5, // 提高品質
+      skipFonts: false,
+      cacheBust: true, // 確保抓到最新的圖層狀態
+      // @ts-ignore: html-to-image options support but TS definitions might lack it
+      useCORS: true // 確保外部素材跨域可以加載
     })
 
     const blob = await (await fetch(dataUrl)).blob()
