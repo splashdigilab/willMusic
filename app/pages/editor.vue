@@ -1,7 +1,7 @@
 <template>
   <div class="p-editor">
     <!-- Header -->
-    <AppHeader show-back @back="goBack" />
+    <AppHeader show-back relative @back="goBack" />
 
     <!-- Draft Modal -->
     <AppModal
@@ -142,14 +142,14 @@
             >
               ⋮⋮
             </div>
-            <div
+            <!-- <div
               v-if="isTextEditMode"
               class="p-editor__edit-frame-transform-handle"
               @mousedown.stop="onTextBlockTransformMouseDown"
               @touchstart.stop="onTextBlockTransformTouchStart"
             >
               ↻
-            </div>
+            </div> -->
           </div>
 
           <!-- 貼紙編輯框（僅在貼紙 tab 時顯示） -->
@@ -175,14 +175,14 @@
             >
               ✕
             </button>
-            <div
+            <!-- <div
               v-if="selectedStickerId === sticker.id"
               class="p-editor__edit-frame-transform-handle"
               @mousedown.stop="onTransformHandleMouseDown($event, sticker)"
               @touchstart.stop="onTransformHandleTouchStart($event, sticker)"
             >
               ↻
-            </div>
+            </div> -->
           </div>
           </template>
         </div>

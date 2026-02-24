@@ -28,6 +28,11 @@
         border-radius: 0;
     }
 
+    // Relative modifier
+    &--relative {
+        position: relative;
+    }
+
     &__back-btn {
         position: absolute;
         left: 16px;
