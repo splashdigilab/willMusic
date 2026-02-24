@@ -12,6 +12,77 @@
     background-color: var(--color-background, #f5f5f5);
 }
 
+/* 活動介紹滿版 overlay */
+.p-index__intro-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: var(--color-bg, #fff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    padding-top: calc(60px + env(safe-area-inset-top, 0px) + 1rem);
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+.p-index__intro-card {
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+}
+
+.p-index__intro-title {
+    font-size: 1.75rem;
+    font-weight: bold;
+    color: var(--color-text, #333);
+    margin-bottom: 1rem;
+}
+
+.p-index__intro-desc {
+    font-size: 1rem;
+    color: var(--color-text-light, #666);
+    line-height: 1.6;
+    margin-bottom: 2rem;
+}
+
+.p-index__intro-btn {
+    @include btn.btn-action;
+    width: 100%;
+    background: var.$color-grey;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    font-size: 1.1rem;
+
+    &:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+}
+
+.p-index__intro-btn-inner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.p-index__intro-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: p-index-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes p-index-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .p-index__canvas {
     position: absolute;
     top: 0;
@@ -74,4 +145,14 @@
     @include btn.btn-action;
     background: var.$color-grey;
     color: white;
+}
+
+/* 活動介紹 overlay 進出場 */
+.intro-fade-enter-active,
+.intro-fade-leave-active {
+    transition: opacity 0.3s ease;
+}
+.intro-fade-enter-from,
+.intro-fade-leave-to {
+    opacity: 0;
 }

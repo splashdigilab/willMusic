@@ -1,8 +1,32 @@
 <template>
   <div class="p-index" ref="containerRef">
     
-    <!-- Header (Similar to Editor) -->
-    <AppHeader />
+    <!-- Header -->
+    <AppHeader show-help @help="showIntroOverlay = true" />
+
+    <!-- 活動介紹滿版 overlay：載入時顯示，loading 完後按「開始」關閉 -->
+    <Transition name="intro-fade">
+      <div v-if="showIntroOverlay" class="p-index__intro-overlay">
+        <div class="p-index__intro-card">
+          <h1 class="p-index__intro-title">活動介紹</h1>
+          <p class="p-index__intro-desc">
+            歡迎來到 WillMusic！這裡是大家上傳的專屬便利貼，點擊下方「開始」進入活動牆。
+          </p>
+          <button
+            type="button"
+            class="p-index__intro-btn c-btn c-btn--primary"
+            :disabled="loading"
+            @click="onStartClick"
+          >
+            <span v-if="loading" class="p-index__intro-btn-inner">
+              <span class="p-index__intro-spinner" aria-hidden="true" />
+              載入中...
+            </span>
+            <span v-else>開始</span>
+          </button>
+        </div>
+      </div>
+    </Transition>
 
     <!-- 畫布內容區，負責所有 transforms -->
     <TransitionGroup 
@@ -70,6 +94,8 @@ const { centerContent } = usePanZoom(containerRef, canvasRef, {
 
 // ====== Data ======
 const displayItems = ref<QueueHistoryItem[]>([])
+const showIntroOverlay = ref(true)
+const loading = ref(true)
 
 // ====== Layout Math: Fermat's Spiral with Collision Detection ======
 const ITEM_SIZE = 150 
@@ -174,6 +200,7 @@ const getStoredPosition = (index: number) => {
 }
 
 // ====== Animation Logic ======
+const ENTRY_ANIMATION_COUNT = 30 // 入場只對前 N 張播 fly-in，其餘直接出現在定位
 let isFirstRender = true
 let isReflowing = false
 
@@ -195,27 +222,38 @@ const playReflowSequence = async () => {
   }
 
   if (isFirstRender) {
-    // Recalculate layout cache for current number of items to ensure everyone has a spot
+    const totalCount = elements.length
     calculatePositions(displayItems.value.length)
+
     elements.forEach((el, index) => {
       const pos = getStoredPosition(index)
       const element = el as HTMLElement
       element.style.zIndex = `${1000 - index}`
+      const rotation = (Math.random() - 0.5) * 15
 
-      // First Load: Fly in
-      // 效能優化：限制延遲上限，避免 iOS 因為過長 queue 而崩潰
-      const animDelay = Math.min(index * 0.05, 1.5)
-
-      gsap.to(element, {
-        x: pos.x,
-        y: pos.y,
-        scale: 1,
-        opacity: 1,
-        rotation: (Math.random() - 0.5) * 15,
-        duration: 1.2 + Math.random() * 0.5,
-        ease: 'power3.out',
-        delay: animDelay
-      })
+      if (index < ENTRY_ANIMATION_COUNT) {
+        // 前 30 張：fly-in 動畫，延遲上限避免 iOS 負擔
+        const animDelay = Math.min(index * 0.05, 1.5)
+        gsap.to(element, {
+          x: pos.x,
+          y: pos.y,
+          scale: 1,
+          opacity: 1,
+          rotation,
+          duration: 1.2 + Math.random() * 0.5,
+          ease: 'power3.out',
+          delay: animDelay
+        })
+      } else {
+        // 第 31 張起：直接出現在應有位置
+        gsap.set(element, {
+          x: pos.x,
+          y: pos.y,
+          scale: 1,
+          opacity: 1,
+          rotation
+        })
+      }
     })
     isFirstRender = false
     isReflowing = false
@@ -275,30 +313,46 @@ const onLeave = (el: Element, done: () => void) => {
   })
 }
 
-// Watch array changes
+// 點擊「開始」：關閉 overlay 並播放進場動畫
+const onStartClick = () => {
+  if (loading.value) return
+  showIntroOverlay.value = false
+  nextTick(() => {
+    playReflowSequence()
+  })
+}
+
+// Watch array changes（overlay 還開著時不播動畫，等點「開始」再播）
 watch(
   () => displayItems.value.length,
   async (newLen, oldLen) => {
-    // Also capture when there are element content changes, but specifically length triggers a layout shift
+    if (showIntroOverlay.value) return
     if (newLen > oldLen) {
       setTimeout(() => {
         playReflowSequence()
       }, 50)
     }
-    // Deletions are completely managed by onLeave above.
   }
 )
 
 let unsubHistory: any
+
+let loadingTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(() => {
   // 聽歷史
   unsubHistory = listenToHistory(300, (items) => {
     displayItems.value = items
   })
+  // 載入完成後按鈕變為「開始」（可改為依實際資料或 API 就緒後再設 false）
+  loadingTimer = setTimeout(() => {
+    loading.value = false
+    loadingTimer = null
+  }, 1200)
 })
 
 onUnmounted(() => {
   if (unsubHistory) unsubHistory()
+  if (loadingTimer) clearTimeout(loadingTimer)
 })
 </script>

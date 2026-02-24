@@ -1,6 +1,6 @@
 <template>
   <div class="p-queue-status-minimal">
-    <AppHeader transparent />
+    <AppHeader />
     <div class="p-queue-status-minimal__container">
       
       <!-- Queue Info -->

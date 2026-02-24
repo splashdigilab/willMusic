@@ -28,24 +28,6 @@ body.is-editor-page #app {
   flex-direction: column;
   overflow: hidden;
 
-  &__help-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    background: transparent;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    img {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-  }
-
   // Canvas Section - 撐滿剩餘空間，直向撐滿寬度、橫向撐滿高度
   &__canvas-section {
     flex: 1;

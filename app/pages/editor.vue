@@ -1,18 +1,7 @@
 <template>
   <div class="p-editor">
     <!-- Header -->
-    <AppHeader show-back relative @back="goBack">
-      <template #trailing>
-        <button
-          type="button"
-          class="p-editor__help-btn"
-          aria-label="再次開啟教學"
-          @click="showTutorialModal = true"
-        >
-          <img src="/question.svg" alt="">
-        </button>
-      </template>
-    </AppHeader>
+    <AppHeader show-back show-help relative @back="goBack" @help="showTutorialModal = true" />
 
     <!-- Tutorial Modal -->
     <EditorTutorialModal v-model="showTutorialModal" />

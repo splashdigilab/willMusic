@@ -75,4 +75,25 @@
         transform: translateY(-50%);
         pointer-events: auto;
     }
+
+    &__help-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        background: transparent;
+        border: none;
+        border-radius: 50%;
+        color: var(--color-text-secondary, #666);
+        cursor: pointer;
+        transition: color 0.2s, background 0.2s;
+
+        img {
+            width: 32px;
+            height: 32px;
+            display: block;
+        }
+    }
 }
