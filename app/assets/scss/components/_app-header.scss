@@ -67,4 +67,12 @@
             width: auto;
         }
     }
+
+    &__trailing {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: auto;
+    }
 }

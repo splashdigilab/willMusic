@@ -1,7 +1,18 @@
 <template>
   <div class="p-editor">
     <!-- Header -->
-    <AppHeader show-back relative @back="goBack" />
+    <AppHeader show-back relative @back="goBack">
+      <template #trailing>
+        <button
+          type="button"
+          class="p-editor__help-btn"
+          aria-label="再次開啟教學"
+          @click="showTutorialModal = true"
+        >
+          <img src="/question.svg" alt="">
+        </button>
+      </template>
+    </AppHeader>
 
     <!-- Tutorial Modal -->
     <EditorTutorialModal v-model="showTutorialModal" />
@@ -446,7 +457,7 @@ const draggingStickerId = ref<string | null>(null)
 // 文字區塊變換（位置、縮放、旋轉）
 const textX = ref(50)
 const textY = ref(50)
-const textScale = ref(1)
+const textScale = ref(2)
 const textRotation = ref(0)
 const textBlockSelected = ref(false)
 const textBlockDragging = ref(false)
@@ -617,7 +628,7 @@ const addSticker = (stickerType: string) => {
     type: stickerType,
     x: 50 + (Math.random() - 0.5) * 20,
     y: 50 + (Math.random() - 0.5) * 20,
-    scale: 1,
+    scale: 3,
     rotation: (Math.random() - 0.5) * 30
   }
   stickers.value.push(newSticker)

@@ -6,6 +6,9 @@
     <div class="c-header__logo">
       <img src="/logo.svg" alt="WillMusic Logo" />
     </div>
+    <div v-if="$slots.trailing" class="c-header__trailing">
+      <slot name="trailing" />
+    </div>
   </header>
 </template>
 

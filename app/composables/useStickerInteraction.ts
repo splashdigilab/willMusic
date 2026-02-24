@@ -169,7 +169,7 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
       const angleDelta = (newAngle - transformState.initialAngle) * (180 / Math.PI)
       const s = stickers.value.find(st => st.id === transformState!.stickerId)
       if (s) {
-        s.scale = clamp(transformState.initialScale * scaleRatio, 0.3, 3)
+        s.scale = clamp(transformState.initialScale * scaleRatio, 0.5, 5)
         s.rotation = transformState.initialRotation + angleDelta
       }
     }

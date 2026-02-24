@@ -89,7 +89,7 @@ export function useTextBlockInteraction(options: UseTextBlockInteractionOptions)
       const newAngle = Math.atan2(ndy, ndx)
       const scaleRatio = newDist / distance
       const angleDelta = (newAngle - angle) * (180 / Math.PI)
-      textScale.value = clamp(initScale * scaleRatio, 0.3, 3)
+      textScale.value = clamp(initScale * scaleRatio, 1, 5)
       textRotation.value = initRotation + angleDelta
     }
 
