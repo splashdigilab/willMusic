@@ -284,6 +284,14 @@
         <div class="p-editor__control-section">
           <h3 class="p-editor__control-title">選擇筆刷顏色</h3>
           <div class="p-editor__color-grid">
+            <!-- 橡皮擦按鈕（第一個） -->
+            <button
+              class="p-editor__color-btn p-editor__color-btn--eraser"
+              :class="{ 'is-active': eraserMode }"
+              @click="eraserMode = true"
+            >
+              <img src="/erase.svg" alt="橡皮擦" class="p-editor__color-eraser-icon" />
+            </button>
             <button
               v-for="c in BRUSH_COLORS"
               :key="c.value"
@@ -293,14 +301,6 @@
               @click="() => { brushColor = c.value; eraserMode = false }"
             >
               <img v-if="!eraserMode && brushColor === c.value" src="/check.svg" alt="" class="p-editor__color-check" />
-            </button>
-            <!-- 橡皮擦按鈕 -->
-            <button
-              class="p-editor__color-btn p-editor__color-btn--eraser"
-              :class="{ 'is-active': eraserMode }"
-              @click="eraserMode = true"
-            >
-              <img src="/erase.svg" alt="橡皮擦" class="p-editor__color-eraser-icon" />
             </button>
           </div>
         </div>
@@ -938,7 +938,7 @@ const goBack = () => {
 const handleExitConfirm = () => {
   saveDraftData()
   showExitModal.value = false
-  router.push('/home')
+  router.push('/')
 }
 
 // Lifecycle

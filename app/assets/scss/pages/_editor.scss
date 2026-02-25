@@ -409,7 +409,7 @@ body.is-editor-page #app {
     height: 8px;
     border-radius: 3px;
     appearance: none;
-    background: #B3B3B3;
+    background: #7f7f7f;
     outline: none;
     cursor: pointer;
 
@@ -419,7 +419,7 @@ body.is-editor-page #app {
       height: 1.5rem;
       border-radius: 50%;
       background: white;
-      border: 2px solid #B3B3B3;
+      border: 2px solid #7f7f7f;
       cursor: pointer;
       // box-shadow: var(--shadow-soft);
     }
@@ -429,7 +429,7 @@ body.is-editor-page #app {
       height: 1.5rem;
       border-radius: 50%;
       background: white;
-      border: 2px solid #B3B3B3;
+      border: 2px solid #7f7f7f;
       cursor: pointer;
       // box-shadow: var(--shadow-soft);
     }
@@ -624,7 +624,7 @@ body.is-editor-page #app {
     display: block;
     width: 100%;
     height: 100%;
-    background-color: #B3B3B3;
+    background-color: #7f7f7f;
     mask-image: var(--shape-svg);
     mask-size: contain;
     mask-repeat: no-repeat;

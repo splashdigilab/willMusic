@@ -9,6 +9,10 @@ export interface BackgroundImage {
 
 export const BACKGROUND_IMAGES: BackgroundImage[] = [
   { id: 'bg-1', url: '/svg/bg/bg-1.svg' },
+  { id: 'bg-11', url: '/svg/bg/bg-11.svg' },
+  { id: 'bg-13', url: '/svg/bg/bg-13.svg' },
+  { id: 'bg-12', url: '/svg/bg/bg-12.svg' },
+  { id: 'bg-10', url: '/svg/bg/bg-10.svg' },
   { id: 'bg-2', url: '/svg/bg/bg-2.svg' },
   { id: 'bg-4', url: '/svg/bg/bg-4.webp' },
   { id: 'bg-3', url: '/svg/bg/bg-3.webp' },
@@ -17,6 +21,7 @@ export const BACKGROUND_IMAGES: BackgroundImage[] = [
   { id: 'bg-7', url: '/svg/bg/bg-7.webp' },
   { id: 'bg-8', url: '/svg/bg/bg-8.webp' },
   { id: 'bg-9', url: '/svg/bg/bg-9.webp' },
+
 ]
 
 /**

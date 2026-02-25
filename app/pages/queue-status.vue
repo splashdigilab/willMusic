@@ -26,7 +26,7 @@
 
       <!-- Actions -->
       <div class="p-queue-status-minimal__actions">
-        <NuxtLink to="/home" class="p-queue-status-minimal__btn-home">
+        <NuxtLink to="/" class="p-queue-status-minimal__btn-home">
           回到首頁
         </NuxtLink>
       </div>
