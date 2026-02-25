@@ -16,6 +16,7 @@ export const BACKGROUND_IMAGES: BackgroundImage[] = [
   { id: 'bg-6', url: '/svg/bg/bg-6.webp' },
   { id: 'bg-7', url: '/svg/bg/bg-7.webp' },
   { id: 'bg-8', url: '/svg/bg/bg-8.webp' },
+  { id: 'bg-9', url: '/svg/bg/bg-9.webp' },
 ]
 
 /**

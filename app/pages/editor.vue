@@ -32,8 +32,8 @@
     <!-- Alert Modal -->
     <AppModal
       v-model="showAlertModal"
-      icon="⚠️"
-      title="提示"
+      :icon="alertIcon"
+      :title="alertTitle"
       :message="alertMessage"
       confirmText="關閉"
       :cancelText="''"
@@ -471,12 +471,21 @@ const showExitModal = ref(false)
 const showSubmitModal = ref(false)
 
 const showAlertModal = ref(false)
+const alertIcon = ref('⚠️')
+const alertTitle = ref('提示')
 const alertMessage = ref('')
 
-const showAlert = (msg: string) => {
+const showAlert = (msg: string, title = '提示', icon = '⚠️') => {
+  alertIcon.value = icon
+  alertTitle.value = title
   alertMessage.value = msg
   showAlertModal.value = true
 }
+
+// Token 相關提示：標題、內文與 icon
+const TOKEN_ALERT_TITLE = '只差最後一步！'
+const TOKEN_ALERT_ICON = '🛍️'
+const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
 
 const isSharing = ref(false)
 const exportNodeRef = ref<HTMLElement | null>(null)
@@ -798,7 +807,7 @@ const openSubmitModal = () => {
   
   const token = loadToken()
   if (!token) {
-    showAlert('缺少 Token，請使用正確的連結訪問')
+    showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
     return
   }
 
@@ -830,7 +839,7 @@ const confirmSubmit = async () => {
 
   const token = loadToken()
   if (!token) {
-    showAlert('缺少 Token，請使用正確的連結訪問')
+    showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
     return
   }
 
@@ -841,7 +850,7 @@ const confirmSubmit = async () => {
 
     const isValid = await validateToken(token)
     if (!isValid) {
-      showAlert('Token 無效或已使用，請使用新的連結')
+      showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
       showSubmitModal.value = false
       return
     }

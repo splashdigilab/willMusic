@@ -7,7 +7,7 @@
           <div v-if="icon" class="c-modal__icon">{{ icon }}</div>
           
           <h2 v-if="title" class="c-modal__title">{{ title }}</h2>
-          <p v-if="message" class="c-modal__message">{{ message }}</p>
+          <p v-if="message" class="c-modal__message" v-html="message"></p>
 
           <!-- For injecting previews like StickyNote -->
           <div v-if="$slots.preview" class="c-modal__preview-wrapper">

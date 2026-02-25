@@ -16,6 +16,7 @@ export const STICKY_NOTE_SHAPES: StickyNoteShape[] = [
   { id: 'heart', svg: '/svg/shapes/heart.svg' },
   { id: 'hexagon', svg: '/svg/shapes/hexagon.svg' },
   { id: 'round', svg: '/svg/shapes/round.svg' },
+  { id: 'diamond', svg: '/svg/shapes/diamond.svg' },
 ]
 
 /** 預設造型（第一個） */

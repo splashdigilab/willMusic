@@ -63,6 +63,9 @@ export const STICKER_LIBRARY: StickerType[] = [
   { id: 'sticker-48', defaultScale: 1, svgFile: '/svg/stickers/sticker-48.svg' },
   { id: 'sticker-49', defaultScale: 1, svgFile: '/svg/stickers/sticker-49.svg' },
   { id: 'sticker-50', defaultScale: 1, svgFile: '/svg/stickers/sticker-50.svg' },
+  { id: 'sticker-55', defaultScale: 1, svgFile: '/svg/stickers/sticker-55.svg' },
+  { id: 'sticker-56', defaultScale: 1, svgFile: '/svg/stickers/sticker-56.svg' },
+  { id: 'sticker-57', defaultScale: 1, svgFile: '/svg/stickers/sticker-57.svg' },
 ]
 
 /**
