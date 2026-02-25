@@ -7,7 +7,8 @@
 .p-index {
     position: relative;
     width: 100vw;
-    height: 100vh;
+    /* dvh：隨瀏覽器工具列動態縮放，避免 iOS Chrome/Safari 底部按鈕被遮 */
+    height: 100dvh;
     overflow: hidden;
     background-color: var(--color-background, #f5f5f5);
 }
@@ -22,8 +23,6 @@
     align-items: center;
     justify-content: center;
     padding: 2rem;
-    padding-top: calc(60px + env(safe-area-inset-top, 0px) + 1rem);
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
 }
 
 .p-index__intro-card {
@@ -114,8 +113,13 @@
 
 .p-index__controls {
     position: absolute;
-    bottom: calc(2rem + env(safe-area-inset-bottom, 1rem));
-    /* Support iOS safe area */
+    /*
+     * 多層防護確保 iOS Chrome/Safari 不被遮:
+     * 1. dvh 已讓容器跟著可視區縮放
+     * 2. env(safe-area-inset-bottom) 處理 home indicator / notch 留白
+     * 3. 底部再留 1rem 視覺間距
+     */
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     left: 1rem;
     right: 1rem;
     z-index: 100;

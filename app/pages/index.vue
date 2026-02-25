@@ -261,37 +261,26 @@ const playReflowSequence = async () => {
     return
   }
 
-  // Reflow sequence: Collapse to center THEN fan out
-  // 1. Move everything to center
-  gsap.to(elements, {
-    x: 0,
-    y: 0,
-    duration: 0.6,
-    ease: 'back.in(1.2)',
-    onComplete: () => {
-      // 2. Recalculate layout depending on new length
-      calculatePositions(displayItems.value.length)
-      
-      // 3. Fan out to new positions
-      elements.forEach((el, index) => {
-        const pos = getStoredPosition(index)
-        const element = el as HTMLElement
-        element.style.zIndex = `${1000 - index}`
-        
-        gsap.to(element, {
-          x: pos.x,
-          y: pos.y,
-          scale: 1,
-          opacity: 1,
-          rotation: (Math.random() - 0.5) * 15,
-          duration: 1.0 + Math.random() * 0.4,
-          ease: 'power3.out',
-          delay: Math.random() * 0.1
-        })
-      })
-      isReflowing = false
-    }
+  // Reflow: 直接從目前位置動畫到新位置（不再先收斂到原點）
+  calculatePositions(displayItems.value.length)
+
+  elements.forEach((el, index) => {
+    const pos = getStoredPosition(index)
+    const element = el as HTMLElement
+    element.style.zIndex = `${1000 - index}`
+
+    gsap.to(element, {
+      x: pos.x,
+      y: pos.y,
+      scale: 1,
+      opacity: 1,
+      rotation: (Math.random() - 0.5) * 15,
+      duration: 1.0 + Math.random() * 0.4,
+      ease: 'power3.out',
+      delay: Math.random() * 0.1
+    })
   })
+  isReflowing = false
 }
 
 let leavingCount = 0
