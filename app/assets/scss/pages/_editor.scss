@@ -217,7 +217,7 @@ body.is-editor-page #app {
     }
 
     &.is-selected {
-      outline: 2px solid rgba(102, 126, 234, 0.8);
+      outline: 2px solid var.$editor-selection-outline;
       outline-offset: 4px;
       border-radius: 0;
     }
@@ -240,7 +240,7 @@ body.is-editor-page #app {
     transform-origin: center top;
     width: 48px;
     height: 20px;
-    background: rgba(102, 126, 234, 0.9);
+    background: var.$editor-selection-bar-bg;
     color: white;
     border-radius: 4px;
     font-size: 0.75rem;

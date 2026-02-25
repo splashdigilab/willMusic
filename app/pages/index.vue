@@ -8,7 +8,8 @@
     <Transition name="intro-fade">
       <div v-if="showIntroOverlay" class="p-index__intro-overlay">
         <div class="p-index__intro-card">
-          <h1 class="p-index__intro-title">活動介紹</h1>
+          <img src="/logo.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
+          <!-- <h1 class="p-index__intro-title">活動介紹</h1> -->
           <p class="p-index__intro-desc">
             歡迎來到 WillMusic！這裡是大家上傳的專屬便利貼，點擊下方「開始」進入活動牆。
           </p>
@@ -88,7 +89,7 @@ const canvasRef = ref<HTMLElement | null>(null)
 const { centerContent } = usePanZoom(containerRef, canvasRef, {
   minScale: 0.5,
   maxScale: 3,
-  initialScale: 1.5,
+  initialScale: 1,
   initialCenter: true
 })
 
@@ -200,7 +201,7 @@ const getStoredPosition = (index: number) => {
 }
 
 // ====== Animation Logic ======
-const ENTRY_ANIMATION_COUNT = 30 // 入場只對前 N 張播 fly-in，其餘直接出現在定位
+const ENTRY_ANIMATION_COUNT = 20 // 入場只對前 N 張播 fly-in，其餘直接出現在定位
 let isFirstRender = true
 let isReflowing = false
 

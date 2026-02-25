@@ -2,44 +2,55 @@
   <Teleport to="body">
     <Transition name="modal-fade">
       <div v-if="modelValue" class="c-modal-overlay">
-        <div class="c-modal" @click.stop>
+        <div class="c-modal c-modal--tutorial" @click.stop>
           <template v-if="currentStepData">
-            <div class="c-modal__icon">{{ currentStepData.icon }}</div>
-            
             <h2 class="c-modal__title">{{ currentStepData.title }}</h2>
             <p class="c-modal__message">{{ currentStepData.message }}</p>
           </template>
 
-          <!-- Step Indicators -->
+          <!-- 示意區：與 editor 一致的被選取物件 + 雙指動畫 -->
+          <div
+            class="tutorial-demo"
+            :class="`tutorial-demo--step-${currentStep}`"
+          >
+            <div class="tutorial-demo__stage">
+              <!-- 編輯框 + scaleUp 圖：一起動畫 -->
+              <div v-if="currentStepData" class="tutorial-demo__object-wrap">
+                <img :src="currentStepData.image" class="tutorial-demo__guesture" alt="" />
+                <div class="tutorial-demo__object">
+                  <span class="tutorial-demo__object-text">文字</span>
+                  <div class="tutorial-demo__object-drag-bar">⋮⋮</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="tutorial-steps">
-            <span 
-              v-for="(_, index) in steps" 
+            <span
+              v-for="(_, index) in steps"
               :key="index"
               class="tutorial-step-dot"
               :class="{ 'is-active': currentStep === index }"
-            ></span>
+            />
           </div>
 
           <div class="c-modal__actions">
-            <!-- Secondary/Cancel Button -->
-            <button 
+            <button
               v-if="currentStep > 0"
-              class="c-button c-button--secondary" 
+              class="c-button c-button--secondary"
               @click="prevStep"
             >
               上一步
             </button>
-            <button 
+            <button
               v-else
-              class="c-button c-button--secondary" 
+              class="c-button c-button--secondary"
               @click="finish"
             >
               略過
             </button>
-
-            <!-- Primary/Confirm Button -->
-            <button 
-              class="c-button c-button--primary" 
+            <button
+              class="c-button c-button--primary"
               @click="nextStep"
             >
               {{ currentStep === steps.length - 1 ? '開始體驗' : '下一步' }}
@@ -52,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
   modelValue: {
@@ -67,32 +78,25 @@ const currentStep = ref(0)
 
 const steps = [
   {
-    icon: '📝',
-    title: '製作專屬便利貼',
-    message: '從下方選單選擇你喜歡的材質與造型，為你的留言打好基礎！'
+    title: '單指拖移',
+    message: '選取文字或貼紙，即可隨心移動位置。',
+    image: '/tutorial-drag.svg'
   },
   {
-    icon: '✍️',
-    title: '加入文字與貼紙',
-    message: '輸入文字、調整顏色，並貼上可愛的預設貼紙，豐富你的版面。'
+    title: '雙指旋轉',
+    message: '雙指旋轉物件，輕鬆調整呈現角度。',
+    image: '/tutorial-rotate.svg'
   },
   {
-    icon: '🎨',
-    title: '盡情揮灑創意',
-    message: '切換到手繪模式，使用不同畫筆隨意塗鴉，畫出獨一無二的圖案！'
-  },
-  {
-    icon: '🚀',
-    title: '完成並分享',
-    message: '全部完成後，點擊「上傳大螢幕」將便利貼送出，或是下載分享給朋友！'
+    title: '雙指縮放',
+    message: '雙指捏合或張開，自由放大縮小物件。',
+    image: '/tutorial-scale.svg'
   }
 ]
 
-const currentStepData = computed(() => {
-  return steps[currentStep.value] || steps[0]
-})
+const currentStepData = computed(() => steps[currentStep.value] ?? steps[0])
 
-const nextStep = () => {
+function nextStep() {
   if (currentStep.value < steps.length - 1) {
     currentStep.value++
   } else {
@@ -100,40 +104,26 @@ const nextStep = () => {
   }
 }
 
-const prevStep = () => {
+function prevStep() {
   if (currentStep.value > 0) {
     currentStep.value--
   }
 }
 
-const finish = () => {
+function finish() {
   emit('update:modelValue', false)
   emit('finish')
   if (typeof window !== 'undefined') {
     localStorage.setItem('hasSeenWillMusicTutorial', 'true')
   }
 }
+
+// 每次打開 modal 都從第一步開始
+watch(() => props.modelValue, (open) => {
+  if (open) currentStep.value = 0
+})
 </script>
 
 <style lang="scss" scoped>
-.tutorial-steps {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 16px;
-  margin-bottom: 24px;
-}
-
-.tutorial-step-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: #e2e8f0;
-  transition: all 0.3s ease;
-
-  &.is-active {
-    background-color: #1a1a1a;
-    transform: scale(1.2);
-  }
-}
+/* 樣式已移至 assets/scss/components/_editor-tutorial-modal.scss，由 component-index 載入 */
 </style>
