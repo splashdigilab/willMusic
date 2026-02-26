@@ -99,7 +99,7 @@
             :class="{ 'is-sticker-clickable': !drawMode && (activeTab === 'note' || activeTab === 'text') }"
             :style="getStickerStyle(sticker)"
             @click.stop="selectSticker(sticker.id)"
-            @touchstart.stop="selectSticker(sticker.id)"
+            @touchstart.stop="() => { if (!isTwoFingerGesture) selectSticker(sticker.id) }"
           >
             <img 
               v-if="getStickerById(sticker.type)?.svgFile"
@@ -132,7 +132,7 @@
             }"
             :style="textBlockStyle"
             @mousedown="selectTextBlock"
-            @touchstart.stop="selectTextBlock"
+            @touchstart.stop="() => { if (!isTwoFingerGesture) selectTextBlock() }"
           >
             <!-- 隱藏 sizer：與 contenteditable 同字體/padding，讓編輯框寬高與文字一致；空白時用 placeholder 撐開寬度 -->
             <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="textStyle">{{ content || '在這裡輸入文字...' }}</span>
@@ -175,8 +175,11 @@
               v-if="selectedStickerId === sticker.id"
               class="p-editor__edit-frame-delete"
               @click.stop="removeSticker(sticker.id)"
+              aria-label="刪除"
             >
-              ✕
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
             </button>
             <!-- <div
               v-if="selectedStickerId === sticker.id"
@@ -695,7 +698,8 @@ const {
   onCanvasTouchMove,
   onCanvasTouchEnd,
   onCanvasMouseDown,
-  lastCanvasDragEndAt
+  lastCanvasDragEndAt,
+  isTwoFingerGesture
 } = useCanvasPinch({
   canvasRef,
   drawMode,
@@ -735,7 +739,8 @@ const {
   transformingStickerId,
   selectSticker,
   onDragEnd: saveDraftData,
-  onTransformEnd: saveDraftData
+  onTransformEnd: saveDraftData,
+  isTwoFingerGesture
 })
 
 const removeSticker = (id: string) => {

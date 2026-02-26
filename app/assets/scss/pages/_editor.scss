@@ -253,10 +253,11 @@ body.is-editor-page #app {
 
   &__edit-frame-delete {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 24px;
-    height: 24px;
+    /* 對齊紫色框左上角：outline 2px + outline-offset 4px，左上外角在 (-4px,-4px) */
+    top: -4px;
+    left: -4px;
+    width: 48px;
+    height: 48px;
     background: #f43f5e;
     color: white;
     border: 2px solid white;
@@ -267,9 +268,11 @@ body.is-editor-page #app {
     align-items: center;
     justify-content: center;
     transform: translate(-50%, -50%) scale(var(--inverse-scale, 1));
-    transform-origin: top left;
+    transform-origin: center center;
     backface-visibility: hidden;
-    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   &__edit-frame-transform-handle {

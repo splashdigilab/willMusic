@@ -12,6 +12,8 @@ export interface UseStickerInteractionOptions {
   selectSticker: (id: string) => void
   onDragEnd: () => void
   onTransformEnd: () => void
+  /** 雙指手勢中時不切換選取（由 useCanvasPinch 提供） */
+  isTwoFingerGesture?: Ref<boolean>
 }
 
 /**
@@ -26,7 +28,8 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
     transformingStickerId,
     selectSticker,
     onDragEnd,
-    onTransformEnd
+    onTransformEnd,
+    isTwoFingerGesture
   } = options
 
   let dragState: { stickerId: string; startX: number; startY: number; initialX: number; initialY: number } | null = null
@@ -79,6 +82,7 @@ export function useStickerInteraction(options: UseStickerInteractionOptions) {
 
   const onStickerTouchStart = (e: TouchEvent, sticker: StickerInstance) => {
     if ((e.target as HTMLElement).closest('.p-editor__edit-frame-delete, .p-editor__edit-frame-transform-handle')) return
+    if (isTwoFingerGesture?.value) return
     const touch = e.touches[0]
     if (!touch || e.touches.length > 1) return
     selectSticker(sticker.id)

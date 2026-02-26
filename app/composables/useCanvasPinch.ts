@@ -87,6 +87,8 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   let canvasDragState: CanvasDragState | null = null
   let pendingTextTouch: { startX: number; startY: number } | null = null
   const lastCanvasDragEndAt = ref(0)
+  /** 雙指縮放／旋轉中：此期間不應因誤觸而切換選取其他物件 */
+  const isTwoFingerGesture = ref(false)
 
   const hasSelection = () => isTextEditMode.value || selectedStickerId.value !== null
 
@@ -179,6 +181,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
         }
       }
       pinchState = null
+      isTwoFingerGesture.value = false
       el.removeEventListener('touchmove', onTouchMove, { capture: true })
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
@@ -325,6 +328,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     const t1 = e.touches[1]
     if (!t0 || !t1) return
 
+    isTwoFingerGesture.value = true
     e.preventDefault()
     e.stopPropagation()
     attachPinchListeners(el, t0, t1)
@@ -340,12 +344,14 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     const t1 = e.touches[1]
     if (!t0 || !t1) return
 
+    isTwoFingerGesture.value = true
     e.preventDefault()
     e.stopPropagation()
     attachPinchListeners(el, t0, t1)
   }
 
   const onCanvasTouchEnd = () => {}
+
 
   const onCanvasMouseDown = (e: MouseEvent) => {
     if (drawMode.value || !hasSelection()) return
@@ -359,6 +365,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     onCanvasTouchMove,
     onCanvasTouchEnd,
     onCanvasMouseDown,
-    lastCanvasDragEndAt
+    lastCanvasDragEndAt,
+    isTwoFingerGesture
   }
 }
