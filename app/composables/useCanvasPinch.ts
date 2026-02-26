@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { Ref } from 'vue'
-import type { StickerInstance } from '~/types'
+import type { StickerInstance, TextBlockInstance } from '~/types'
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
@@ -11,13 +11,10 @@ const RAD_TO_DEG = 180 / Math.PI
 export interface UseCanvasPinchOptions {
   canvasRef: Ref<HTMLElement | null>
   drawMode: Ref<boolean>
-  isTextEditMode: Ref<boolean>
+  selectedTextBlockId: Ref<string | null>
   selectedStickerId: Ref<string | null>
+  textBlocks: Ref<TextBlockInstance[]>
   stickers: Ref<StickerInstance[]>
-  textX: Ref<number>
-  textY: Ref<number>
-  textScale: Ref<number>
-  textRotation: Ref<number>
   textBlockDragging: Ref<boolean>
   textBlockTransforming: Ref<boolean>
   draggingStickerId: Ref<string | null>
@@ -27,12 +24,12 @@ export interface UseCanvasPinchOptions {
   onTextDragEnd: () => void
   onStickerDragEnd: () => void
   /** 單擊文字區塊時呼叫（聚焦、可打字） */
-  onTextTap?: () => void
+  onTextTap?: (blockId: string) => void
   /** 在文字區塊上開始拖曳前呼叫（選取文字區塊，不聚焦） */
-  onTextDragStart?: () => void
+  onTextDragStart?: (blockId: string) => void
 }
 
-type PinchTarget = 'text' | { stickerId: string }
+type PinchTarget = { textBlockId: string } | { stickerId: string }
 
 interface PinchState {
   target: PinchTarget
@@ -43,7 +40,7 @@ interface PinchState {
 }
 
 type CanvasDragState =
-  | { type: 'text'; startX: number; startY: number; initX: number; initY: number }
+  | { type: 'text'; textBlockId: string; startX: number; startY: number; initX: number; initY: number }
   | { type: 'sticker'; stickerId: string; startX: number; startY: number; initX: number; initY: number }
 
 const EMPTY_AREA_SELECTORS = [
@@ -64,13 +61,10 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   const {
     canvasRef,
     drawMode,
-    isTextEditMode,
+    selectedTextBlockId,
     selectedStickerId,
+    textBlocks,
     stickers,
-    textX,
-    textY,
-    textScale,
-    textRotation,
     textBlockDragging,
     textBlockTransforming,
     draggingStickerId,
@@ -85,12 +79,12 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
 
   let pinchState: PinchState | null = null
   let canvasDragState: CanvasDragState | null = null
-  let pendingTextTouch: { startX: number; startY: number } | null = null
+  let pendingTextTouch: { startX: number; startY: number; blockId: string } | null = null
   const lastCanvasDragEndAt = ref(0)
   /** 雙指縮放／旋轉中：此期間不應因誤觸而切換選取其他物件 */
   const isTwoFingerGesture = ref(false)
 
-  const hasSelection = () => isTextEditMode.value || selectedStickerId.value !== null
+  const hasSelection = () => selectedTextBlockId.value !== null || selectedStickerId.value !== null
 
   const isPointerOnEmptyArea = (target: EventTarget | null): boolean => {
     const el = target as HTMLElement
@@ -104,8 +98,21 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     return TEXT_AREA_SELECTORS.some(sel => el.closest(sel))
   }
 
+  /** 從觸碰的 DOM 元素上提取 text block id */
+  const getTextBlockIdFromTarget = (target: EventTarget | null): string | null => {
+    const el = target as HTMLElement
+    if (!el?.closest) return null
+    const textEl = el.closest('[data-text-block-id]') as HTMLElement | null
+    return textEl?.dataset.textBlockId ?? null
+  }
+
+  const getSelectedBlock = (): TextBlockInstance | undefined => {
+    const id = selectedTextBlockId.value
+    return id ? textBlocks.value.find(b => b.id === id) : undefined
+  }
+
   const getPinchTarget = (): PinchTarget | null => {
-    if (isTextEditMode.value) return 'text'
+    if (selectedTextBlockId.value) return { textBlockId: selectedTextBlockId.value }
     const id = selectedStickerId.value
     return id ? { stickerId: id } : null
   }
@@ -113,17 +120,18 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   const applyPinch = (state: PinchState, scaleRatio: number, angleDelta: number) => {
     const scale = clamp(state.initScale * scaleRatio, SCALE_MIN, SCALE_MAX)
     const rotation = state.initRotation + angleDelta
-    if (state.target === 'text') {
-      textScale.value = scale
-      textRotation.value = rotation
+    if ('textBlockId' in state.target) {
+      const target = state.target as { textBlockId: string }
+      const block = textBlocks.value.find(b => b.id === target.textBlockId)
+      if (block) {
+        block.scale = scale
+        block.rotation = rotation
+      }
     } else {
-      const target = state.target
-      if ('stickerId' in target) {
-        const s = stickers.value.find(st => st.id === target.stickerId)
-        if (s) {
-          s.scale = scale
-          s.rotation = rotation
-        }
+      const s = stickers.value.find(st => st.id === (state.target as { stickerId: string }).stickerId)
+      if (s) {
+        s.scale = scale
+        s.rotation = rotation
       }
     }
   }
@@ -135,13 +143,15 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY) || 1
     const angle = Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX)
 
-    if (target === 'text') {
+    if ('textBlockId' in target) {
+      const block = textBlocks.value.find(b => b.id === target.textBlockId)
+      if (!block) return
       pinchState = {
-        target: 'text',
+        target: { textBlockId: target.textBlockId },
         initDist: dist,
         initAngle: angle,
-        initScale: textScale.value,
-        initRotation: textRotation.value
+        initScale: block.scale,
+        initRotation: block.rotation
       }
       textBlockTransforming.value = true
     } else if ('stickerId' in target) {
@@ -172,7 +182,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
 
     const onTouchEnd = () => {
       if (pinchState) {
-        if (pinchState.target === 'text') {
+        if ('textBlockId' in pinchState.target) {
           textBlockTransforming.value = false
           onTextTransformEnd()
         } else {
@@ -195,13 +205,16 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   const startCanvasDrag = (clientX: number, clientY: number, isTouch: boolean) => {
     const el = canvasRef.value
     if (!el) return
-    if (isTextEditMode.value) {
+    if (selectedTextBlockId.value) {
+      const block = getSelectedBlock()
+      if (!block) return
       canvasDragState = {
         type: 'text',
+        textBlockId: block.id,
         startX: clientX,
         startY: clientY,
-        initX: textX.value,
-        initY: textY.value
+        initX: block.x,
+        initY: block.y
       }
       textBlockDragging.value = true
     } else if (selectedStickerId.value) {
@@ -227,8 +240,11 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       const deltaX = ((x - canvasDragState.startX) / rect.width) * 100
       const deltaY = ((y - canvasDragState.startY) / rect.height) * 100
       if (canvasDragState.type === 'text') {
-        textX.value = clamp(canvasDragState.initX + deltaX, -30, 130)
-        textY.value = clamp(canvasDragState.initY + deltaY, -30, 130)
+        const block = textBlocks.value.find(b => b.id === (canvasDragState as any).textBlockId)
+        if (block) {
+          block.x = clamp(canvasDragState.initX + deltaX, -30, 130)
+          block.y = clamp(canvasDragState.initY + deltaY, -30, 130)
+        }
       } else if (canvasDragState.type === 'sticker') {
         const state = canvasDragState
         const st = stickers.value.find(s => s.id === state.stickerId)
@@ -276,43 +292,52 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     const el = canvasRef.value
     if (!el) return
 
+    // 刪除 / 變形控制點：交給各自元件處理，這裡不攔截，避免阻斷點擊事件（例如刪除文字區塊）
+    const targetEl = e.target as HTMLElement | null
+    if (targetEl?.closest('.p-editor__edit-frame-delete, .p-editor__edit-frame-transform-handle')) {
+      return
+    }
+
     if (e.touches.length === 1) {
       const t = e.touches[0]
       if (!t) return
 
       if (isPointerOnTextArea(e.target)) {
-        e.preventDefault()
-        e.stopPropagation()
-        pendingTextTouch = { startX: t.clientX, startY: t.clientY }
+        const blockId = getTextBlockIdFromTarget(e.target)
+        if (blockId) {
+          e.preventDefault()
+          e.stopPropagation()
+          pendingTextTouch = { startX: t.clientX, startY: t.clientY, blockId }
 
-        const onMove = (moveEvent: TouchEvent) => {
-          if (!pendingTextTouch || !moveEvent.touches[0]) return
-          const dx = moveEvent.touches[0].clientX - pendingTextTouch.startX
-          const dy = moveEvent.touches[0].clientY - pendingTextTouch.startY
-          if (Math.hypot(dx, dy) <= DRAG_THRESHOLD_PX) return
-          moveEvent.preventDefault()
-          onTextDragStart?.()
-          startCanvasDrag(pendingTextTouch.startX, pendingTextTouch.startY, true)
-          pendingTextTouch = null
-          el.removeEventListener('touchmove', onMove, { capture: true })
-          el.removeEventListener('touchend', onEnd)
-          el.removeEventListener('touchcancel', onEnd)
-        }
-
-        const onEnd = () => {
-          if (pendingTextTouch) {
-            onTextTap?.()
+          const onMove = (moveEvent: TouchEvent) => {
+            if (!pendingTextTouch || !moveEvent.touches[0]) return
+            const dx = moveEvent.touches[0].clientX - pendingTextTouch.startX
+            const dy = moveEvent.touches[0].clientY - pendingTextTouch.startY
+            if (Math.hypot(dx, dy) <= DRAG_THRESHOLD_PX) return
+            moveEvent.preventDefault()
+            onTextDragStart?.(pendingTextTouch.blockId)
+            startCanvasDrag(pendingTextTouch.startX, pendingTextTouch.startY, true)
             pendingTextTouch = null
+            el.removeEventListener('touchmove', onMove, { capture: true })
+            el.removeEventListener('touchend', onEnd)
+            el.removeEventListener('touchcancel', onEnd)
           }
-          el.removeEventListener('touchmove', onMove, { capture: true })
-          el.removeEventListener('touchend', onEnd)
-          el.removeEventListener('touchcancel', onEnd)
-        }
 
-        el.addEventListener('touchmove', onMove, { capture: true, passive: false })
-        el.addEventListener('touchend', onEnd)
-        el.addEventListener('touchcancel', onEnd)
-        return
+          const onEnd = () => {
+            if (pendingTextTouch) {
+              onTextTap?.(pendingTextTouch.blockId)
+              pendingTextTouch = null
+            }
+            el.removeEventListener('touchmove', onMove, { capture: true })
+            el.removeEventListener('touchend', onEnd)
+            el.removeEventListener('touchcancel', onEnd)
+          }
+
+          el.addEventListener('touchmove', onMove, { capture: true, passive: false })
+          el.addEventListener('touchend', onEnd)
+          el.addEventListener('touchcancel', onEnd)
+          return
+        }
       }
 
       if (hasSelection() && isPointerOnEmptyArea(e.target)) {
@@ -350,7 +375,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     attachPinchListeners(el, t0, t1)
   }
 
-  const onCanvasTouchEnd = () => {}
+  const onCanvasTouchEnd = () => { }
 
 
   const onCanvasMouseDown = (e: MouseEvent) => {

@@ -1,30 +1,27 @@
 import type { Ref } from 'vue'
+import type { TextBlockInstance } from '~/types'
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
 export interface UseTextBlockInteractionOptions {
   canvasRef: Ref<HTMLElement | null>
-  textX: Ref<number>
-  textY: Ref<number>
-  textScale: Ref<number>
-  textRotation: Ref<number>
+  textBlocks: Ref<TextBlockInstance[]>
+  selectedTextBlockId: Ref<string | null>
   textBlockDragging: Ref<boolean>
   textBlockTransforming: Ref<boolean>
-  selectTextBlock: () => void
+  selectTextBlock: (id: string) => void
   onDragEnd: () => void
   onTransformEnd: () => void
 }
 
 /**
- * 文字區塊拖曳與旋轉縮放互動邏輯
+ * 文字區塊拖曳與旋轉縮放互動邏輯（支援多文字區塊）
  */
 export function useTextBlockInteraction(options: UseTextBlockInteractionOptions) {
   const {
     canvasRef,
-    textX,
-    textY,
-    textScale,
-    textRotation,
+    textBlocks,
+    selectedTextBlockId,
     textBlockDragging,
     textBlockTransforming,
     selectTextBlock,
@@ -32,22 +29,30 @@ export function useTextBlockInteraction(options: UseTextBlockInteractionOptions)
     onTransformEnd
   } = options
 
+  const getSelectedBlock = (): TextBlockInstance | undefined => {
+    const id = selectedTextBlockId.value
+    return id ? textBlocks.value.find(b => b.id === id) : undefined
+  }
+
   const setupDrag = (
     startX: number,
     startY: number,
     initX: number,
     initY: number,
+    blockId: string,
     isTouch: boolean
   ) => {
     const onMove = (e: MouseEvent | TouchEvent) => {
       if (!canvasRef.value) return
+      const block = textBlocks.value.find(b => b.id === blockId)
+      if (!block) return
       const rect = canvasRef.value.getBoundingClientRect()
       const clientX = 'touches' in e ? e.touches[0]?.clientX ?? startX : e.clientX
       const clientY = 'touches' in e ? e.touches[0]?.clientY ?? startY : e.clientY
       const deltaX = ((clientX - startX) / rect.width) * 100
       const deltaY = ((clientY - startY) / rect.height) * 100
-      textX.value = clamp(initX + deltaX, -30, 130)
-      textY.value = clamp(initY + deltaY, -30, 130)
+      block.x = clamp(initX + deltaX, -30, 130)
+      block.y = clamp(initY + deltaY, -30, 130)
     }
 
     const onEnd = () => {
@@ -69,6 +74,7 @@ export function useTextBlockInteraction(options: UseTextBlockInteractionOptions)
     cursorY: number,
     initScale: number,
     initRotation: number,
+    blockId: string,
     isTouch: boolean
   ) => {
     const dx = cursorX - centerX
@@ -78,19 +84,21 @@ export function useTextBlockInteraction(options: UseTextBlockInteractionOptions)
 
     const onMove = (e: MouseEvent | TouchEvent) => {
       if (!canvasRef.value) return
+      const block = textBlocks.value.find(b => b.id === blockId)
+      if (!block) return
       const r = canvasRef.value.getBoundingClientRect()
       const curX = 'touches' in e ? (e.touches[0]?.clientX ?? 0) - r.left : e.clientX - r.left
       const curY = 'touches' in e ? (e.touches[0]?.clientY ?? 0) - r.top : e.clientY - r.top
-      const cx = r.width * (textX.value / 100)
-      const cy = r.height * (textY.value / 100)
+      const cx = r.width * (block.x / 100)
+      const cy = r.height * (block.y / 100)
       const ndx = curX - cx
       const ndy = curY - cy
       const newDist = Math.sqrt(ndx * ndx + ndy * ndy) || 1
       const newAngle = Math.atan2(ndy, ndx)
       const scaleRatio = newDist / distance
       const angleDelta = (newAngle - angle) * (180 / Math.PI)
-      textScale.value = clamp(initScale * scaleRatio, 1, 5)
-      textRotation.value = initRotation + angleDelta
+      block.scale = clamp(initScale * scaleRatio, 1, 5)
+      block.rotation = initRotation + angleDelta
     }
 
     const onEnd = () => {
@@ -105,47 +113,53 @@ export function useTextBlockInteraction(options: UseTextBlockInteractionOptions)
     document.addEventListener(isTouch ? 'touchend' : 'mouseup', onEnd as any)
   }
 
-  const onTextBlockDragBarMouseDown = (e: MouseEvent) => {
+  const onTextBlockDragBarMouseDown = (e: MouseEvent, blockId: string) => {
     e.preventDefault()
-    selectTextBlock()
+    selectTextBlock(blockId)
     textBlockDragging.value = true
-    const rect = canvasRef.value?.getBoundingClientRect()
-    if (!rect) return
-    setupDrag(e.clientX, e.clientY, textX.value, textY.value, false)
+    const block = textBlocks.value.find(b => b.id === blockId)
+    if (!block || !canvasRef.value) return
+    setupDrag(e.clientX, e.clientY, block.x, block.y, blockId, false)
   }
 
-  const onTextBlockDragBarTouchStart = (e: TouchEvent) => {
+  const onTextBlockDragBarTouchStart = (e: TouchEvent, blockId: string) => {
     const touch = e.touches[0]
     if (!touch) return
     e.preventDefault()
-    selectTextBlock()
+    selectTextBlock(blockId)
     textBlockDragging.value = true
-    setupDrag(touch.clientX, touch.clientY, textX.value, textY.value, true)
+    const block = textBlocks.value.find(b => b.id === blockId)
+    if (!block) return
+    setupDrag(touch.clientX, touch.clientY, block.x, block.y, blockId, true)
   }
 
-  const onTextBlockTransformMouseDown = (e: MouseEvent) => {
+  const onTextBlockTransformMouseDown = (e: MouseEvent, blockId: string) => {
     e.preventDefault()
     if (!canvasRef.value) return
+    const block = textBlocks.value.find(b => b.id === blockId)
+    if (!block) return
     textBlockTransforming.value = true
     const rect = canvasRef.value.getBoundingClientRect()
-    const centerX = rect.width * (textX.value / 100)
-    const centerY = rect.height * (textY.value / 100)
+    const centerX = rect.width * (block.x / 100)
+    const centerY = rect.height * (block.y / 100)
     const cursorX = e.clientX - rect.left
     const cursorY = e.clientY - rect.top
-    setupTransform(centerX, centerY, cursorX, cursorY, textScale.value, textRotation.value, false)
+    setupTransform(centerX, centerY, cursorX, cursorY, block.scale, block.rotation, blockId, false)
   }
 
-  const onTextBlockTransformTouchStart = (e: TouchEvent) => {
+  const onTextBlockTransformTouchStart = (e: TouchEvent, blockId: string) => {
     const touch = e.touches[0]
     if (!touch || !canvasRef.value) return
     e.preventDefault()
+    const block = textBlocks.value.find(b => b.id === blockId)
+    if (!block) return
     textBlockTransforming.value = true
     const rect = canvasRef.value.getBoundingClientRect()
-    const centerX = rect.width * (textX.value / 100)
-    const centerY = rect.height * (textY.value / 100)
+    const centerX = rect.width * (block.x / 100)
+    const centerY = rect.height * (block.y / 100)
     const cursorX = touch.clientX - rect.left
     const cursorY = touch.clientY - rect.top
-    setupTransform(centerX, centerY, cursorX, cursorY, textScale.value, textRotation.value, true)
+    setupTransform(centerX, centerY, cursorX, cursorY, block.scale, block.rotation, blockId, true)
   }
 
   return {

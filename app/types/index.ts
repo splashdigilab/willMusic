@@ -13,6 +13,20 @@ export interface StickerInstance {
 }
 
 /**
+ * 文字區塊實例（多文字支援）
+ */
+export interface TextBlockInstance {
+  id: string
+  content: string
+  x: number
+  y: number
+  scale: number
+  rotation: number
+  color: string
+  align: TextAlign
+}
+
+/**
  * 草稿資料
  */
 export type TextAlign = 'left' | 'center' | 'right'
@@ -25,6 +39,7 @@ export interface DraftData {
   textAlign?: TextAlign
   stickers: StickerInstance[]
   textTransform?: TextBlockTransform
+  textBlocks?: TextBlockInstance[] // 多文字區塊
   drawing?: string // 手繪內容 data URL
   timestamp: number
 }
@@ -49,7 +64,8 @@ export interface StickyNoteStyle {
   textAlign?: TextAlign // 文字對齊：左、中、右
   fontFamily?: string
   stickers?: StickerInstance[] // 貼紙
-  textTransform?: TextBlockTransform // 文字區塊位置、縮放、旋轉
+  textTransform?: TextBlockTransform // 文字區塊位置、縮放、旋轉（舊格式向下相容）
+  textBlocks?: TextBlockInstance[] // 多文字區塊
   drawing?: string // 手繪內容 data URL (base64 PNG)
 }
 

@@ -40,6 +40,18 @@
       @confirm="showAlertModal = false"
     />
 
+    <!-- Unsaved Text Edit Modal -->
+    <AppModal
+      v-model="showUnsavedTextModal"
+      icon="✏️"
+      title="放棄文字編輯？"
+      message="目前這組文字的變更尚未完成，切換到其他物件會放棄這些變更，確定要繼續嗎？"
+      confirmText="放棄並切換"
+      cancelText="繼續編輯"
+      @confirm="confirmDiscardTextChanges"
+      @cancel="showUnsavedTextModal = false"
+    />
+
     <!-- Submit Confirmation Modal -->
     <AppModal
       v-model="showSubmitModal"
@@ -71,22 +83,24 @@
         <div class="p-editor__canvas-scaler" :style="[scalerStyle, wrapperStyles]">
           <!-- 可裁切層：背景、文字內容、貼紙圖片 -->
           <div class="p-editor__canvas p-editor__canvas--stage" :style="canvasStyle">
-            <!-- 文字內容（可裁切） -->
+            <!-- 文字內容（可裁切）— 多文字區塊 -->
           <div
-            ref="textBlockRef"
+            v-for="block in textBlocks"
+            :key="block.id"
+            :data-text-block-id="block.id"
             class="p-editor__text-content"
-            :style="[textBlockStyle, drawMode ? { pointerEvents: 'none' } : {}]"
-            @click.stop="() => { if (!drawMode) selectTextBlock() }"
+            :style="[getTextBlockStyleComputed(block), drawMode ? { pointerEvents: 'none' } : {}]"
+            @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
           >
             <div
-              ref="contentEditableRef"
+              :ref="(el: any) => setContentEditableRef(block.id, el)"
               class="p-editor__canvas-text"
-              :class="{ 'is-empty': !content.trim() }"
-              :style="textStyle"
+              :class="{ 'is-empty': !block.content.trim() }"
+              :style="getTextStyleForBlock(block)"
               :contenteditable="!drawMode"
-              @input="handleTextInput"
-              @click.stop="() => { if (!drawMode) selectTextBlock() }"
-              @focus="() => { if (!drawMode) selectTextBlock() }"
+              @input="(e: Event) => handleTextInput(e, block.id)"
+              @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
+              @focus="() => { if (!drawMode) selectTextBlock(block.id) }"
               data-placeholder="在這裡輸入文字..."
             />
           </div>
@@ -96,7 +110,7 @@
             v-for="sticker in stickers"
             :key="sticker.id"
             class="p-editor__sticker-content"
-            :class="{ 'is-sticker-clickable': !drawMode && (activeTab === 'note' || activeTab === 'text') }"
+            :class="{ 'is-sticker-clickable': !drawMode }"
             :style="getStickerStyle(sticker)"
             @click.stop="selectSticker(sticker.id)"
             @touchstart.stop="() => { if (!isTwoFingerGesture) selectSticker(sticker.id) }"
@@ -122,37 +136,44 @@
 
         <!-- UI 層：編輯框置頂，不被裁切（繪圖模式時隱藏以便手繪） -->
         <div class="p-editor__canvas-ui" :style="{ pointerEvents: drawMode ? 'none' : undefined }">
-          <!-- 文字區塊編輯框（與文字內容同位置、同尺寸） -->
+          <!-- 文字區塊編輯框（多文字區塊） -->
           <div
+            v-for="block in textBlocks"
+            :key="`ui-text-${block.id}`"
+            :data-text-block-id="block.id"
             class="p-editor__edit-frame p-editor__edit-frame--text"
             :class="{ 
-              'is-selected': isTextEditMode,
-              'is-dragging': textBlockDragging,
-              'is-transforming': textBlockTransforming
+              'is-selected': selectedTextBlockId === block.id,
+              'is-dragging': textBlockDragging && selectedTextBlockId === block.id,
+              'is-transforming': textBlockTransforming && selectedTextBlockId === block.id
             }"
-            :style="textBlockStyle"
-            @mousedown="selectTextBlock"
-            @touchstart.stop="() => { if (!isTwoFingerGesture) selectTextBlock() }"
+            :style="getTextBlockStyleComputed(block)"
+            @mousedown="() => selectTextBlock(block.id)"
+            @touchstart.stop="() => { if (!isTwoFingerGesture) selectTextBlock(block.id) }"
           >
             <!-- 隱藏 sizer：與 contenteditable 同字體/padding，讓編輯框寬高與文字一致；空白時用 placeholder 撐開寬度 -->
-            <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="textStyle">{{ content || '在這裡輸入文字...' }}</span>
+            <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="getTextStyleForBlock(block)">{{ block.content || '在這裡輸入文字...' }}</span>
+            <!-- 刪除按鈕 -->
+            <button
+              v-if="selectedTextBlockId === block.id"
+              class="p-editor__edit-frame-delete"
+              @click.stop="removeTextBlock(block.id)"
+              @touchstart.stop.prevent="removeTextBlock(block.id)"
+              aria-label="刪除"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
             <div 
-              v-show="isTextEditMode"
+              v-show="selectedTextBlockId === block.id"
               class="p-editor__edit-frame-drag-bar"
-              @mousedown.stop="onTextBlockDragBarMouseDown"
-              @touchstart.stop="onTextBlockDragBarTouchStart"
-              @click.stop="selectTextBlock"
+              @mousedown.stop="(e: MouseEvent) => onTextBlockDragBarMouseDown(e, block.id)"
+              @touchstart.stop="(e: TouchEvent) => onTextBlockDragBarTouchStart(e, block.id)"
+              @click.stop="() => selectTextBlock(block.id)"
             >
               ⋮⋮
             </div>
-            <!-- <div
-              v-if="isTextEditMode"
-              class="p-editor__edit-frame-transform-handle"
-              @mousedown.stop="onTextBlockTransformMouseDown"
-              @touchstart.stop="onTextBlockTransformTouchStart"
-            >
-              ↻
-            </div> -->
           </div>
 
           <!-- 貼紙編輯框（僅在貼紙 tab 時顯示） -->
@@ -175,6 +196,7 @@
               v-if="selectedStickerId === sticker.id"
               class="p-editor__edit-frame-delete"
               @click.stop="removeSticker(sticker.id)"
+              @touchstart.stop.prevent="removeSticker(sticker.id)"
               aria-label="刪除"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -198,14 +220,14 @@
 
     <!-- Control Panel -->
     <div class="p-editor__control-panel">
-      <!-- Tab Bar -->
-      <div class="p-editor__tab-bar">
+      <!-- Tab Bar（操作文字或繪圖時隱藏） -->
+      <div v-show="!drawMode && activeTab !== 'text'" class="p-editor__tab-bar">
         <button
           v-for="tab in EDITOR_TABS"
           :key="tab.id"
           class="p-editor__tab-btn"
           :class="{ 'is-active': activeTab === tab.id }"
-          @click="activeTab = tab.id"
+          @click="handleTabClick(tab.id)"
         >
           <img :src="tab.icon" :alt="tab.label" class="p-editor__tab-icon" />
           <span class="p-editor__tab-label">{{ tab.label }}</span>
@@ -249,6 +271,7 @@
 
       <!-- Tab: 文字 -->
       <div v-show="activeTab === 'text'" class="p-editor__tab-content">
+        <template v-if="selectedBlock">
         <div class="p-editor__control-section">
           <h3 class="p-editor__control-title">選擇文字顏色</h3>
           <div class="p-editor__color-grid">
@@ -256,11 +279,11 @@
               v-for="color in TEXT_COLORS"
               :key="color.value"
               class="p-editor__color-btn"
-              :class="{ 'is-active': textColor === color.value }"
+              :class="{ 'is-active': selectedBlock.color === color.value }"
               :style="{ '--btn-color': color.value }"
-              @click="textColor = color.value"
+              @click="selectedBlock.color = color.value; saveDraftData()"
             >
-              <img v-if="textColor === color.value" src="/check.svg" alt="" class="p-editor__color-check" />
+              <img v-if="selectedBlock.color === color.value" src="/check.svg" alt="" class="p-editor__color-check" />
             </button>
           </div>
         </div>
@@ -272,13 +295,17 @@
               :key="opt.value"
               type="button"
               class="p-editor__align-btn"
-              :class="{ 'is-active': textAlign === opt.value }"
+              :class="{ 'is-active': selectedBlock.align === opt.value }"
               :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
-              @click="textAlign = opt.value"
+              @click="selectedBlock.align = opt.value; saveDraftData()"
             >
               <img :src="opt.svg" :alt="''" class="p-editor__align-icon" />
             </button>
           </div>
+        </div>
+        </template>
+        <div v-else class="p-editor__control-section">
+          <p style="text-align: center; opacity: 0.6;">請先選取一個文字區塊</p>
         </div>
       </div>
 
@@ -366,7 +393,7 @@
         <button
           type="button"
           class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--complete"
-          @click="activeTab = 'note'"
+          @click="activeTab = null"
         >
           完成繪圖
         </button>
@@ -377,6 +404,25 @@
           @click="fabricBrush.redo()"
         >
           <img src="/undo.svg" alt="下一步" class="p-editor__draw-btn-icon p-editor__draw-btn-icon--redo" />
+        </button>
+      </template>
+
+      <!-- 文字模式：完成（回到 default，Tab Bar 會再出現） -->
+      <template v-else-if="activeTab === 'text'">
+        <button
+          type="button"
+          class="p-editor__action-btn p-editor__action-btn--secondary"
+          @click="cancelTextEditing"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
+          :disabled="!allTextBlocksFilled"
+          @click="completeTextEditing"
+        >
+          完成
         </button>
       </template>
       
@@ -406,7 +452,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import type { StickerInstance, DraftData, StickyNoteStyle } from '~/types'
+import type { StickerInstance, DraftData, StickyNoteStyle, TextBlockInstance } from '~/types'
 import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
 import { BACKGROUND_IMAGES } from '~/data/backgrounds'
 import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
@@ -436,36 +482,104 @@ const route = useRoute()
 const router = useRouter()
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken } = useStorage()
 
+const MAX_TEXT_BLOCKS = 3
+
 // Editor State
-const content = ref('')
 const backgroundImage = ref(BACKGROUND_IMAGES?.[0]?.url ?? '') // 預設第一張背景
 const shape = ref(DEFAULT_SHAPE_ID)
-const textColor = ref('#ffffff')
-const textAlign = ref<'left' | 'center' | 'right'>('center')
 const stickers = ref<StickerInstance[]>([])
 const selectedStickerId = ref<string | null>(null)
 const draggingStickerId = ref<string | null>(null)
 
-// 文字區塊變換（位置、縮放、旋轉）
-const textX = ref(50)
-const textY = ref(50)
-const textScale = ref(2)
-const textRotation = ref(0)
-const textBlockSelected = ref(false)
+// 多文字區塊
+const textBlocks = ref<TextBlockInstance[]>([])
+const selectedTextBlockId = ref<string | null>(null)
 const textBlockDragging = ref(false)
 const textBlockTransforming = ref(false)
 
+// 文字編輯時的原始內容快照（用於取消還原）
+const textBlockInitialContents = new Map<string, string>()
+// 這次文字編輯流程中新建立的文字區塊（用於判斷取消時要刪除還是還原）
+const newTextBlockIds = new Set<string>()
+
+// 文字編輯中，切換到其他物件時的提醒與暫存目標
+const showUnsavedTextModal = ref(false)
+const pendingSelection = ref<{ type: 'text'; id: string } | { type: 'sticker'; id: string } | null>(null)
+
+const snapshotTextBlockInitial = (blockId: string) => {
+  const block = textBlocks.value.find(b => b.id === blockId)
+  if (block) {
+    textBlockInitialContents.set(blockId, block.content)
+  }
+}
+
+const hasCurrentTextEdits = () => {
+  const id = selectedTextBlockId.value
+  if (!id) return false
+  const block = textBlocks.value.find(b => b.id === id)
+  if (!block) return false
+  const initial = textBlockInitialContents.get(id) ?? ''
+  return block.content !== initial
+}
+
+// 是否所有現有文字區塊都有輸入內容（用於控制「完成」按鈕可否點擊）
+const allTextBlocksFilled = computed(() =>
+  textBlocks.value.length > 0 && textBlocks.value.every(b => b.content.trim())
+)
+
+// 文字模式「完成」：確認所有文字皆已輸入，結束文字編輯流程
+const completeTextEditing = () => {
+  if (!allTextBlocksFilled.value) return
+  textBlockInitialContents.clear()
+  newTextBlockIds.clear()
+  pendingSelection.value = null
+  showUnsavedTextModal.value = false
+  selectedTextBlockId.value = null
+  activeTab.value = null
+}
+
+const applyPendingSelection = () => {
+  const sel = pendingSelection.value
+  pendingSelection.value = null
+  if (!sel) return
+  if (sel.type === 'text') {
+    selectTextBlock(sel.id)
+  } else {
+    selectSticker(sel.id)
+  }
+}
+
+const confirmDiscardTextChanges = () => {
+  cancelTextEditing()
+  showUnsavedTextModal.value = false
+  applyPendingSelection()
+}
+
+// 計算屬性：當前選取的文字區塊
+const selectedBlock = computed(() => {
+  if (!selectedTextBlockId.value) return null
+  return textBlocks.value.find(b => b.id === selectedTextBlockId.value) ?? null
+})
+
+// contenteditable ref map
+const contentEditableRefs = new Map<string, HTMLDivElement | null>()
+const setContentEditableRef = (blockId: string, el: HTMLDivElement | null) => {
+  if (el) {
+    contentEditableRefs.set(blockId, el)
+  } else {
+    contentEditableRefs.delete(blockId)
+  }
+}
+
 const canvasRef = ref<HTMLElement | null>(null)
-const textBlockRef = ref<HTMLElement | null>(null)
-const contentEditableRef = ref<HTMLDivElement | null>(null)
 const drawingLayerRef = ref<HTMLElement | null>(null)
 const drawingCanvasRef = ref<HTMLCanvasElement | null>(null)
 
 // Tab: 便利貼 | 文字 | 繪圖 | 貼紙
 const activeTab = ref<'note' | 'text' | 'draw' | 'sticker' | null>('note')
 
-// 文字編輯模式：點選文字或選到文字 tab 時才顯示選取狀態
-const isTextEditMode = computed(() => textBlockSelected.value || activeTab.value === 'text')
+// 文字編輯模式：有選取文字區塊時
+const isTextEditMode = computed(() => selectedTextBlockId.value !== null)
 
 const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)
@@ -536,8 +650,10 @@ watch(activeTab, (tab) => {
   }
   // 文字：切換到非文字 tab 時取消文字選取
   if (tab !== 'text') {
-    textBlockSelected.value = false
-    nextTick(() => contentEditableRef.value?.blur())
+    selectedTextBlockId.value = null
+    nextTick(() => {
+      contentEditableRefs.forEach(el => el?.blur())
+    })
   }
 }, { immediate: true })
 
@@ -556,7 +672,7 @@ watch(eraserMode, (toEraser) => {
 
 watch(drawMode, (v) => {
   if (v) {
-    contentEditableRef.value?.blur()
+    contentEditableRefs.forEach(el => el?.blur())
     if (fabricBrush.isInitialized()) {
       fabricBrush.setOnUndoRedoChange(() => {
         drawCanUndo.value = fabricBrush.canUndo()
@@ -570,31 +686,37 @@ watch(drawMode, (v) => {
 
 const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
   shape: shape.value || DEFAULT_SHAPE_ID,
-  textColor: textColor.value,
-  textAlign: textAlign.value,
+  textColor: '#ffffff', // 預設白色，各文字區塊有各自的顏色
+  textAlign: 'center',
   backgroundImage: backgroundImage.value
 }))
 
 const { wrapperStyles, innerStyles: canvasStyle } = useStickyNoteStyle(noteStyleProps)
 
-const textStyle = computed(() => ({
+// 文字區塊位置/大小樣式（接受 TextBlockInstance）
+const getTextBlockStyleComputed = (block: TextBlockInstance) => ({
+  ...getTextBlockStyle(block.x, block.y, block.scale, block.rotation),
+  textAlign: block.align
+})
+
+// 文字區塊文字樣式（顏色與對齊：針對單一文字物件）
+const getTextStyleForBlock = (block: TextBlockInstance) => ({
   ...wrapperStyles.value,
-  '--text-color': textColor.value,
-}))
-
-
-const textBlockStyle = computed(() => ({
-  ...getTextBlockStyle(textX.value, textY.value, textScale.value, textRotation.value),
-  textAlign: textAlign.value
-}))
+  color: block.color,
+  textAlign: block.align,
+  '--text-color': block.color,
+})
 
 
 // Methods
 let textInputDebounceTimer: ReturnType<typeof setTimeout> | null = null
-const handleTextInput = (e: Event) => {
+const handleTextInput = (e: Event, blockId: string) => {
   const target = e.target as HTMLElement
   const text = target.innerText.slice(0, MAX_CONTENT_LENGTH)
-  content.value = text
+  const block = textBlocks.value.find(b => b.id === blockId)
+  if (block) {
+    block.content = text
+  }
   if (target.innerText.length > MAX_CONTENT_LENGTH) {
     target.innerText = text
     placeCaretAtEnd(target)
@@ -615,12 +737,112 @@ const placeCaretAtEnd = (el: HTMLElement) => {
   sel?.addRange(range)
 }
 
-const syncContentToDom = (text: string) => {
+const syncContentToDom = () => {
   nextTick(() => {
-    if (contentEditableRef.value) {
-      contentEditableRef.value.innerText = text
-    }
+    textBlocks.value.forEach(block => {
+      const el = contentEditableRefs.get(block.id)
+      if (el) {
+        el.innerText = block.content
+      }
+    })
   })
+}
+
+// 文字區塊管理
+const addTextBlock = (): TextBlockInstance => {
+  const newBlock: TextBlockInstance = {
+    id: `text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    content: '',
+    x: 50 + (Math.random() - 0.5) * 20,
+    y: 50 + (Math.random() - 0.5) * 20,
+    scale: 2,
+    rotation: 0,
+    color: '#ffffff',
+    align: 'center'
+  }
+  textBlocks.value.push(newBlock)
+  snapshotTextBlockInitial(newBlock.id)
+  newTextBlockIds.add(newBlock.id)
+  saveDraftData()
+  return newBlock
+}
+
+const removeTextBlock = (blockId: string) => {
+  // Debug：確認事件有沒有進來、目前有幾個文字區塊
+  // eslint-disable-next-line no-console
+  console.log('[Editor] removeTextBlock clicked', { blockId, textBlocksCount: textBlocks.value.length })
+
+  textBlocks.value = textBlocks.value.filter(b => b.id !== blockId)
+  textBlockInitialContents.delete(blockId)
+  newTextBlockIds.delete(blockId)
+  if (selectedTextBlockId.value === blockId) {
+    selectedTextBlockId.value = null
+    // 刪除目前選取的文字區塊後，回到「無 tab 被選取」的預設狀態
+    activeTab.value = null
+  }
+  saveDraftData()
+}
+
+// Tab 點擊處理：文字 tab 自動新增文字區塊
+const handleTabClick = (tabId: string) => {
+  if (tabId === 'text') {
+    if (textBlocks.value.length < MAX_TEXT_BLOCKS) {
+      const newBlock = addTextBlock()
+      selectedTextBlockId.value = newBlock.id
+      selectedStickerId.value = null
+      activeTab.value = 'text'
+      nextTick(() => {
+        const el = contentEditableRefs.get(newBlock.id)
+        el?.focus()
+      })
+    } else {
+      // 已經到達上限：改為直接選取最後一組文字區塊，不再顯示提示
+      const lastBlock = textBlocks.value[textBlocks.value.length - 1]
+      if (lastBlock) {
+        snapshotTextBlockInitial(lastBlock.id)
+        newTextBlockIds.delete(lastBlock.id)
+        selectedTextBlockId.value = lastBlock.id
+        selectedStickerId.value = null
+        activeTab.value = 'text'
+        nextTick(() => {
+          const el = contentEditableRefs.get(lastBlock.id)
+          el?.focus()
+        })
+      }
+    }
+  } else {
+    activeTab.value = tabId as any
+  }
+}
+
+// 文字模式「取消」：新增未輸入時 = 刪除；編輯時 = 還原到編輯前內容
+const cancelTextEditing = () => {
+  const id = selectedTextBlockId.value
+  if (!id) {
+    activeTab.value = null
+    return
+  }
+  const block = textBlocks.value.find(b => b.id === id)
+  const initial = textBlockInitialContents.get(id) ?? ''
+  const isNew = newTextBlockIds.has(id)
+
+  if (block && isNew) {
+    // 新增的文字區塊：不論有沒有輸入內容，按取消都直接刪除
+    removeTextBlock(id)
+    activeTab.value = null
+    return
+  }
+
+  if (block) {
+    // 既有文字區塊：還原到編輯前內容
+    block.content = initial
+    syncContentToDom()
+    saveDraftData()
+  }
+
+  textBlockInitialContents.delete(id)
+  selectedTextBlockId.value = null
+  activeTab.value = null
 }
 
 const addSticker = (stickerType: string) => {
@@ -636,39 +858,74 @@ const addSticker = (stickerType: string) => {
   saveDraftData()
   // 選取新貼紙並切到貼紙 tab，讓編輯框出現
   selectedStickerId.value = newSticker.id
-  textBlockSelected.value = false
+  selectedTextBlockId.value = null
   activeTab.value = 'sticker'
 }
 
 const selectSticker = (id: string) => {
+  // 若正在文字編輯模式，且有文字變更，先提醒是否放棄
+  if (activeTab.value === 'text' && selectedTextBlockId.value && hasCurrentTextEdits()) {
+    pendingSelection.value = { type: 'sticker', id }
+    showUnsavedTextModal.value = true
+    return
+  }
+  if (activeTab.value === 'text' && selectedTextBlockId.value && !hasCurrentTextEdits()) {
+    // 沒有變更時，等同先按一次取消（可能會刪除新建空白文字）
+    cancelTextEditing()
+  }
   selectedStickerId.value = id
-  textBlockSelected.value = false
+  selectedTextBlockId.value = null
   activeTab.value = 'sticker'
 }
 
-const selectTextBlock = () => {
-  textBlockSelected.value = true
+const selectTextBlock = (blockId: string) => {
+  // 若正在文字編輯模式，且切換到另一組文字，先檢查是否有變更
+  if (
+    activeTab.value === 'text' &&
+    selectedTextBlockId.value &&
+    selectedTextBlockId.value !== blockId &&
+    hasCurrentTextEdits()
+  ) {
+    pendingSelection.value = { type: 'text', id: blockId }
+    showUnsavedTextModal.value = true
+    return
+  }
+  if (
+    activeTab.value === 'text' &&
+    selectedTextBlockId.value &&
+    selectedTextBlockId.value !== blockId &&
+    !hasCurrentTextEdits()
+  ) {
+    // 沒有變更時，等同先按一次取消（可能會刪除新建空白文字）
+    cancelTextEditing()
+  }
+  snapshotTextBlockInitial(blockId)
+  selectedTextBlockId.value = blockId
   selectedStickerId.value = null
   activeTab.value = 'text'
-  nextTick(() => contentEditableRef.value?.focus())
+  nextTick(() => {
+    const el = contentEditableRefs.get(blockId)
+    el?.focus()
+  })
 }
 
 const deselectAll = () => {
   if (lastCanvasDragEndAt.value && Date.now() - lastCanvasDragEndAt.value < 400) return
   selectedStickerId.value = null
-  textBlockSelected.value = false
+  selectedTextBlockId.value = null
 }
 
 // saveDraftData 需在 composable 之前定義（作為 callback）
 const saveDraftData = () => {
   const draft: DraftData = {
-    content: content.value,
+    content: textBlocks.value.map(b => b.content).join('\n'),
     backgroundImage: backgroundImage.value,
     shape: shape.value,
-    textColor: textColor.value,
-    textAlign: textAlign.value,
+    textColor: textBlocks.value[0]?.color ?? '#ffffff',
+    textAlign: textBlocks.value[0]?.align ?? 'center',
     stickers: stickers.value,
-    textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value },
+    textTransform: textBlocks.value[0] ? { x: textBlocks.value[0].x, y: textBlocks.value[0].y, scale: textBlocks.value[0].scale, rotation: textBlocks.value[0].rotation } : undefined,
+    textBlocks: textBlocks.value,
     drawing: drawingData.value ?? undefined,
     timestamp: Date.now()
   }
@@ -682,10 +939,8 @@ const {
   onTextBlockTransformTouchStart
 } = useTextBlockInteraction({
   canvasRef,
-  textX,
-  textY,
-  textScale,
-  textRotation,
+  textBlocks,
+  selectedTextBlockId,
   textBlockDragging,
   textBlockTransforming,
   selectTextBlock,
@@ -703,13 +958,10 @@ const {
 } = useCanvasPinch({
   canvasRef,
   drawMode,
-  isTextEditMode,
+  selectedTextBlockId,
   selectedStickerId,
+  textBlocks,
   stickers,
-  textX,
-  textY,
-  textScale,
-  textRotation,
   textBlockDragging,
   textBlockTransforming,
   draggingStickerId,
@@ -718,11 +970,14 @@ const {
   onStickerTransformEnd: saveDraftData,
   onTextDragEnd: saveDraftData,
   onStickerDragEnd: saveDraftData,
-  onTextTap: () => {
-    selectTextBlock()
-    nextTick(() => contentEditableRef.value?.focus())
+  onTextTap: (blockId: string) => {
+    selectTextBlock(blockId)
+    nextTick(() => {
+      const el = contentEditableRefs.get(blockId)
+      el?.focus()
+    })
   },
-  onTextDragStart: () => selectTextBlock()
+  onTextDragStart: (blockId: string) => selectTextBlock(blockId)
 })
 
 const {
@@ -750,20 +1005,33 @@ const removeSticker = (id: string) => {
 }
 
 const loadDraftData = async (draft: DraftData) => {
-  content.value = draft.content
   backgroundImage.value = draft.backgroundImage
   shape.value = draft.shape
-  textColor.value = draft.textColor
-  textAlign.value = draft.textAlign ?? 'center'
   stickers.value = draft.stickers
   drawingData.value = draft.drawing ?? null
-  if (draft.textTransform) {
-    textX.value = draft.textTransform.x
-    textY.value = draft.textTransform.y
-    textScale.value = draft.textTransform.scale
-    textRotation.value = draft.textTransform.rotation
+
+  // 多文字區塊：優先使用 textBlocks，否則從舊格式轉換
+  if (draft.textBlocks && draft.textBlocks.length > 0) {
+    textBlocks.value = draft.textBlocks
+  } else if (draft.content) {
+    // 向下相容：舊格式只有一個文字區塊
+    const t = draft.textTransform
+    textBlocks.value = [{
+      id: `text-legacy-${Date.now()}`,
+      content: draft.content,
+      x: t?.x ?? 50,
+      y: t?.y ?? 50,
+      scale: t?.scale ?? 2,
+      rotation: t?.rotation ?? 0,
+      color: draft.textColor ?? '#ffffff',
+      align: draft.textAlign ?? 'center'
+    }]
+  } else {
+    textBlocks.value = []
   }
-  syncContentToDom(draft.content)
+
+  await nextTick()
+  syncContentToDom()
   if (draft.drawing) {
     await nextTick()
     fabricBrush.loadFromDataURL(draft.drawing)
@@ -771,19 +1039,14 @@ const loadDraftData = async (draft: DraftData) => {
 }
 
 const resetEditorToInitial = () => {
-  content.value = ''
   backgroundImage.value = BACKGROUND_IMAGES?.[0]?.url ?? ''
   shape.value = DEFAULT_SHAPE_ID
-  textColor.value = '#ffffff'
-  textAlign.value = 'center'
   stickers.value = []
+  textBlocks.value = []
+  selectedTextBlockId.value = null
   drawingData.value = null
   fabricBrush.clear()
-  textX.value = 50
-  textY.value = 50
-  textScale.value = 2
-  textRotation.value = 0
-  syncContentToDom('')
+  syncContentToDom()
 }
 
 const handleDraftDecision = async (useDraft: boolean) => {
@@ -805,7 +1068,8 @@ const handleDraftDecision = async (useDraft: boolean) => {
 const isSubmitting = ref(false)
 
 const openSubmitModal = () => {
-  if (!content.value.trim()) {
+  const hasContent = textBlocks.value.some(b => b.content.trim())
+  if (!hasContent) {
     showAlert('請輸入文字內容')
     return
   }
@@ -823,16 +1087,17 @@ const previewNoteData = computed(() => {
   const style: StickyNoteStyle = {
     backgroundImage: backgroundImage.value,
     shape: shape.value,
-    textColor: textColor.value,
-    textAlign: textAlign.value,
+    textColor: textBlocks.value[0]?.color ?? '#ffffff',
+    textAlign: textBlocks.value[0]?.align ?? 'center',
     stickers: stickers.value,
-    textTransform: { x: textX.value, y: textY.value, scale: textScale.value, rotation: textRotation.value }
+    textTransform: textBlocks.value[0] ? { x: textBlocks.value[0].x, y: textBlocks.value[0].y, scale: textBlocks.value[0].scale, rotation: textBlocks.value[0].rotation } : undefined,
+    textBlocks: textBlocks.value
   }
   if (drawingData.value) style.drawing = drawingData.value
 
   return {
     id: 'preview',
-    content: content.value.trim(),
+    content: textBlocks.value.map(b => b.content).join('\n').trim(),
     style: style,
     timestamp: Date.now(),
     status: 'waiting'
@@ -933,7 +1198,8 @@ const handleShare = async () => {
 }
 
 const goBack = () => {
-  if (content.value || stickers.value.length > 0) {
+  const hasContent = textBlocks.value.some(b => b.content.trim())
+  if (hasContent || stickers.value.length > 0) {
     showExitModal.value = true
   } else {
     router.push('/')
@@ -1013,7 +1279,7 @@ onUnmounted(() => {
 })
 
 // Auto-save on changes
-watch([backgroundImage, shape, textColor], () => {
+watch([backgroundImage, shape], () => {
   saveDraftData()
 })
 </script>

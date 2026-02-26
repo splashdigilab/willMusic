@@ -47,11 +47,22 @@ export const useStorage = () => {
       // 遷移舊格式 → 統一 DraftData
       const draft: DraftData = {
         content: typeof raw.content === 'string' ? raw.content : '',
-        backgroundImage: typeof raw.backgroundImage === 'string' ? raw.backgroundImage : (typeof raw.backgroundColor === 'string' ? raw.backgroundColor : ''),
+        backgroundImage:
+          typeof raw.backgroundImage === 'string'
+            ? raw.backgroundImage
+            : (typeof raw.backgroundColor === 'string' ? raw.backgroundColor : ''),
         shape: typeof raw.shape === 'string' ? raw.shape : 'square',
         textColor: typeof raw.textColor === 'string' ? raw.textColor : '#333333',
-        stickers: Array.isArray(raw.stickers) ? raw.stickers : [],
-        textTransform: raw.textTransform && typeof raw.textTransform === 'object' ? raw.textTransform as DraftData['textTransform'] : undefined,
+        textAlign: typeof raw.textAlign === 'string' ? (raw.textAlign as DraftData['textAlign']) : undefined,
+        stickers: Array.isArray(raw.stickers) ? (raw.stickers as DraftData['stickers']) : [],
+        textTransform:
+          raw.textTransform && typeof raw.textTransform === 'object'
+            ? (raw.textTransform as DraftData['textTransform'])
+            : undefined,
+        // 多文字區塊（新版）：若存在則直接還原；舊版沒有此欄位時為 undefined
+        textBlocks: Array.isArray((raw as any).textBlocks)
+          ? ((raw as any).textBlocks as DraftData['textBlocks'])
+          : undefined,
         drawing: typeof raw.drawing === 'string' ? raw.drawing : undefined,
         timestamp: ts
       }

@@ -196,7 +196,8 @@ body.is-editor-page #app {
       pointer-events: none;
 
       .p-editor__edit-frame-drag-bar,
-      .p-editor__edit-frame-transform-handle {
+      .p-editor__edit-frame-transform-handle,
+      .p-editor__edit-frame-delete {
         pointer-events: auto;
       }
     }
