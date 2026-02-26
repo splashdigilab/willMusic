@@ -1,7 +1,10 @@
 @use '../base/variables' as var;
+@use '../base/editor-variables' as ed;
 @use '../components/button' as btn;
 @use '../components/sticky-note' as sn;
+@use '../mixins/editor' as edm;
 
+/* ========== 全域：編輯器頁面鎖定視窗 ========== */
 body.is-editor-page {
   overflow: hidden;
   position: fixed;
@@ -19,6 +22,7 @@ body.is-editor-page #app {
   height: 100dvh;
 }
 
+/* ========== 主容器與畫布 ========== */
 .p-editor {
   margin: 0 auto;
   max-width: 1024px;
@@ -183,7 +187,7 @@ body.is-editor-page #app {
     height: 100%;
   }
 
-  /* 編輯框：文字與貼紙共用，置頂層 */
+  /* ========== 編輯框（文字／貼紙共用） ========== */
   &__edit-frame {
     position: absolute;
     transform-origin: center center;
@@ -239,8 +243,8 @@ body.is-editor-page #app {
     left: 50%;
     transform: translateX(-50%) scale(var(--inverse-scale, 1));
     transform-origin: center top;
-    width: 48px;
-    height: 20px;
+    width: ed.$editor-edit-frame-drag-bar-width;
+    height: ed.$editor-edit-frame-drag-bar-height;
     background: var.$editor-selection-bar-bg;
     color: white;
     border-radius: 4px;
@@ -257,8 +261,8 @@ body.is-editor-page #app {
     /* 對齊紫色框左上角：outline 2px + outline-offset 4px，左上外角在 (-4px,-4px) */
     top: -4px;
     left: -4px;
-    width: 48px;
-    height: 48px;
+    width: ed.$editor-edit-frame-delete-size;
+    height: ed.$editor-edit-frame-delete-size;
     background: #f43f5e;
     color: white;
     border: 2px solid white;
@@ -271,17 +275,14 @@ body.is-editor-page #app {
     transform: translate(-50%, -50%) scale(var(--inverse-scale, 1));
     transform-origin: center center;
     backface-visibility: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   &__edit-frame-transform-handle {
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 28px;
-    height: 28px;
+    width: ed.$editor-edit-frame-transform-handle-size;
+    height: ed.$editor-edit-frame-transform-handle-size;
     background: #3b82f6;
     color: white;
     border: 2px solid white;
@@ -298,7 +299,7 @@ body.is-editor-page #app {
     backface-visibility: hidden;
   }
 
-  // Control Panel - 更緊湊設計
+  /* ========== 控制面板：Tab Bar + Tab Content ========== */
   &__control-panel {
     padding: 0;
     background: white;
@@ -312,7 +313,7 @@ body.is-editor-page #app {
     display: flex;
     gap: 0;
     padding: 0;
-    border-bottom: 1px solid rgba(#E6204D, 0.2);
+    // border-bottom: 1px solid rgba(#E6204D, 0.2);
     margin: 0;
     overflow-x: auto;
     justify-content: space-around;
@@ -361,14 +362,18 @@ body.is-editor-page #app {
   }
 
   &__tab-content {
-    padding: 0.5rem 0 1rem 0;
-    max-width: 600px;
+    padding: 1rem 0;
+    max-width: ed.$editor-control-max-width;
     margin: 0 auto;
-    height: 167px;
-    overflow-y: auto;
+    min-height: 0;
+    overflow-y: visible;
+    display: flex;
+    flex-direction: column;
+    gap: ed.$editor-grid-gap;
 
-    /* 貼紙 tab：只讓 sticker-grid 捲動，tab-content 不捲動 */
+    /* 貼紙 tab：固定高度，內部 sticker-grid 可捲動（維持原狀） */
     &:has(.p-editor__sticker-grid) {
+      height: ed.$editor-tab-content-sticker-height;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -376,9 +381,9 @@ body.is-editor-page #app {
   }
 
   &__control-section {
-    max-width: 600px;
-    margin: 0 0 0.5rem 0;
-    padding-left: 1rem;
+    max-width: ed.$editor-control-max-width;
+    margin: 0 0.5rem;
+    // padding-left: 1rem;
 
     &:last-child {
       margin-bottom: 0;
@@ -405,7 +410,7 @@ body.is-editor-page #app {
     margin-bottom: 0.5rem;
   }
 
-  // Color Grid
+  /* ========== 控制項：筆刷／顏色／對齊／材質／造型／貼紙 ========== */
   // 移除舊的繪圖控制項樣式，使用統一的顏色選擇器
 
   &__brush-slider {
@@ -441,22 +446,7 @@ body.is-editor-page #app {
 
   // 文字顏色選擇器 - 圓形按鈕（符合設計稿）
   &__color-grid {
-    display: flex;
-    gap: 0.75rem;
-    align-items: center;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-right: 1rem;
-    margin-left: -1rem;
-    padding-left: 1rem;
-    -webkit-overflow-scrolling: touch;
-    filter: drop-shadow(var(--shadow-soft));
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-
-    scrollbar-width: none;
+    @include edm.editor-grid-wrap;
   }
 
   &__color-btn {
@@ -478,14 +468,7 @@ body.is-editor-page #app {
   }
 
   &__color-check {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 1rem;
-    height: 1rem;
-    object-fit: contain;
-    filter: drop-shadow(var(--shadow-soft));
+    @include edm.editor-picker-check;
     z-index: 1;
   }
 
@@ -497,22 +480,7 @@ body.is-editor-page #app {
 
   // 文字對齊（與選擇便利貼造型一致：圖片即按鈕，選取時 opacity 0.5）
   &__align-row {
-    display: flex;
-    gap: 0.75rem;
-    align-items: center;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-right: 1rem;
-    margin-left: -1rem;
-    padding-left: 1rem;
-    -webkit-overflow-scrolling: touch;
-    filter: drop-shadow(var(--shadow-soft));
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-
-    scrollbar-width: none;
+    @include edm.editor-grid-scroll-x;
   }
 
   &__align-btn {
@@ -538,23 +506,9 @@ body.is-editor-page #app {
     object-fit: contain;
   }
 
-  // 材質/背景圖片選擇器（符合設計稿）
+  // 材質/背景圖片選擇器：超過寬度時換行，不左右滑動
   &__background-grid {
-    display: flex;
-    gap: 0.75rem;
-    overflow-x: auto;
-    overflow-y: visible;
-    padding-right: 1rem;
-    margin-left: -1rem;
-    padding-left: 1rem;
-    -webkit-overflow-scrolling: touch;
-    filter: drop-shadow(var(--shadow-soft));
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-
-    scrollbar-width: none;
+    @include edm.editor-grid-wrap;
   }
 
   &__background-btn {
@@ -576,35 +530,12 @@ body.is-editor-page #app {
   }
 
   &__background-check {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 1rem;
-    height: 1rem;
-    object-fit: contain;
-    filter: drop-shadow(var(--shadow-soft));
+    @include edm.editor-picker-check;
   }
 
-  // Shape Grid
-  // 樣式/形狀選擇器（符合設計稿）
+  // Shape Grid - 樣式/形狀選擇器（符合設計稿）
   &__shape-grid {
-    display: flex;
-    gap: 0.75rem;
-    align-items: center;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-right: 1rem;
-    margin-left: -1rem;
-    padding-left: 1rem;
-    -webkit-overflow-scrolling: touch;
-    filter: drop-shadow(var(--shadow-soft));
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-
-    scrollbar-width: none;
+    @include edm.editor-grid-scroll-x(ed.$editor-grid-gap);
   }
 
   &__shape-btn {
@@ -640,38 +571,22 @@ body.is-editor-page #app {
   }
 
   &__shape-check {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 1rem;
-    height: 1rem;
-    object-fit: contain;
-    filter: drop-shadow(var(--shadow-soft));
+    @include edm.editor-picker-check;
   }
 
-  // Sticker Grid
-  // 貼紙選擇器（符合設計稿）- 撐滿 control-section，僅此處可上下捲動
+  // Sticker Grid - 貼紙選擇器，撐滿 control-section，僅此處可上下捲動
   &__sticker-grid {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: ed.$editor-grid-gap;
     align-items: flex-start;
     align-content: flex-start;
     overflow-x: hidden;
     overflow-y: auto;
-    padding-right: 0.5rem;
-    margin-left: -1rem;
-    padding-left: 1rem;
     -webkit-overflow-scrolling: touch;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-
-    scrollbar-width: none;
+    @include edm.editor-scrollbar-hidden;
   }
 
   &__sticker-btn {
@@ -679,8 +594,6 @@ body.is-editor-page #app {
     border: 1px solid #e5e5e5;
     background: white;
     padding: 0.5rem;
-    width: 40px;
-    height: 40px;
 
     &-img {
       width: 100%;
@@ -689,7 +602,7 @@ body.is-editor-page #app {
     }
   }
 
-  // Bottom Actions
+  /* ========== 底部按鈕列 ========== */
   &__bottom-actions {
     padding: 0 0.5rem 1rem 0.5rem;
     background: white;
@@ -748,8 +661,8 @@ body.is-editor-page #app {
   // 繪圖模式圓形按鈕（上一步/下一步）- 固定尺寸確保正圓，will-red，與完成按鈕同高
   &__draw-btn {
     @include btn.btn-reset;
-    width: 46px;
-    height: 36px;
+    width: ed.$editor-draw-btn-size;
+    height: ed.$editor-draw-btn-height;
     flex-shrink: 0;
     flex-grow: 0;
     border: none;

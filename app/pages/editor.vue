@@ -221,7 +221,7 @@
     <!-- Control Panel -->
     <div class="p-editor__control-panel">
       <!-- Tab Bar（操作文字或繪圖時隱藏） -->
-      <div v-show="!drawMode && activeTab !== 'text'" class="p-editor__tab-bar">
+      <div v-show="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'" class="p-editor__tab-bar">
         <button
           v-for="tab in EDITOR_TABS"
           :key="tab.id"
@@ -425,8 +425,30 @@
           完成
         </button>
       </template>
+
+      <!-- 便利貼模式：完成（回到 default，Tab Bar 會再出現） -->
+      <template v-else-if="activeTab === 'note'">
+        <button
+          type="button"
+          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
+          @click="activeTab = null"
+        >
+          完成
+        </button>
+      </template>
+
+      <!-- 貼紙模式：完成（回到 default，Tab Bar 會再出現） -->
+      <template v-else-if="activeTab === 'sticker'">
+        <button
+          type="button"
+          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
+          @click="activeTab = null"
+        >
+          完成
+        </button>
+      </template>
       
-      <!-- 一般模式：上傳大螢幕（草稿自動儲存） -->
+      <!-- default 狀態：上傳大螢幕（草稿自動儲存） -->
       <template v-else>
         <button
           type="button"
@@ -576,7 +598,7 @@ const drawingLayerRef = ref<HTMLElement | null>(null)
 const drawingCanvasRef = ref<HTMLCanvasElement | null>(null)
 
 // Tab: 便利貼 | 文字 | 繪圖 | 貼紙
-const activeTab = ref<'note' | 'text' | 'draw' | 'sticker' | null>('note')
+const activeTab = ref<'note' | 'text' | 'draw' | 'sticker' | null>(null)
 
 // 文字編輯模式：有選取文字區塊時
 const isTextEditMode = computed(() => selectedTextBlockId.value !== null)
