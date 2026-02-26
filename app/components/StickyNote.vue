@@ -6,7 +6,25 @@
   >
     <div class="c-sticky-note__scaler" :style="[scalerStyle, wrapperStyles]">
       <div class="c-sticky-note__inner" :style="innerStyles">
-      <div 
+      <!-- 多文字區塊：每個區塊各自位置、顏色、對齊 -->
+      <template v-if="textBlocks.length">
+        <div
+          v-for="block in textBlocks"
+          :key="block.id"
+          class="c-sticky-note__content-wrap"
+          :style="getBlockWrapStyle(block)"
+        >
+          <div
+            class="c-sticky-note__content"
+            :style="{ color: block.color, textAlign: block.align }"
+          >
+            {{ block.content }}
+          </div>
+        </div>
+      </template>
+      <!-- 單一文字（舊格式） -->
+      <div
+        v-else
         class="c-sticky-note__content-wrap"
         :style="contentWrapStyle"
       >
@@ -42,7 +60,7 @@
 
 <script setup lang="ts">
 import { gsap } from 'gsap'
-import type { QueuePendingItem, QueueHistoryItem, StickerInstance } from '~/types'
+import type { QueuePendingItem, QueueHistoryItem, StickerInstance, TextBlockInstance } from '~/types'
 import { STICKER_LIBRARY } from '~/data/stickers'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
 import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
@@ -62,6 +80,11 @@ const noteRef = ref<HTMLElement | null>(null)
 const stickers = computed(() => {
   return props.note.style?.stickers || []
 })
+
+const textBlocks = computed<TextBlockInstance[]>(() => props.note.style?.textBlocks ?? [])
+
+const getBlockWrapStyle = (block: TextBlockInstance) =>
+  getTextBlockStyle(block.x, block.y, block.scale, block.rotation)
 
 const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
   shape: props.note.style.shape || DEFAULT_SHAPE_ID,
