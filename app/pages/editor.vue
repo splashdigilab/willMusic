@@ -165,23 +165,15 @@
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
-            <div 
-              v-show="selectedTextBlockId === block.id"
-              class="p-editor__edit-frame-drag-bar"
-              @mousedown.stop="(e: MouseEvent) => onTextBlockDragBarMouseDown(e, block.id)"
-              @touchstart.stop="(e: TouchEvent) => onTextBlockDragBarTouchStart(e, block.id)"
-              @click.stop="() => selectTextBlock(block.id)"
-            >
-              ⋮⋮
-            </div>
           </div>
 
-          <!-- 貼紙編輯框（僅在貼紙 tab 時顯示） -->
-          <template v-if="activeTab === 'sticker'">
+          <!-- 貼紙編輯框：在貼紙 tab，或 default 狀態且有選取貼紙時顯示 -->
+          <template v-if="showStickerEditFrame">
           <div
             v-for="sticker in stickers"
             :key="`ui-${sticker.id}`"
             class="p-editor__edit-frame p-editor__edit-frame--sticker"
+            :data-sticker-id="sticker.id"
             :class="{ 
               'is-selected': selectedStickerId === sticker.id,
               'is-dragging': draggingStickerId === sticker.id,
@@ -411,15 +403,7 @@
       <template v-else-if="activeTab === 'text'">
         <button
           type="button"
-          class="p-editor__action-btn p-editor__action-btn--secondary"
-          @click="cancelTextEditing"
-        >
-          取消
-        </button>
-        <button
-          type="button"
           class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
-          :disabled="!allTextBlocksFilled"
           @click="completeTextEditing"
         >
           完成
@@ -544,14 +528,11 @@ const hasCurrentTextEdits = () => {
   return block.content !== initial
 }
 
-// 是否所有現有文字區塊都有輸入內容（用於控制「完成」按鈕可否點擊）
-const allTextBlocksFilled = computed(() =>
-  textBlocks.value.length > 0 && textBlocks.value.every(b => b.content.trim())
-)
-
-// 文字模式「完成」：確認所有文字皆已輸入，結束文字編輯流程
+// 文字模式「完成」：移除空白文字區塊，結束文字編輯流程
 const completeTextEditing = () => {
-  if (!allTextBlocksFilled.value) return
+  // 將內容為空（或只含空白）的文字區塊直接刪除
+  textBlocks.value = textBlocks.value.filter(b => b.content.trim())
+
   textBlockInitialContents.clear()
   newTextBlockIds.clear()
   pendingSelection.value = null
@@ -567,6 +548,7 @@ const applyPendingSelection = () => {
   if (sel.type === 'text') {
     selectTextBlock(sel.id)
   } else {
+    // 由「文字編輯模式」確認放棄後切換到貼紙：保持在 default tab，但選中貼紙
     selectSticker(sel.id)
   }
 }
@@ -641,6 +623,11 @@ const drawingData = ref<string | null>(null)
 const backgrounds = BACKGROUND_IMAGES
 const shapes = STICKY_NOTE_SHAPES
 
+// 是否顯示貼紙編輯框：只要有選取貼紙就顯示（與 tab 無關）
+const showStickerEditFrame = computed(() => {
+  return !!selectedStickerId.value
+})
+
 // Sticker Management
 
 // Fabric 手繪筆刷
@@ -665,10 +652,6 @@ watch(activeTab, (tab) => {
       saveDraftData()
     }
     drawMode.value = false
-  }
-  // 貼紙：切換到非貼紙 tab 時移除貼紙編輯框與選取狀態
-  if (tab !== 'sticker') {
-    selectedStickerId.value = null
   }
   // 文字：切換到非文字 tab 時取消文字選取
   if (tab !== 'text') {
@@ -815,7 +798,10 @@ const handleTabClick = (tabId: string) => {
       activeTab.value = 'text'
       nextTick(() => {
         const el = contentEditableRefs.get(newBlock.id)
-        el?.focus()
+        if (el) {
+          el.focus()
+          placeCaretAtEnd(el)
+        }
       })
     } else {
       // 已經到達上限：改為直接選取最後一組文字區塊，不再顯示提示
@@ -828,7 +814,10 @@ const handleTabClick = (tabId: string) => {
         activeTab.value = 'text'
         nextTick(() => {
           const el = contentEditableRefs.get(lastBlock.id)
-          el?.focus()
+          if (el) {
+            el.focus()
+            placeCaretAtEnd(el)
+          }
         })
       }
     }
@@ -897,7 +886,6 @@ const selectSticker = (id: string) => {
   }
   selectedStickerId.value = id
   selectedTextBlockId.value = null
-  activeTab.value = 'sticker'
 }
 
 const selectTextBlock = (blockId: string) => {
@@ -927,7 +915,10 @@ const selectTextBlock = (blockId: string) => {
   activeTab.value = 'text'
   nextTick(() => {
     const el = contentEditableRefs.get(blockId)
-    el?.focus()
+    if (el) {
+      el.focus()
+      placeCaretAtEnd(el)
+    }
   })
 }
 
@@ -955,8 +946,6 @@ const saveDraftData = () => {
 }
 
 const {
-  onTextBlockDragBarMouseDown,
-  onTextBlockDragBarTouchStart,
   onTextBlockTransformMouseDown,
   onTextBlockTransformTouchStart
 } = useTextBlockInteraction({
@@ -996,7 +985,10 @@ const {
     selectTextBlock(blockId)
     nextTick(() => {
       const el = contentEditableRefs.get(blockId)
-      el?.focus()
+      if (el) {
+        el.focus()
+        placeCaretAtEnd(el)
+      }
     })
   },
   onTextDragStart: (blockId: string) => selectTextBlock(blockId)

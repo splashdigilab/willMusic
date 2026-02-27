@@ -40,8 +40,26 @@ interface PinchState {
 }
 
 type CanvasDragState =
-  | { type: 'text'; textBlockId: string; startX: number; startY: number; initX: number; initY: number }
-  | { type: 'sticker'; stickerId: string; startX: number; startY: number; initX: number; initY: number }
+  | {
+      type: 'text'
+      textBlockId: string
+      startX: number
+      startY: number
+      initX: number
+      initY: number
+      halfWidthPct: number
+      halfHeightPct: number
+    }
+  | {
+      type: 'sticker'
+      stickerId: string
+      startX: number
+      startY: number
+      initX: number
+      initY: number
+      halfWidthPct: number
+      halfHeightPct: number
+    }
 
 const EMPTY_AREA_SELECTORS = [
   '.p-editor__edit-frame',
@@ -136,6 +154,94 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     }
   }
 
+  /**
+   * 依目前位置與框大小，算出不超出畫布時允許的最大 scale。
+   * 框大小與 scale 成正比，所以 maxScale 由「邊界餘裕 / 當前半寬高比」決定。
+   */
+  const getMaxScaleForBounds = (el: HTMLElement, target: PinchTarget): number => {
+    const rect = el.getBoundingClientRect()
+    if (!rect.width || !rect.height) return SCALE_MAX
+
+    let x: number, y: number, currentScale: number, halfWidthPct: number, halfHeightPct: number
+
+    if ('textBlockId' in target) {
+      const block = textBlocks.value.find(b => b.id === target.textBlockId)
+      if (!block) return SCALE_MAX
+      x = block.x
+      y = block.y
+      currentScale = block.scale
+      const frameEl = el.querySelector(
+        `.p-editor__edit-frame--text[data-text-block-id="${target.textBlockId}"]`
+      ) as HTMLElement | null
+      if (!frameEl) return SCALE_MAX
+      const fr = frameEl.getBoundingClientRect()
+      halfWidthPct = (fr.width / rect.width) * 50
+      halfHeightPct = (fr.height / rect.height) * 50
+    } else {
+      const st = stickers.value.find(s => s.id === target.stickerId)
+      if (!st) return SCALE_MAX
+      x = st.x
+      y = st.y
+      currentScale = st.scale
+      const frameEl = el.querySelector(
+        `.p-editor__edit-frame--sticker[data-sticker-id="${target.stickerId}"]`
+      ) as HTMLElement | null
+      if (!frameEl) return SCALE_MAX
+      const fr = frameEl.getBoundingClientRect()
+      halfWidthPct = (fr.width / rect.width) * 50
+      halfHeightPct = (fr.height / rect.height) * 50
+    }
+
+    const marginX = Math.min(x, 100 - x)
+    const marginY = Math.min(y, 100 - y)
+    const eps = 1e-6
+    const maxScaleX = halfWidthPct > eps ? (marginX * currentScale) / halfWidthPct : SCALE_MAX
+    const maxScaleY = halfHeightPct > eps ? (marginY * currentScale) / halfHeightPct : SCALE_MAX
+    return Math.min(maxScaleX, maxScaleY, SCALE_MAX)
+  }
+
+  /** 依目前 DOM 實際尺寸，強制把目標物完整限制在畫布內（給 pinch 縮放後使用） */
+  const clampTargetWithinCanvas = (el: HTMLElement, target: PinchTarget) => {
+    const rect = el.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+
+    if ('textBlockId' in target) {
+      const id = target.textBlockId
+      const block = textBlocks.value.find(b => b.id === id)
+      if (!block) return
+      const frameEl = el.querySelector(
+        `.p-editor__edit-frame--text[data-text-block-id="${id}"]`
+      ) as HTMLElement | null
+      if (!frameEl) return
+      const fr = frameEl.getBoundingClientRect()
+      const halfWidthPct = (fr.width / rect.width) * 50
+      const halfHeightPct = (fr.height / rect.height) * 50
+      const minX = halfWidthPct
+      const maxX = 100 - halfWidthPct
+      const minY = halfHeightPct
+      const maxY = 100 - halfHeightPct
+      block.x = clamp(block.x, minX, maxX)
+      block.y = clamp(block.y, minY, maxY)
+    } else {
+      const id = target.stickerId
+      const st = stickers.value.find(s => s.id === id)
+      if (!st) return
+      const frameEl = el.querySelector(
+        `.p-editor__edit-frame--sticker[data-sticker-id="${id}"]`
+      ) as HTMLElement | null
+      if (!frameEl) return
+      const fr = frameEl.getBoundingClientRect()
+      const halfWidthPct = (fr.width / rect.width) * 50
+      const halfHeightPct = (fr.height / rect.height) * 50
+      const minX = halfWidthPct
+      const maxX = 100 - halfWidthPct
+      const minY = halfHeightPct
+      const maxY = 100 - halfHeightPct
+      st.x = clamp(st.x, minX, maxX)
+      st.y = clamp(st.y, minY, maxY)
+    }
+  }
+
   const attachPinchListeners = (el: HTMLElement, t0: Touch, t1: Touch) => {
     const target = getPinchTarget()
     if (!target) return
@@ -172,12 +278,18 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       const a0 = e.touches[0]
       const a1 = e.touches[1]
       if (!a0 || !a1) return
-      e.preventDefault()
+      if (e.cancelable) e.preventDefault()
       const d = Math.hypot(a1.clientX - a0.clientX, a1.clientY - a0.clientY) || 1
       const a = Math.atan2(a1.clientY - a0.clientY, a1.clientX - a0.clientX)
       const scaleRatio = d / pinchState.initDist
       const angleDelta = (a - pinchState.initAngle) * RAD_TO_DEG
-      applyPinch(pinchState, scaleRatio, angleDelta)
+      // 若放大後會超出畫布，則限制 scale 不超過邊界允許的最大值
+      const maxScale = getMaxScaleForBounds(el, pinchState.target)
+      const desiredScale = pinchState.initScale * scaleRatio
+      const effectiveScale = clamp(desiredScale, SCALE_MIN, Math.min(maxScale, SCALE_MAX))
+      const effectiveRatio = effectiveScale / pinchState.initScale
+      applyPinch(pinchState, effectiveRatio, angleDelta)
+      clampTargetWithinCanvas(el, pinchState.target)
     }
 
     const onTouchEnd = () => {
@@ -205,28 +317,63 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   const startCanvasDrag = (clientX: number, clientY: number, isTouch: boolean) => {
     const el = canvasRef.value
     if (!el) return
+    const rect = el.getBoundingClientRect()
+
+    const getHalfSizePctForText = (blockId: string): { halfWidthPct: number; halfHeightPct: number } => {
+      const frameEl = el.querySelector(
+        `.p-editor__edit-frame--text[data-text-block-id="${blockId}"]`
+      ) as HTMLElement | null
+      if (!frameEl || !rect.width || !rect.height) {
+        return { halfWidthPct: 5, halfHeightPct: 5 }
+      }
+      const r = frameEl.getBoundingClientRect()
+      return {
+        halfWidthPct: (r.width / rect.width) * 50,
+        halfHeightPct: (r.height / rect.height) * 50
+      }
+    }
+
+    const getHalfSizePctForSticker = (stickerId: string): { halfWidthPct: number; halfHeightPct: number } => {
+      const frameEl = el.querySelector(
+        `.p-editor__edit-frame--sticker[data-sticker-id="${stickerId}"]`
+      ) as HTMLElement | null
+      if (!frameEl || !rect.width || !rect.height) {
+        return { halfWidthPct: 5, halfHeightPct: 5 }
+      }
+      const r = frameEl.getBoundingClientRect()
+      return {
+        halfWidthPct: (r.width / rect.width) * 50,
+        halfHeightPct: (r.height / rect.height) * 50
+      }
+    }
     if (selectedTextBlockId.value) {
       const block = getSelectedBlock()
       if (!block) return
+      const { halfWidthPct, halfHeightPct } = getHalfSizePctForText(block.id)
       canvasDragState = {
         type: 'text',
         textBlockId: block.id,
         startX: clientX,
         startY: clientY,
         initX: block.x,
-        initY: block.y
+        initY: block.y,
+        halfWidthPct,
+        halfHeightPct
       }
       textBlockDragging.value = true
     } else if (selectedStickerId.value) {
       const s = stickers.value.find(st => st.id === selectedStickerId.value!)
       if (!s) return
+      const { halfWidthPct, halfHeightPct } = getHalfSizePctForSticker(s.id)
       canvasDragState = {
         type: 'sticker',
         stickerId: s.id,
         startX: clientX,
         startY: clientY,
         initX: s.x,
-        initY: s.y
+        initY: s.y,
+        halfWidthPct,
+        halfHeightPct
       }
       draggingStickerId.value = s.id
     } else return
@@ -242,15 +389,29 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       if (canvasDragState.type === 'text') {
         const block = textBlocks.value.find(b => b.id === (canvasDragState as any).textBlockId)
         if (block) {
-          block.x = clamp(canvasDragState.initX + deltaX, -30, 130)
-          block.y = clamp(canvasDragState.initY + deltaY, -30, 130)
+          const newX = canvasDragState.initX + deltaX
+          const newY = canvasDragState.initY + deltaY
+          const minX = canvasDragState.halfWidthPct
+          const maxX = 100 - canvasDragState.halfWidthPct
+          const minY = canvasDragState.halfHeightPct
+          const maxY = 100 - canvasDragState.halfHeightPct
+          // 文字整個框（含 scale 後寬高）都必須留在畫布內
+          block.x = clamp(newX, minX, maxX)
+          block.y = clamp(newY, minY, maxY)
         }
       } else if (canvasDragState.type === 'sticker') {
         const state = canvasDragState
         const st = stickers.value.find(s => s.id === state.stickerId)
         if (st) {
-          st.x = clamp(state.initX + deltaX, 5, 95)
-          st.y = clamp(state.initY + deltaY, 5, 95)
+          const newX = state.initX + deltaX
+          const newY = state.initY + deltaY
+          const minX = state.halfWidthPct
+          const maxX = 100 - state.halfWidthPct
+          const minY = state.halfHeightPct
+          const maxY = 100 - state.halfHeightPct
+          // 貼紙整個框（含 scale 後寬高）都必須留在畫布內
+          st.x = clamp(newX, minX, maxX)
+          st.y = clamp(newY, minY, maxY)
         }
       }
     }
@@ -305,7 +466,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       if (isPointerOnTextArea(e.target)) {
         const blockId = getTextBlockIdFromTarget(e.target)
         if (blockId) {
-          e.preventDefault()
+          if (e.cancelable) e.preventDefault()
           e.stopPropagation()
           pendingTextTouch = { startX: t.clientX, startY: t.clientY, blockId }
 
@@ -314,7 +475,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
             const dx = moveEvent.touches[0].clientX - pendingTextTouch.startX
             const dy = moveEvent.touches[0].clientY - pendingTextTouch.startY
             if (Math.hypot(dx, dy) <= DRAG_THRESHOLD_PX) return
-            moveEvent.preventDefault()
+            if (moveEvent.cancelable) moveEvent.preventDefault()
             onTextDragStart?.(pendingTextTouch.blockId)
             startCanvasDrag(pendingTextTouch.startX, pendingTextTouch.startY, true)
             pendingTextTouch = null
@@ -340,8 +501,8 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
         }
       }
 
-      if (hasSelection() && isPointerOnEmptyArea(e.target)) {
-        e.preventDefault()
+          if (hasSelection() && isPointerOnEmptyArea(e.target)) {
+        if (e.cancelable) e.preventDefault()
         e.stopPropagation()
         startCanvasDrag(t.clientX, t.clientY, true)
       }
@@ -354,7 +515,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     if (!t0 || !t1) return
 
     isTwoFingerGesture.value = true
-    e.preventDefault()
+    if (e.cancelable) e.preventDefault()
     e.stopPropagation()
     attachPinchListeners(el, t0, t1)
   }
@@ -370,7 +531,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     if (!t0 || !t1) return
 
     isTwoFingerGesture.value = true
-    e.preventDefault()
+    if (e.cancelable) e.preventDefault()
     e.stopPropagation()
     attachPinchListeners(el, t0, t1)
   }

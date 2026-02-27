@@ -199,7 +199,6 @@ body.is-editor-page #app {
       /* 文字框：left:0 讓可用寬度不受位置影響，大小依 sizer 縮放至文字大小 */
       pointer-events: none;
 
-      .p-editor__edit-frame-drag-bar,
       .p-editor__edit-frame-transform-handle,
       .p-editor__edit-frame-delete {
         pointer-events: auto;
@@ -235,25 +234,6 @@ body.is-editor-page #app {
     &.is-transforming {
       cursor: nwse-resize;
     }
-  }
-
-  &__edit-frame-drag-bar {
-    position: absolute;
-    top: -10px;
-    left: 50%;
-    transform: translateX(-50%) scale(var(--inverse-scale, 1));
-    transform-origin: center top;
-    width: ed.$editor-edit-frame-drag-bar-width;
-    height: ed.$editor-edit-frame-drag-bar-height;
-    background: var.$editor-selection-bar-bg;
-    color: white;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: grab;
-    z-index: 2;
   }
 
   &__edit-frame-delete {
