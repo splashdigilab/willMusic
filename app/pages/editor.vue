@@ -713,6 +713,45 @@ const getTextStyleForBlock = (block: TextBlockInstance) => ({
 })
 
 
+// 文字 scale 上下限（與 useCanvasPinch 一致）
+const TEXT_SCALE_MIN = 1
+const TEXT_SCALE_MAX = 5
+
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+
+/** 當輸入導致文字框超出畫布時：縮小 scale 並調整位置，使整個框留在邊界內 */
+const clampSelectedTextBlockToCanvas = () => {
+  const id = selectedTextBlockId.value
+  const el = canvasRef.value
+  if (!id || !el) return
+  const block = textBlocks.value.find(b => b.id === id)
+  if (!block) return
+  const frameEl = el.querySelector(
+    `.p-editor__edit-frame--text[data-text-block-id="${id}"]`
+  ) as HTMLElement | null
+  if (!frameEl) return
+  const rect = el.getBoundingClientRect()
+  const fr = frameEl.getBoundingClientRect()
+  if (!rect.width || !rect.height) return
+  const halfWidthPct = (fr.width / rect.width) * 50
+  const halfHeightPct = (fr.height / rect.height) * 50
+  const marginX = Math.min(block.x, 100 - block.x)
+  const marginY = Math.min(block.y, 100 - block.y)
+  const eps = 1e-6
+  const maxScaleX = halfWidthPct > eps ? (marginX * block.scale) / halfWidthPct : TEXT_SCALE_MAX
+  const maxScaleY = halfHeightPct > eps ? (marginY * block.scale) / halfHeightPct : TEXT_SCALE_MAX
+  const maxScale = Math.min(maxScaleX, maxScaleY, TEXT_SCALE_MAX)
+  const oldScale = block.scale
+  if (block.scale > maxScale) {
+    block.scale = clamp(maxScale, TEXT_SCALE_MIN, TEXT_SCALE_MAX)
+  }
+  const newHalfW = halfWidthPct * (block.scale / oldScale)
+  const newHalfH = halfHeightPct * (block.scale / oldScale)
+  block.x = clamp(block.x, newHalfW, 100 - newHalfW)
+  block.y = clamp(block.y, newHalfH, 100 - newHalfH)
+  saveDraftData()
+}
+
 // Methods
 let textInputDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const handleTextInput = (e: Event, blockId: string) => {
@@ -727,6 +766,7 @@ const handleTextInput = (e: Event, blockId: string) => {
     placeCaretAtEnd(target)
   }
   saveDraftData()
+  nextTick(() => clampSelectedTextBlockToCanvas())
   if (textInputDebounceTimer) clearTimeout(textInputDebounceTimer)
   textInputDebounceTimer = setTimeout(() => {
     textInputDebounceTimer = null
