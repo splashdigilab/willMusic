@@ -210,6 +210,21 @@
       </div>
     </div>
 
+    <!-- 一鍵清除：在 control-panel 外、tab 上方，與 tab 同顯示條件 -->
+    <div
+      v-show="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'"
+      class="p-editor__top-actions"
+    >
+      <button
+        type="button"
+        class="p-editor__clear-btn"
+        :disabled="!hasAnyContent"
+        @click="handleClearAll"
+      >
+        Reset
+      </button>
+    </div>
+
     <!-- Control Panel -->
     <div class="p-editor__control-panel">
       <!-- Tab Bar（操作文字或繪圖時隱藏） -->
@@ -630,13 +645,24 @@ const showStickerEditFrame = computed(() => {
 
 // Sticker Management
 
-// Fabric 手繪筆刷
-const fabricBrush = useFabricBrush(() => {
+// 僅在有實際筆畫時更新 drawingData，避免空白繪圖讓 Reset 可觸發
+const syncDrawingDataFromFabric = () => {
+  if (!fabricBrush.canUndo()) {
+    if (drawingData.value !== null) {
+      drawingData.value = null
+      saveDraftData()
+    }
+    return
+  }
   const data = fabricBrush.exportToDataURL()
-  if (data) {
+  if (data && data !== drawingData.value) {
     drawingData.value = data
     saveDraftData()
   }
+}
+
+const fabricBrush = useFabricBrush(() => {
+  syncDrawingDataFromFabric()
 })
 // 切換 tab 時同步繪圖模式與文字選取狀態
 watch(activeTab, (tab) => {
@@ -646,10 +672,8 @@ watch(activeTab, (tab) => {
     fabricBrush.setDrawingMode(true)
   } else {
     if (drawMode.value) {
-      const data = fabricBrush.exportToDataURL()
-      if (data) drawingData.value = data
+      syncDrawingDataFromFabric()
       fabricBrush.setDrawingMode(false)
-      saveDraftData()
     }
     drawMode.value = false
   }
@@ -682,6 +706,7 @@ watch(drawMode, (v) => {
       fabricBrush.setOnUndoRedoChange(() => {
         drawCanUndo.value = fabricBrush.canUndo()
         drawCanRedo.value = fabricBrush.canRedo()
+        syncDrawingDataFromFabric()
       })
       drawCanUndo.value = fabricBrush.canUndo()
       drawCanRedo.value = fabricBrush.canRedo()
@@ -697,6 +722,13 @@ const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
 }))
 
 const { wrapperStyles, innerStyles: canvasStyle } = useStickyNoteStyle(noteStyleProps)
+
+// 畫面是否有內容（文字 / 貼紙 / 繪圖任一存在）
+const hasAnyContent = computed(() =>
+  textBlocks.value.some(b => b.content.trim()) ||
+  stickers.value.length > 0 ||
+  !!drawingData.value
+)
 
 // 文字區塊位置/大小樣式（接受 TextBlockInstance）
 const getTextBlockStyleComputed = (block: TextBlockInstance) => ({
@@ -1097,9 +1129,16 @@ const resetEditorToInitial = () => {
   stickers.value = []
   textBlocks.value = []
   selectedTextBlockId.value = null
+  selectedStickerId.value = null
+  activeTab.value = null
   drawingData.value = null
   fabricBrush.clear()
   syncContentToDom()
+}
+
+const handleClearAll = () => {
+  resetEditorToInitial()
+  clearDraft()
 }
 
 const handleDraftDecision = async (useDraft: boolean) => {
@@ -1272,6 +1311,7 @@ const initFabricBrush = () => {
   fabricBrush.setOnUndoRedoChange(() => {
     drawCanUndo.value = fabricBrush.canUndo()
     drawCanRedo.value = fabricBrush.canRedo()
+    syncDrawingDataFromFabric()
   })
   fabricBrush.setBrushColor(brushColor.value)
   fabricBrush.setBrushWidth(brushWidth.value)

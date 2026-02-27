@@ -24,6 +24,7 @@ body.is-editor-page #app {
 
 /* ========== 主容器與畫布 ========== */
 .p-editor {
+  position: relative;
   margin: 0 auto;
   max-width: 1024px;
   min-height: 100dvh;
@@ -285,6 +286,22 @@ body.is-editor-page #app {
     overflow-y: auto;
     flex-shrink: 0;
     border-radius: 1rem 1rem 0 0;
+  }
+
+  &__top-actions {
+    position: absolute;
+    right: 0.5rem;
+    bottom: calc(72px + 56px + 0.5rem); // 落在 control-panel 上方，與 tab 區有距離
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  &__clear-btn {
+    @include btn.btn-action;
+    flex: 0;
+    font-size: 1rem;
+    background: var.$will-red;
+    color: white;
   }
 
   &__tab-bar {
