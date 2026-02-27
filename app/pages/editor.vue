@@ -89,7 +89,7 @@
             :key="block.id"
             :data-text-block-id="block.id"
             class="p-editor__text-content"
-            :style="[getTextBlockStyleComputed(block), drawMode ? { pointerEvents: 'none' } : {}]"
+            :style="[getTextBlockStyleComputed(block), drawMode ? { pointerEvents: 'none' } : {}, { zIndex: selectedTextBlockId === block.id ? 10 : 1 }]"
             @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
           >
             <div
@@ -111,7 +111,7 @@
             :key="sticker.id"
             class="p-editor__sticker-content"
             :class="{ 'is-sticker-clickable': !drawMode }"
-            :style="getStickerStyle(sticker)"
+            :style="[getStickerStyle(sticker), { zIndex: selectedStickerId === sticker.id ? 10 : 2 }]"
             @click.stop="selectSticker(sticker.id)"
             @touchstart.stop="() => { if (!isTwoFingerGesture) selectSticker(sticker.id) }"
           >
@@ -147,7 +147,7 @@
               'is-dragging': textBlockDragging && selectedTextBlockId === block.id,
               'is-transforming': textBlockTransforming && selectedTextBlockId === block.id
             }"
-            :style="getTextBlockStyleComputed(block)"
+            :style="[getTextBlockStyleComputed(block), { zIndex: selectedTextBlockId === block.id ? 20 : 10 }]"
             @mousedown="() => selectTextBlock(block.id)"
             @touchstart.stop="() => { if (!isTwoFingerGesture) selectTextBlock(block.id) }"
           >
@@ -179,7 +179,7 @@
               'is-dragging': draggingStickerId === sticker.id,
               'is-transforming': transformingStickerId === sticker.id
             }"
-            :style="getStickerStyle(sticker)"
+            :style="[getStickerStyle(sticker), { zIndex: selectedStickerId === sticker.id ? 20 : 10 }]"
             @mousedown="onStickerMouseDown($event, sticker)"
             @touchstart="onStickerTouchStart($event, sticker)"
             @click.stop="onStickerClick(sticker.id)"

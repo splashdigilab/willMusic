@@ -106,11 +106,10 @@ body.is-editor-page #app {
     }
   }
 
-  /* 文字內容（可裁切）- left:0 讓可用寬度不受位置影響，位置由 transform 控制 */
+  /* 文字內容（可裁切）- z-index 由 template 依選取狀態動態設定 */
   &__text-content {
     position: absolute;
     transform-origin: center center;
-    @include sn.sticky-note-layer-text;
     pointer-events: auto;
   }
 
@@ -147,10 +146,9 @@ body.is-editor-page #app {
     }
   }
 
-  /* 貼紙內容（可裁切，最頂層） */
+  /* 貼紙內容（可裁切）- z-index 由 template 依選取狀態動態設定 */
   &__sticker-content {
     position: absolute;
-    @include sn.sticky-note-layer-sticker;
     pointer-events: none;
 
     /* 便利貼/文字 tab 時可點擊進入貼紙編輯 */
@@ -167,13 +165,13 @@ body.is-editor-page #app {
     @include sn.sticky-note-sticker-img;
   }
 
-  /* 手繪層 (Fabric.js) */
+  /* 手繪層 (Fabric.js)：永遠最底層，文字與貼紙在其上方 */
   &__drawing-layer {
     display: flex;
     align-items: center;
     position: absolute;
     inset: 0;
-    @include sn.sticky-note-layer-drawing;
+    z-index: 0;
     touch-action: none;
 
     &.is-active {
