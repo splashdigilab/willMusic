@@ -735,11 +735,10 @@ const clampSelectedTextBlockToCanvas = () => {
   if (!rect.width || !rect.height) return
   const halfWidthPct = (fr.width / rect.width) * 50
   const halfHeightPct = (fr.height / rect.height) * 50
-  const marginX = Math.min(block.x, 100 - block.x)
-  const marginY = Math.min(block.y, 100 - block.y)
   const eps = 1e-6
-  const maxScaleX = halfWidthPct > eps ? (marginX * block.scale) / halfWidthPct : TEXT_SCALE_MAX
-  const maxScaleY = halfHeightPct > eps ? (marginY * block.scale) / halfHeightPct : TEXT_SCALE_MAX
+  // 允許重新調整位置，因此只要半寬/半高 <= 50% 就一定能找到合法位置
+  const maxScaleX = halfWidthPct > eps ? (50 * block.scale) / halfWidthPct : TEXT_SCALE_MAX
+  const maxScaleY = halfHeightPct > eps ? (50 * block.scale) / halfHeightPct : TEXT_SCALE_MAX
   const maxScale = Math.min(maxScaleX, maxScaleY, TEXT_SCALE_MAX)
   const oldScale = block.scale
   if (block.scale > maxScale) {

@@ -155,20 +155,19 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   }
 
   /**
-   * 依目前位置與框大小，算出不超出畫布時允許的最大 scale。
-   * 框大小與 scale 成正比，所以 maxScale 由「邊界餘裕 / 當前半寬高比」決定。
+   * 在「允許位置調整」的前提下，算出不超出畫布時允許的最大 scale。
+   * 只要框的半寬/半高 <= 50%，就一定能找到一個位置讓整個框待在畫布裡。
+   * 因此 maxScale 只由「框尺寸與畫布尺寸」決定，與目前 x/y 無關。
    */
   const getMaxScaleForBounds = (el: HTMLElement, target: PinchTarget): number => {
     const rect = el.getBoundingClientRect()
     if (!rect.width || !rect.height) return SCALE_MAX
 
-    let x: number, y: number, currentScale: number, halfWidthPct: number, halfHeightPct: number
+    let currentScale: number, halfWidthPct: number, halfHeightPct: number
 
     if ('textBlockId' in target) {
       const block = textBlocks.value.find(b => b.id === target.textBlockId)
       if (!block) return SCALE_MAX
-      x = block.x
-      y = block.y
       currentScale = block.scale
       const frameEl = el.querySelector(
         `.p-editor__edit-frame--text[data-text-block-id="${target.textBlockId}"]`
@@ -180,8 +179,6 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     } else {
       const st = stickers.value.find(s => s.id === target.stickerId)
       if (!st) return SCALE_MAX
-      x = st.x
-      y = st.y
       currentScale = st.scale
       const frameEl = el.querySelector(
         `.p-editor__edit-frame--sticker[data-sticker-id="${target.stickerId}"]`
@@ -192,11 +189,11 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       halfHeightPct = (fr.height / rect.height) * 50
     }
 
-    const marginX = Math.min(x, 100 - x)
-    const marginY = Math.min(y, 100 - y)
     const eps = 1e-6
-    const maxScaleX = halfWidthPct > eps ? (marginX * currentScale) / halfWidthPct : SCALE_MAX
-    const maxScaleY = halfHeightPct > eps ? (marginY * currentScale) / halfHeightPct : SCALE_MAX
+    // 框在目前 scale 下的半寬比例為 halfWidthPct，放大到 s 時會變成 halfWidthPct * (s / currentScale)
+    // 限制在 <= 50%，即可保證左右仍可找到合法中心點；上下同理。
+    const maxScaleX = halfWidthPct > eps ? (50 * currentScale) / halfWidthPct : SCALE_MAX
+    const maxScaleY = halfHeightPct > eps ? (50 * currentScale) / halfHeightPct : SCALE_MAX
     return Math.min(maxScaleX, maxScaleY, SCALE_MAX)
   }
 
