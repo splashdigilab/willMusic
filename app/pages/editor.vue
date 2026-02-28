@@ -89,7 +89,7 @@
             :key="block.id"
             :data-text-block-id="block.id"
             class="p-editor__text-content"
-            :style="[getTextBlockStyleComputed(block), drawMode ? { pointerEvents: 'none' } : {}, { zIndex: selectedTextBlockId === block.id ? 10 : 1 }]"
+            :style="[getTextBlockStyleComputed(block), drawMode ? { pointerEvents: 'none' } : {}, { zIndex: getObjectZIndex(block.id) }]"
             @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
           >
             <div
@@ -111,7 +111,7 @@
             :key="sticker.id"
             class="p-editor__sticker-content"
             :class="{ 'is-sticker-clickable': !drawMode }"
-            :style="[getStickerStyle(sticker), { zIndex: selectedStickerId === sticker.id ? 10 : 2 }]"
+            :style="[getStickerStyle(sticker), { zIndex: getObjectZIndex(sticker.id) }]"
             @click.stop="selectSticker(sticker.id)"
             @touchstart.stop="() => { if (!isTwoFingerGesture) selectSticker(sticker.id) }"
           >
@@ -136,10 +136,11 @@
 
         <!-- UI 層：編輯框置頂，不被裁切（繪圖模式時隱藏以便手繪） -->
         <div class="p-editor__canvas-ui" :style="{ pointerEvents: drawMode ? 'none' : undefined }">
-          <!-- 文字區塊編輯框（多文字區塊） -->
+          <!-- 文字區塊編輯框：僅在文字 tab 且該區塊被選取時顯示；按完成後消失 -->
           <div
             v-for="block in textBlocks"
             :key="`ui-text-${block.id}`"
+            v-show="activeTab === 'text' && selectedTextBlockId === block.id"
             :data-text-block-id="block.id"
             class="p-editor__edit-frame p-editor__edit-frame--text"
             :class="{ 
@@ -147,7 +148,7 @@
               'is-dragging': textBlockDragging && selectedTextBlockId === block.id,
               'is-transforming': textBlockTransforming && selectedTextBlockId === block.id
             }"
-            :style="[getTextBlockStyleComputed(block), { zIndex: selectedTextBlockId === block.id ? 20 : 10 }]"
+            :style="[getTextBlockStyleComputed(block), { zIndex: getObjectZIndex(block.id) }]"
             @mousedown="() => selectTextBlock(block.id)"
             @touchstart.stop="() => { if (!isTwoFingerGesture) selectTextBlock(block.id) }"
           >
@@ -179,7 +180,7 @@
               'is-dragging': draggingStickerId === sticker.id,
               'is-transforming': transformingStickerId === sticker.id
             }"
-            :style="[getStickerStyle(sticker), { zIndex: selectedStickerId === sticker.id ? 20 : 10 }]"
+            :style="[getStickerStyle(sticker), { zIndex: getObjectZIndex(sticker.id) }]"
             @mousedown="onStickerMouseDown($event, sticker)"
             @touchstart="onStickerTouchStart($event, sticker)"
             @click.stop="onStickerClick(sticker.id)"
@@ -448,12 +449,12 @@
         </button>
       </template>
 
-      <!-- 貼紙模式：完成（回到 default，Tab Bar 會再出現） -->
+      <!-- 貼紙模式：完成（回到 default，編輯框消失） -->
       <template v-else-if="activeTab === 'sticker'">
         <button
           type="button"
           class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
-          @click="activeTab = null"
+          @click="completeStickerEditing"
         >
           完成
         </button>
@@ -530,6 +531,15 @@ const selectedTextBlockId = ref<string | null>(null)
 const textBlockDragging = ref(false)
 const textBlockTransforming = ref(false)
 
+// 每個物件（文字區塊 / 貼紙）各自疊放順序：點選時 bringToFront，完成後該物件維持最頂層
+const objectZOrder = ref<Record<string, number>>({})
+let zOrderCounter = 0
+const getObjectZIndex = (id: string) => objectZOrder.value[id] ?? 1
+const bringToFront = (id: string) => {
+  zOrderCounter += 1
+  objectZOrder.value = { ...objectZOrder.value, [id]: zOrderCounter }
+}
+
 // 文字編輯時的原始內容快照（用於取消還原）
 const textBlockInitialContents = new Map<string, string>()
 // 這次文字編輯流程中新建立的文字區塊（用於判斷取消時要刪除還是還原）
@@ -555,7 +565,7 @@ const hasCurrentTextEdits = () => {
   return block.content !== initial
 }
 
-// 文字模式「完成」：移除空白文字區塊，結束文字編輯流程
+// 文字模式「完成」：移除空白文字區塊，結束文字編輯流程；保留選取使該區塊維持最上層
 const completeTextEditing = () => {
   // 將內容為空（或只含空白）的文字區塊直接刪除
   textBlocks.value = textBlocks.value.filter(b => b.content.trim())
@@ -564,7 +574,16 @@ const completeTextEditing = () => {
   newTextBlockIds.clear()
   pendingSelection.value = null
   showUnsavedTextModal.value = false
-  selectedTextBlockId.value = null
+  // 若目前選取的區塊已被刪除（空白被濾掉）才清掉選取；否則保留選取，讓該區塊維持在最上層
+  if (selectedTextBlockId.value && !textBlocks.value.some(b => b.id === selectedTextBlockId.value)) {
+    selectedTextBlockId.value = null
+  }
+  activeTab.value = null
+}
+
+// 貼紙模式「完成」：關閉貼紙 tab 並取消選取，編輯框消失（貼紙維持既有疊放順序）
+const completeStickerEditing = () => {
+  selectedStickerId.value = null
   activeTab.value = null
 }
 
@@ -650,9 +669,9 @@ const drawingData = ref<string | null>(null)
 const backgrounds = BACKGROUND_IMAGES
 const shapes = STICKY_NOTE_SHAPES
 
-// 是否顯示貼紙編輯框：只要有選取貼紙就顯示（與 tab 無關）
+// 是否顯示貼紙編輯框：有選取貼紙 且 非便利貼/繪圖狀態（便利貼或繪圖 tab 時編輯框消失）
 const showStickerEditFrame = computed(() => {
-  return !!selectedStickerId.value
+  return !!selectedStickerId.value && activeTab.value !== 'note' && activeTab.value !== 'draw'
 })
 
 // Sticker Management
@@ -689,9 +708,11 @@ watch(activeTab, (tab) => {
     }
     drawMode.value = false
   }
-  // 文字：切換到非文字 tab 時取消文字選取
+  // 文字：切到其他 tab（便利貼/繪圖/貼紙）時才取消文字選取；按「完成」時 tab 為 null，保留選取讓文字維持最上層
   if (tab !== 'text') {
-    selectedTextBlockId.value = null
+    if (tab != null) {
+      selectedTextBlockId.value = null
+    }
     nextTick(() => {
       contentEditableRefs.forEach(el => el?.blur())
     })
@@ -878,6 +899,7 @@ const handleTabClick = (tabId: string) => {
       const newBlock = addTextBlock()
       selectedTextBlockId.value = newBlock.id
       selectedStickerId.value = null
+      bringToFront(newBlock.id)
       activeTab.value = 'text'
       nextTick(() => {
         const el = contentEditableRefs.get(newBlock.id)
@@ -894,6 +916,7 @@ const handleTabClick = (tabId: string) => {
         newTextBlockIds.delete(lastBlock.id)
         selectedTextBlockId.value = lastBlock.id
         selectedStickerId.value = null
+        bringToFront(lastBlock.id)
         activeTab.value = 'text'
         nextTick(() => {
           const el = contentEditableRefs.get(lastBlock.id)
@@ -953,6 +976,7 @@ const addSticker = (stickerType: string) => {
   // 選取新貼紙並切到貼紙 tab，讓編輯框出現
   selectedStickerId.value = newSticker.id
   selectedTextBlockId.value = null
+  bringToFront(newSticker.id)
   activeTab.value = 'sticker'
 }
 
@@ -969,6 +993,7 @@ const selectSticker = (id: string) => {
   }
   selectedStickerId.value = id
   selectedTextBlockId.value = null
+  bringToFront(id)
 }
 
 const selectTextBlock = (blockId: string) => {
@@ -995,6 +1020,7 @@ const selectTextBlock = (blockId: string) => {
   snapshotTextBlockInitial(blockId)
   selectedTextBlockId.value = blockId
   selectedStickerId.value = null
+  bringToFront(blockId)
   activeTab.value = 'text'
   nextTick(() => {
     const el = contentEditableRefs.get(blockId)
@@ -1023,6 +1049,7 @@ const saveDraftData = () => {
     textTransform: textBlocks.value[0] ? { x: textBlocks.value[0].x, y: textBlocks.value[0].y, scale: textBlocks.value[0].scale, rotation: textBlocks.value[0].rotation } : undefined,
     textBlocks: textBlocks.value,
     drawing: drawingData.value ?? undefined,
+    objectLayerOrder: { ...objectZOrder.value },
     timestamp: Date.now()
   }
   saveDraft(draft)
@@ -1133,6 +1160,60 @@ const loadDraftData = async (draft: DraftData) => {
     await nextTick()
     fabricBrush.loadFromDataURL(draft.drawing)
   }
+  // 還原物件前後順序：與編輯時一致，且保證每個 id 順序值唯一（避免同 z-index 時 DOM 順序干擾）
+  const textIds = textBlocks.value.map(b => b.id)
+  const stickerIds = stickers.value.map(s => s.id)
+  const allIds = new Set([...textIds, ...stickerIds])
+
+  if (draft.objectLayerOrder && typeof draft.objectLayerOrder === 'object' && Object.keys(draft.objectLayerOrder).length > 0) {
+    const raw = draft.objectLayerOrder as Record<string, unknown>
+    const restored: Record<string, number> = {}
+    for (const id of allIds) {
+      const v = raw[id]
+      if (v !== undefined && v !== null) {
+        const n = Number(v)
+        if (!Number.isNaN(n)) restored[id] = n
+      }
+    }
+    if (Object.keys(restored).length > 0) {
+      const textOrders = textIds.map(id => restored[id]).filter((n): n is number => n != null)
+      const stickerOrders = stickerIds.map(id => restored[id]).filter((n): n is number => n != null)
+      const legacyWrongOrder =
+        textOrders.length > 0 &&
+        stickerOrders.length > 0 &&
+        Math.max(...textOrders) < Math.min(...stickerOrders)
+      if (legacyWrongOrder) {
+        const maxOrder = Math.max(...Object.values(restored))
+        textIds.forEach(id => {
+          if (restored[id] != null) restored[id] = (restored[id] as number) + maxOrder + 1
+        })
+      }
+      for (const id of allIds) {
+        if (restored[id] == null) {
+          const maxVal = Math.max(0, ...Object.values(restored))
+          restored[id] = maxVal + 1
+        }
+      }
+      // 依數值排序後重排為 1,2,3,…，保留相對前後順序且保證唯一，避免同 z-index 時 DOM 順序造成貼紙蓋住文字
+      const sorted = Object.entries(restored).sort(([, a], [, b]) => a - b)
+      const normalized: Record<string, number> = {}
+      sorted.forEach(([id], i) => { normalized[id] = i + 1 })
+      objectZOrder.value = normalized
+      zOrderCounter = sorted.length
+    } else {
+      applyDefaultLayerOrder(textIds, stickerIds)
+    }
+  } else {
+    applyDefaultLayerOrder(textIds, stickerIds)
+  }
+}
+
+function applyDefaultLayerOrder(textIds: string[], stickerIds: string[]) {
+  const ids = [...stickerIds, ...textIds]
+  const next: Record<string, number> = {}
+  ids.forEach((id, i) => { next[id] = i + 1 })
+  objectZOrder.value = next
+  zOrderCounter = ids.length
 }
 
 const resetEditorToInitial = () => {
@@ -1144,6 +1225,8 @@ const resetEditorToInitial = () => {
   selectedStickerId.value = null
   activeTab.value = null
   drawingData.value = null
+  objectZOrder.value = {}
+  zOrderCounter = 0
   fabricBrush.clear()
   syncContentToDom()
 }
@@ -1195,7 +1278,8 @@ const previewNoteData = computed(() => {
     textAlign: textBlocks.value[0]?.align ?? 'center',
     stickers: stickers.value,
     textTransform: textBlocks.value[0] ? { x: textBlocks.value[0].x, y: textBlocks.value[0].y, scale: textBlocks.value[0].scale, rotation: textBlocks.value[0].rotation } : undefined,
-    textBlocks: textBlocks.value
+    textBlocks: textBlocks.value,
+    objectLayerOrder: { ...objectZOrder.value }
   }
   if (drawingData.value) style.drawing = drawingData.value
 

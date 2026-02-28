@@ -64,6 +64,10 @@ export const useStorage = () => {
           ? ((raw as any).textBlocks as DraftData['textBlocks'])
           : undefined,
         drawing: typeof raw.drawing === 'string' ? raw.drawing : undefined,
+        objectLayerOrder:
+          raw.objectLayerOrder && typeof raw.objectLayerOrder === 'object' && !Array.isArray(raw.objectLayerOrder)
+            ? (raw.objectLayerOrder as Record<string, number>)
+            : undefined,
         timestamp: ts
       }
 

@@ -37,7 +37,7 @@
         v-for="sticker in stickers"
         :key="sticker.id"
         class="c-sticky-note__sticker"
-        :style="getStickerStyle(sticker)"
+        :style="getStickerWrapStyle(sticker)"
       >
         <img 
           v-if="getStickerData(sticker.type)?.svgFile"
@@ -83,8 +83,20 @@ const stickers = computed(() => {
 
 const textBlocks = computed<TextBlockInstance[]>(() => props.note.style?.textBlocks ?? [])
 
-const getBlockWrapStyle = (block: TextBlockInstance) =>
-  getTextBlockStyle(block.x, block.y, block.scale, block.rotation)
+/** 預覽/上傳/display 與編輯器疊放順序一致；無則沿用預設（文字 1、貼紙 3） */
+const objectLayerOrder = computed(() => props.note.style?.objectLayerOrder ?? {})
+
+const getBlockWrapStyle = (block: TextBlockInstance) => {
+  const base = getTextBlockStyle(block.x, block.y, block.scale, block.rotation)
+  const z = objectLayerOrder.value[block.id] ?? 1
+  return { ...base, zIndex: z }
+}
+
+const getStickerWrapStyle = (sticker: StickerInstance) => {
+  const base = getStickerStyle(sticker)
+  const z = objectLayerOrder.value[sticker.id] ?? 3
+  return { ...base, zIndex: z }
+}
 
 const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
   shape: props.note.style.shape || DEFAULT_SHAPE_ID,

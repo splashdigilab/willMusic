@@ -41,6 +41,8 @@ export interface DraftData {
   textTransform?: TextBlockTransform
   textBlocks?: TextBlockInstance[] // 多文字區塊
   drawing?: string // 手繪內容 data URL
+  /** 各物件 id 的疊放順序（與編輯器 objectZOrder 一致）；載入草稿時還原 */
+  objectLayerOrder?: Record<string, number>
   timestamp: number
 }
 
@@ -67,6 +69,8 @@ export interface StickyNoteStyle {
   textTransform?: TextBlockTransform // 文字區塊位置、縮放、旋轉（舊格式向下相容）
   textBlocks?: TextBlockInstance[] // 多文字區塊
   drawing?: string // 手繪內容 data URL (base64 PNG)
+  /** 各物件 id 的疊放順序（預覽/上傳/display 與編輯器一致）；無則沿用預設文字 1、貼紙 3 */
+  objectLayerOrder?: Record<string, number>
 }
 
 /**
