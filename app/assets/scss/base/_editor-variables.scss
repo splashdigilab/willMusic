@@ -1,7 +1,8 @@
 /**
- * Editor 頁面專用變數（版面、尺寸）
+ * Editor 頁面專用變數（版面、尺寸、動畫）
  * 與 base/variables 的 $editor-selection-* 區分：此處為控制面板、編輯框尺寸等
  */
+$editor-transition-duration: 0.3s;
 $editor-control-max-width: 600px;
 $editor-tab-content-sticker-height: 220px;
 $editor-edit-frame-delete-size: 48px;

@@ -271,7 +271,7 @@ body.is-editor-page #app {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s ease;
+    transition: background ed.$editor-transition-duration ease-in-out;
     z-index: 2;
     transform: translate(50%, 50%) scale(var(--inverse-scale, 1));
     transform-origin: bottom right;
@@ -286,6 +286,7 @@ body.is-editor-page #app {
     overflow-y: auto;
     flex-shrink: 0;
     border-radius: 1rem 1rem 0 0;
+    transition: height ed.$editor-transition-duration ease-in-out;
   }
 
   &__top-actions {
@@ -302,16 +303,69 @@ body.is-editor-page #app {
     font-size: 1rem;
     background: var.$will-red;
     color: white;
+    transition: opacity ed.$editor-transition-duration ease-out, background ed.$editor-transition-duration ease-out;
+  }
+
+  /* 一鍵清除區塊出現/消失漸變（與 tab bar 同條件）；出現 ease-out、消失 ease-in */
+  .p-editor-top-actions-enter-active {
+    transition: opacity ed.$editor-transition-duration ease-out, transform ed.$editor-transition-duration ease-out;
+  }
+
+  .p-editor-top-actions-leave-active {
+    transition: opacity ed.$editor-transition-duration ease-in, transform ed.$editor-transition-duration ease-in;
+  }
+
+  .p-editor-top-actions-enter-from,
+  .p-editor-top-actions-leave-to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  .p-editor-top-actions-enter-to,
+  .p-editor-top-actions-leave-from {
+    opacity: 1;
+    transform: translateY(0);
   }
 
   &__tab-bar {
     display: flex;
     gap: 0;
     padding: 0;
-    // border-bottom: 1px solid rgba(#E6204D, 0.2);
     margin: 0;
     overflow-x: auto;
     justify-content: space-around;
+    box-sizing: border-box;
+  }
+
+  /* Tab Bar 出現/消失：高度 + 透明度一起過渡；出現 ease-out、消失 ease-in */
+  .p-editor-tab-bar-enter-active {
+    transition:
+      opacity ed.$editor-transition-duration ease-out,
+      transform ed.$editor-transition-duration ease-out,
+      max-height ed.$editor-transition-duration ease-out;
+    overflow: hidden;
+  }
+
+  .p-editor-tab-bar-leave-active {
+    transition:
+      opacity ed.$editor-transition-duration ease-in,
+      transform ed.$editor-transition-duration ease-in,
+      max-height ed.$editor-transition-duration ease-in;
+    overflow: hidden;
+  }
+
+  .p-editor-tab-bar-enter-from,
+  .p-editor-tab-bar-leave-to {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  .p-editor-tab-bar-enter-to,
+  .p-editor-tab-bar-leave-from {
+    max-height: 6rem; /* 足夠涵蓋 icon + label + padding */
+    opacity: 1;
+    transform: translateY(0);
   }
 
   &__tab-btn {
@@ -324,7 +378,7 @@ body.is-editor-page #app {
     border: none;
     border-bottom: 3px solid transparent;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: border-color ed.$editor-transition-duration ease-in-out, background ed.$editor-transition-duration ease-in-out;
     position: relative;
     min-width: 0;
 
@@ -353,7 +407,7 @@ body.is-editor-page #app {
     font-size: 0.75rem;
     color: var.$color-grey;
     white-space: nowrap;
-    transition: all 0.2s ease;
+    transition: color ed.$editor-transition-duration ease-in-out, font-weight ed.$editor-transition-duration ease-in-out;
   }
 
   &__tab-content {
@@ -361,18 +415,57 @@ body.is-editor-page #app {
     max-width: ed.$editor-control-max-width;
     margin: 0 auto;
     min-height: 0;
-    overflow-y: visible;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     gap: ed.$editor-grid-gap;
+    box-sizing: border-box;
+    /* 展開時給足夠 max-height，讓 leave 動畫能從此值過渡到 0（height: auto 無法過渡） */
+    max-height: 70vh;
 
     /* 貼紙 tab：固定高度，內部 sticker-grid 可捲動（維持原狀） */
     &:has(.p-editor__sticker-grid) {
       height: ed.$editor-tab-content-sticker-height;
+      max-height: ed.$editor-tab-content-sticker-height;
       overflow: hidden;
       display: flex;
       flex-direction: column;
     }
+  }
+
+  /* Tab 內容切換：用 max-height 做收合；出現 ease-out、消失 ease-in */
+  .p-editor-tab-enter-active {
+    transition:
+      opacity ed.$editor-transition-duration ease-out,
+      padding ed.$editor-transition-duration ease-out,
+      max-height ed.$editor-transition-duration ease-out;
+  }
+
+  .p-editor-tab-leave-active {
+    transition:
+      opacity ed.$editor-transition-duration ease-in,
+      padding ed.$editor-transition-duration ease-in,
+      max-height ed.$editor-transition-duration ease-in;
+  }
+
+  .p-editor-tab-enter-from,
+  .p-editor-tab-leave-to {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+  }
+
+  .p-editor-tab-enter-to,
+  .p-editor-tab-leave-from {
+    max-height: 70vh;
+    opacity: 1;
+  }
+
+  /* 貼紙 tab 的過渡用固定高度 */
+  .p-editor__tab-content:has(.p-editor__sticker-grid).p-editor-tab-enter-to,
+  .p-editor__tab-content:has(.p-editor__sticker-grid).p-editor-tab-leave-from {
+    max-height: ed.$editor-tab-content-sticker-height;
   }
 
   &__control-section {

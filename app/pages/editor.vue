@@ -210,170 +210,182 @@
       </div>
     </div>
 
-    <!-- 一鍵清除：在 control-panel 外、tab 上方，與 tab 同顯示條件 -->
-    <div
-      v-show="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'"
-      class="p-editor__top-actions"
-    >
-      <button
-        type="button"
-        class="p-editor__clear-btn"
-        :disabled="!hasAnyContent"
-        @click="handleClearAll"
+    <!-- 一鍵清除：在 control-panel 外、tab 上方，與 tab 同顯示條件；v-if + transition 才有漸變 -->
+    <transition name="p-editor-top-actions">
+      <div
+        v-if="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'"
+        class="p-editor__top-actions"
       >
-        Reset
-      </button>
-    </div>
+        <button
+          type="button"
+          class="p-editor__clear-btn"
+          :disabled="!hasAnyContent"
+          @click="handleClearAll"
+        >
+          Reset
+        </button>
+      </div>
+    </transition>
 
     <!-- Control Panel -->
     <div class="p-editor__control-panel">
-      <!-- Tab Bar（操作文字或繪圖時隱藏） -->
-      <div v-show="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'" class="p-editor__tab-bar">
-        <button
-          v-for="tab in EDITOR_TABS"
-          :key="tab.id"
-          class="p-editor__tab-btn"
-          :class="{ 'is-active': activeTab === tab.id }"
-          @click="handleTabClick(tab.id)"
-        >
-          <img :src="tab.icon" :alt="tab.label" class="p-editor__tab-icon" />
-          <span class="p-editor__tab-label">{{ tab.label }}</span>
-        </button>
-      </div>
-
-      <!-- Tab: 便利貼 -->
-      <div v-show="activeTab === 'note'" class="p-editor__tab-content">
-        <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">選擇便利貼材質</h3>
-          <div class="p-editor__background-grid">
-            <button
-              v-for="bg in backgrounds"
-              :key="bg.id"
-              class="p-editor__background-btn"
-              :class="{ 'is-active': backgroundImage === bg.url }"
-              @click="backgroundImage = bg.url"
-            >
-              <img :src="bg.url" :alt="bg.id" class="p-editor__background-img" />
-              <img v-if="backgroundImage === bg.url" src="/check.svg" alt="" class="p-editor__background-check" />
-            </button>
-          </div>
-        </div>
-        <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">選擇便利貼造型</h3>
-          <div class="p-editor__shape-grid">
-            <button
-              v-for="shapeItem in shapes"
-              :key="shapeItem.id"
-              class="p-editor__shape-btn"
-              :class="{ 'is-active': shape === shapeItem.id }"
-              :style="{ '--shape-svg': `url(${shapeItem.svg})` }"
-              @click="shape = shapeItem.id"
-            >
-              <span class="p-editor__shape-icon" :aria-label="shapeItem.id" />
-              <img v-if="shape === shapeItem.id" src="/check.svg" alt="" class="p-editor__shape-check" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tab: 文字 -->
-      <div v-show="activeTab === 'text'" class="p-editor__tab-content">
-        <template v-if="selectedBlock">
-        <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">選擇文字顏色</h3>
-          <div class="p-editor__color-grid">
-            <button
-              v-for="color in TEXT_COLORS"
-              :key="color.value"
-              class="p-editor__color-btn"
-              :class="{ 'is-active': selectedBlock.color === color.value }"
-              :style="{ '--btn-color': color.value }"
-              @click="selectedBlock.color = color.value; saveDraftData()"
-            >
-              <img v-if="selectedBlock.color === color.value" src="/check.svg" alt="" class="p-editor__color-check" />
-            </button>
-          </div>
-        </div>
-        <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">文字對齊</h3>
-          <div class="p-editor__align-row">
-            <button
-              v-for="opt in TEXT_ALIGN_OPTIONS"
-              :key="opt.value"
-              type="button"
-              class="p-editor__align-btn"
-              :class="{ 'is-active': selectedBlock.align === opt.value }"
-              :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
-              @click="selectedBlock.align = opt.value; saveDraftData()"
-            >
-              <img :src="opt.svg" :alt="''" class="p-editor__align-icon" />
-            </button>
-          </div>
-        </div>
-        </template>
-        <div v-else class="p-editor__control-section">
-          <p style="text-align: center; opacity: 0.6;">請先選取一個文字區塊</p>
-        </div>
-      </div>
-
-      <!-- Tab: 繪圖 -->
-      <div v-show="activeTab === 'draw'" class="p-editor__tab-content">
-        <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">選擇筆刷顏色</h3>
-          <div class="p-editor__color-grid">
-            <!-- 橡皮擦按鈕（第一個） -->
-            <button
-              class="p-editor__color-btn p-editor__color-btn--eraser"
-              :class="{ 'is-active': eraserMode }"
-              @click="eraserMode = true"
-            >
-              <img src="/erase.svg" alt="橡皮擦" class="p-editor__color-eraser-icon" />
-            </button>
-            <button
-              v-for="c in BRUSH_COLORS"
-              :key="c.value"
-              class="p-editor__color-btn"
-              :class="{ 'is-active': !eraserMode && brushColor === c.value }"
-              :style="{ '--btn-color': c.value }"
-              @click="() => { brushColor = c.value; eraserMode = false }"
-            >
-              <img v-if="!eraserMode && brushColor === c.value" src="/check.svg" alt="" class="p-editor__color-check" />
-            </button>
-          </div>
-        </div>
-        <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">調整筆刷大小</h3>
-          <input
-            v-model.number="brushWidth"
-            type="range"
-            min="2"
-            max="40"
-            class="p-editor__brush-slider"
-          />
-        </div>
-      </div>
-
-      <!-- Tab: 貼紙 -->
-      <div v-show="activeTab === 'sticker'" class="p-editor__tab-content">
-        <div class="p-editor__control-section">
-          <h3 class="p-editor__control-title">選擇貼紙</h3>
-          <div class="p-editor__sticker-grid">
+      <!-- Tab Bar（操作文字或繪圖時隱藏；v-if + transition 才會有出現/消失動畫） -->
+      <transition name="p-editor-tab-bar">
+        <div v-if="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'" class="p-editor__tab-bar">
           <button
-            v-for="sticker in STICKER_LIBRARY"
-            :key="sticker.id"
-            class="p-editor__sticker-btn"
-            @click="addSticker(sticker.id)"
+            v-for="tab in EDITOR_TABS"
+            :key="tab.id"
+            class="p-editor__tab-btn"
+            :class="{ 'is-active': activeTab === tab.id }"
+            @click="handleTabClick(tab.id)"
           >
-            <img 
-              v-if="sticker.svgFile"
-              :src="sticker.svgFile"
-              :alt="sticker.id"
-              class="p-editor__sticker-btn-img"
-            />
+            <img :src="tab.icon" :alt="tab.label" class="p-editor__tab-icon" />
+            <span class="p-editor__tab-label">{{ tab.label }}</span>
           </button>
         </div>
+      </transition>
+
+      <!-- Tab: 便利貼（v-if 才能觸發 leave 動畫，v-show 只切 display 不會跑 transition） -->
+      <transition name="p-editor-tab">
+        <div v-if="activeTab === 'note'" class="p-editor__tab-content">
+          <div class="p-editor__control-section">
+            <h3 class="p-editor__control-title">選擇便利貼材質</h3>
+            <div class="p-editor__background-grid">
+              <button
+                v-for="bg in backgrounds"
+                :key="bg.id"
+                class="p-editor__background-btn"
+                :class="{ 'is-active': backgroundImage === bg.url }"
+                @click="backgroundImage = bg.url"
+              >
+                <img :src="bg.url" :alt="bg.id" class="p-editor__background-img" />
+                <img v-if="backgroundImage === bg.url" src="/check.svg" alt="" class="p-editor__background-check" />
+              </button>
+            </div>
+          </div>
+          <div class="p-editor__control-section">
+            <h3 class="p-editor__control-title">選擇便利貼造型</h3>
+            <div class="p-editor__shape-grid">
+              <button
+                v-for="shapeItem in shapes"
+                :key="shapeItem.id"
+                class="p-editor__shape-btn"
+                :class="{ 'is-active': shape === shapeItem.id }"
+                :style="{ '--shape-svg': `url(${shapeItem.svg})` }"
+                @click="shape = shapeItem.id"
+              >
+                <span class="p-editor__shape-icon" :aria-label="shapeItem.id" />
+                <img v-if="shape === shapeItem.id" src="/check.svg" alt="" class="p-editor__shape-check" />
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </transition>
+
+      <!-- Tab: 文字 -->
+      <transition name="p-editor-tab">
+        <div v-if="activeTab === 'text'" class="p-editor__tab-content">
+          <template v-if="selectedBlock">
+          <div class="p-editor__control-section">
+            <h3 class="p-editor__control-title">選擇文字顏色</h3>
+            <div class="p-editor__color-grid">
+              <button
+                v-for="color in TEXT_COLORS"
+                :key="color.value"
+                class="p-editor__color-btn"
+                :class="{ 'is-active': selectedBlock.color === color.value }"
+                :style="{ '--btn-color': color.value }"
+                @click="selectedBlock.color = color.value; saveDraftData()"
+              >
+                <img v-if="selectedBlock.color === color.value" src="/check.svg" alt="" class="p-editor__color-check" />
+              </button>
+            </div>
+          </div>
+          <div class="p-editor__control-section">
+            <h3 class="p-editor__control-title">文字對齊</h3>
+            <div class="p-editor__align-row">
+              <button
+                v-for="opt in TEXT_ALIGN_OPTIONS"
+                :key="opt.value"
+                type="button"
+                class="p-editor__align-btn"
+                :class="{ 'is-active': selectedBlock.align === opt.value }"
+                :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
+                @click="selectedBlock.align = opt.value; saveDraftData()"
+              >
+                <img :src="opt.svg" :alt="''" class="p-editor__align-icon" />
+              </button>
+            </div>
+          </div>
+          </template>
+          <div v-else class="p-editor__control-section">
+            <p style="text-align: center; opacity: 0.6;">請先選取一個文字區塊</p>
+          </div>
+        </div>
+      </transition>
+
+      <!-- Tab: 繪圖 -->
+      <transition name="p-editor-tab">
+        <div v-if="activeTab === 'draw'" class="p-editor__tab-content">
+          <div class="p-editor__control-section">
+            <h3 class="p-editor__control-title">選擇筆刷顏色</h3>
+            <div class="p-editor__color-grid">
+              <!-- 橡皮擦按鈕（第一個） -->
+              <button
+                class="p-editor__color-btn p-editor__color-btn--eraser"
+                :class="{ 'is-active': eraserMode }"
+                @click="eraserMode = true"
+              >
+                <img src="/erase.svg" alt="橡皮擦" class="p-editor__color-eraser-icon" />
+              </button>
+              <button
+                v-for="c in BRUSH_COLORS"
+                :key="c.value"
+                class="p-editor__color-btn"
+                :class="{ 'is-active': !eraserMode && brushColor === c.value }"
+                :style="{ '--btn-color': c.value }"
+                @click="() => { brushColor = c.value; eraserMode = false }"
+              >
+                <img v-if="!eraserMode && brushColor === c.value" src="/check.svg" alt="" class="p-editor__color-check" />
+              </button>
+            </div>
+          </div>
+          <div class="p-editor__control-section">
+            <h3 class="p-editor__control-title">調整筆刷大小</h3>
+            <input
+              v-model.number="brushWidth"
+              type="range"
+              min="2"
+              max="40"
+              class="p-editor__brush-slider"
+            />
+          </div>
+        </div>
+      </transition>
+
+      <!-- Tab: 貼紙 -->
+      <transition name="p-editor-tab">
+        <div v-if="activeTab === 'sticker'" class="p-editor__tab-content">
+          <div class="p-editor__control-section">
+            <h3 class="p-editor__control-title">選擇貼紙</h3>
+            <div class="p-editor__sticker-grid">
+            <button
+              v-for="sticker in STICKER_LIBRARY"
+              :key="sticker.id"
+              class="p-editor__sticker-btn"
+              @click="addSticker(sticker.id)"
+            >
+              <img 
+                v-if="sticker.svgFile"
+                :src="sticker.svgFile"
+                :alt="sticker.id"
+                class="p-editor__sticker-btn-img"
+              />
+            </button>
+          </div>
+          </div>
+        </div>
+      </transition>
     </div>
 
     <!-- Hidden node for high-res export (html-to-image) -->
