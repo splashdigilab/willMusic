@@ -1160,20 +1160,20 @@ const loadDraftData = async (draft: DraftData) => {
     await nextTick()
     fabricBrush.loadFromDataURL(draft.drawing)
   }
-  // 還原物件前後順序：與編輯時一致，且保證每個 id 順序值唯一（避免同 z-index 時 DOM 順序干擾）
+  // 還原物件前後順序：與編輯時一致；保證唯一 z 且強制更新視圖
   const textIds = textBlocks.value.map(b => b.id)
   const stickerIds = stickers.value.map(s => s.id)
   const allIds = new Set([...textIds, ...stickerIds])
+  const orderFromDraft = draft.objectLayerOrder && Object.keys(draft.objectLayerOrder).length > 0
+    ? { ...draft.objectLayerOrder }
+    : null
 
-  if (draft.objectLayerOrder && typeof draft.objectLayerOrder === 'object' && Object.keys(draft.objectLayerOrder).length > 0) {
-    const raw = draft.objectLayerOrder as Record<string, unknown>
+  if (orderFromDraft) {
     const restored: Record<string, number> = {}
     for (const id of allIds) {
-      const v = raw[id]
-      if (v !== undefined && v !== null) {
-        const n = Number(v)
-        if (!Number.isNaN(n)) restored[id] = n
-      }
+      const v = orderFromDraft[id]
+      const n = typeof v === 'number' && !Number.isNaN(v) ? v : Number(v)
+      if (!Number.isNaN(n)) restored[id] = n
     }
     if (Object.keys(restored).length > 0) {
       const textOrders = textIds.map(id => restored[id]).filter((n): n is number => n != null)
@@ -1194,12 +1194,15 @@ const loadDraftData = async (draft: DraftData) => {
           restored[id] = maxVal + 1
         }
       }
-      // 依數值排序後重排為 1,2,3,…，保留相對前後順序且保證唯一，避免同 z-index 時 DOM 順序造成貼紙蓋住文字
-      const sorted = Object.entries(restored).sort(([, a], [, b]) => a - b)
+      // 依數值升序重排為 1,2,3,…（同值時依 id 穩定排序），保證唯一且還原疊放
+      const sorted = Object.entries(restored).sort(
+        ([idA, a], [idB, b]) => (a !== b ? a - b : idA.localeCompare(idB))
+      )
       const normalized: Record<string, number> = {}
       sorted.forEach(([id], i) => { normalized[id] = i + 1 })
-      objectZOrder.value = normalized
+      objectZOrder.value = { ...normalized }
       zOrderCounter = sorted.length
+      await nextTick()
     } else {
       applyDefaultLayerOrder(textIds, stickerIds)
     }
@@ -1304,14 +1307,7 @@ const confirmSubmit = async () => {
   isSubmitting.value = true
 
   try {
-    const { createNote, validateToken } = useFirestore()
-
-    const isValid = await validateToken(token)
-    if (!isValid) {
-      showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
-      showSubmitModal.value = false
-      return
-    }
+    const { createNote } = useFirestore()
 
     await createNote({ content: previewNoteData.value.content, style: previewNoteData.value.style }, token)
 

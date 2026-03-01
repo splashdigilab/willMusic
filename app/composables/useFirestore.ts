@@ -48,7 +48,7 @@ export const useFirestore = () => {
   /**
    * 建立新的便利貼並加入待處理佇列
    * - 使用 token 作為 queue_pending 的 doc ID（保證唯一）
-   * - 使用 transaction 確保原子性
+   * - Token 狀態與有效期限交由 Firestore Rules 驗證
    */
   const createNote = async (form: CreateNoteForm, token: string): Promise<string> => {
     try {
@@ -61,20 +61,8 @@ export const useFirestore = () => {
         status: 'waiting'
       }
 
-      await runTransaction(db, async (transaction) => {
-        const tokenRef = doc(db, 'tokens', token)
-        const tokenSnap = await transaction.get(tokenRef)
-        if (!tokenSnap.exists()) throw new Error('Token 不存在')
-        const tokenData = tokenSnap.data() as TokenDocument
-        if (tokenData.status !== 'unused') throw new Error('Token 無效或已使用')
-
-        const pendingRef = doc(db, 'queue_pending', token)
-        const pendingSnap = await transaction.get(pendingRef)
-        if (pendingSnap.exists()) throw new Error('Token 已提交，請使用新的連結')
-
-        transaction.set(pendingRef, noteData)
-        transaction.update(tokenRef, { status: 'used' })
-      })
+      const pendingRef = doc(db, 'queue_pending', token)
+      await setDoc(pendingRef, noteData)
 
       return token
     } catch (error) {
@@ -326,14 +314,20 @@ export const useFirestore = () => {
   }
 
   /**
-   * 驗證 token 是否可用
+   * 驗證 token 是否可用（目前僅供 admin 或內部工具使用）
+   * 前台 Editor 主要依賴 Firestore Rules 做強制驗證
    */
   const validateToken = async (token: string): Promise<boolean> => {
     try {
       const tokenSnap = await getDoc(doc(db, 'tokens', token))
       if (!tokenSnap.exists()) return false
       const data = tokenSnap.data() as TokenDocument
-      return data.status === 'unused'
+      if (data.status !== 'unused') return false
+      if (!data.createdAt || typeof (data.createdAt as any).toMillis !== 'function') return false
+      const createdMs = (data.createdAt as any).toMillis() as number
+      const nowMs = Date.now()
+      const THIRTY_MIN_MS = 30 * 60 * 1000
+      return nowMs - createdMs <= THIRTY_MIN_MS
     } catch (error) {
       console.error('Error validating token:', error)
       return false

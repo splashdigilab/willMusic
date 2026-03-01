@@ -6,6 +6,20 @@ import type { DraftData } from '~/types'
 const DRAFT_KEY = 'willmusic_draft'
 const TOKEN_KEY = 'willmusic_token'
 
+/** 從 localStorage 解析出的 objectLayerOrder 做複製並將值轉成 number，避免字串或參考問題 */
+function normalizeObjectLayerOrder(
+  raw: unknown
+): Record<string, number> | undefined {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const obj = raw as Record<string, unknown>
+  const out: Record<string, number> = {}
+  for (const key of Object.keys(obj)) {
+    const n = Number(obj[key])
+    if (!Number.isNaN(n)) out[key] = n
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 export const useStorage = () => {
   /**
    * 儲存草稿到 LocalStorage
@@ -64,10 +78,7 @@ export const useStorage = () => {
           ? ((raw as any).textBlocks as DraftData['textBlocks'])
           : undefined,
         drawing: typeof raw.drawing === 'string' ? raw.drawing : undefined,
-        objectLayerOrder:
-          raw.objectLayerOrder && typeof raw.objectLayerOrder === 'object' && !Array.isArray(raw.objectLayerOrder)
-            ? (raw.objectLayerOrder as Record<string, number>)
-            : undefined,
+        objectLayerOrder: normalizeObjectLayerOrder(raw.objectLayerOrder),
         timestamp: ts
       }
 
