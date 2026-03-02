@@ -295,6 +295,7 @@ body.is-editor-page #app {
     bottom: calc(72px + 56px + 0.5rem); // 落在 control-panel 上方，與 tab 區有距離
     display: flex;
     justify-content: flex-end;
+    z-index: 1;
   }
 
   &__clear-btn {
@@ -318,7 +319,7 @@ body.is-editor-page #app {
   .p-editor-top-actions-enter-from,
   .p-editor-top-actions-leave-to {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(20px);
   }
 
   .p-editor-top-actions-enter-to,
@@ -363,7 +364,8 @@ body.is-editor-page #app {
 
   .p-editor-tab-bar-enter-to,
   .p-editor-tab-bar-leave-from {
-    max-height: 6rem; /* 足夠涵蓋 icon + label + padding */
+    max-height: 6rem;
+    /* 足夠涵蓋 icon + label + padding */
     opacity: 1;
     transform: translateY(0);
   }
@@ -422,6 +424,7 @@ body.is-editor-page #app {
     box-sizing: border-box;
     /* 展開時給足夠 max-height，讓 leave 動畫能從此值過渡到 0（height: auto 無法過渡） */
     max-height: 70vh;
+    z-index: 5;
 
     /* 貼紙 tab：固定高度，內部 sticker-grid 可捲動（維持原狀） */
     &:has(.p-editor__sticker-grid) {
