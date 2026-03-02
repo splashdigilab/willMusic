@@ -962,7 +962,18 @@ const cancelTextEditing = () => {
   activeTab.value = null
 }
 
+const MAX_STICKERS = 10
+
 const addSticker = (stickerType: string) => {
+  if (stickers.value.length >= MAX_STICKERS) {
+    showAlert(
+      `每張便利貼最多只能貼 ${MAX_STICKERS} 個貼紙喔！如果需要更多空間，可以先刪除一些。`,
+      '貼紙數量達上限',
+      '⚠️'
+    )
+    return
+  }
+
   const newSticker: StickerInstance = {
     id: `sticker-${Date.now()}`,
     type: stickerType,
@@ -991,6 +1002,11 @@ const selectSticker = (id: string) => {
     // 沒有變更時，等同先按一次取消（可能會刪除新建空白文字）
     cancelTextEditing()
   }
+  // 如果正在便利貼模式（選擇材質/形狀），點擊貼紙時回到 default tab（null）
+  if (activeTab.value === 'note') {
+    activeTab.value = null
+  }
+  
   selectedStickerId.value = id
   selectedTextBlockId.value = null
   bringToFront(id)
@@ -1017,11 +1033,15 @@ const selectTextBlock = (blockId: string) => {
     // 沒有變更時，等同先按一次取消（可能會刪除新建空白文字）
     cancelTextEditing()
   }
+  
   snapshotTextBlockInitial(blockId)
   selectedTextBlockId.value = blockId
   selectedStickerId.value = null
   bringToFront(blockId)
+  
+  // 原本是強制將 activeTab.value = 'text'。如果是從 note tab 過來，也進入文字編輯
   activeTab.value = 'text'
+  
   nextTick(() => {
     const el = contentEditableRefs.get(blockId)
     if (el) {
