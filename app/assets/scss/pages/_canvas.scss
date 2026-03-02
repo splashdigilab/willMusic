@@ -8,6 +8,20 @@
     height: 100vh;
     display: flex;
     overflow: hidden;
+    position: relative;
+
+    &::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: url('/canvasBg.jpg');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        opacity: 0.4;
+        pointer-events: none;
+        z-index: 0;
+    }
 }
 
 /* ─── 左半：隨機散落區 ─── */

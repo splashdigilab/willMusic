@@ -47,6 +47,20 @@ import { useConductor } from '~/composables/useConductor'
 definePageMeta({ layout: false })
 gsap.registerPlugin(Flip)
 
+/* ─── 動畫時間設定（秒）───────────────────────────────────────
+   調整這裡可以統一改變所有動畫的快慢
+   ─────────────────────────────────────────────────────────── */
+const ANIM = {
+  /** 便利貼位置 FLIP 動畫（移動到目標位置所需時間） */
+  flipDuration:    1.2,
+  /** 放大到 1.1x 的時間（拿起感） */
+  scaleUpDuration: 0.5,
+  /** 縮回 1x 的時間（放下感） */
+  scaleDnDuration: 0.5,
+  /** 入場 / 離場動畫 */
+  enterDuration:   1.2,
+} as const
+
 /* ─── URL 參數 ─── */
 const route = useRoute()
 const maxNotes   = computed(() => Number(route.query.count) || 16)
@@ -378,12 +392,57 @@ onMounted(() => {
       })
 
       // ▸ FLIP 動畫（不覆寫 zIndex，沿用上面設定的階層）
+      const flipTargets = Array.from(
+        document.querySelectorAll<HTMLElement>('.p-canvas__note-wrap:not(.is-leaving)')
+      )
+
+      // 比對 before/after rect，只對真正有位移的便利貼播放放大縮小動畫
+      const movingTargets = flipTargets.filter(el => {
+        const flipId = el.getAttribute('data-flip-id')
+        const captured = capturedElements.find(c => c.flipId === flipId)
+        if (!captured) return false // 新進入的元素由 onEnter 處理
+        const cur = el.getBoundingClientRect()
+        return (
+          Math.abs(cur.left   - captured.rect.left)   > 1 ||
+          Math.abs(cur.top    - captured.rect.top)    > 1 ||
+          Math.abs(cur.width  - captured.rect.width)  > 1 ||
+          Math.abs(cur.height - captured.rect.height) > 1
+        )
+      })
+
+      // Flip 管父層 transform（位移）；scale 動畫打子元素，兩者不搶同一個 transform
+      const movingInnerTargets = movingTargets
+        .map(el => el.firstElementChild as HTMLElement)
+        .filter(Boolean)
+
+      // Phase 1: scale 1→1.1（立即開始，拿起感）
+      if (movingInnerTargets.length) {
+        gsap.to(movingInnerTargets, {
+          scale: 1.1,
+          duration: ANIM.scaleUpDuration,
+          ease: 'power2.out',
+        })
+      }
+
+      // Phase 2: Flip 位移 + 尺寸動畫（等 scale-up 完再開始）
+      // Phase 3: onComplete 觸發 scale 1.1→1（放下感）
       Flip.from(flipSnapshot, {
-        targets: '.p-canvas__note-wrap:not(.is-leaving)',
-        duration: 1.2,
+        targets: flipTargets,
+        duration: ANIM.flipDuration,
+        delay: ANIM.scaleUpDuration,
         ease: 'power2.inOut',
         absolute: true,
         nested: true,
+
+        // 動畫結束時：子元素縮回正常大小（放下感）
+        onComplete() {
+          if (!movingInnerTargets.length) return
+          gsap.to(movingInnerTargets, {
+            scale: 1,
+            duration: ANIM.scaleDnDuration,
+            ease: 'power2.inOut',
+          })
+        },
 
         onEnter(elements: Element[]) {
           return gsap.from(elements, {
@@ -417,7 +476,7 @@ onMounted(() => {
             },
             opacity: 0,
             scale: 0.3,
-            duration: 1.2,
+            duration: ANIM.enterDuration,
             ease: 'power3.out'
           })
         }
