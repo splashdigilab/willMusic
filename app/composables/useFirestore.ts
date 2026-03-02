@@ -62,7 +62,24 @@ export const useFirestore = () => {
       }
 
       const pendingRef = doc(db, 'queue_pending', token)
-      await setDoc(pendingRef, noteData)
+      const tokenRef = doc(db, 'tokens', token)
+
+      await runTransaction(db, async (transaction) => {
+        // 先讀取 token 確保狀態
+        const tokenSnap = await transaction.get(tokenRef)
+        if (!tokenSnap.exists()) {
+          throw new Error('Token does not exist')
+        }
+
+        const tokenData = tokenSnap.data()
+        if (tokenData.status !== 'unused') {
+          throw new Error('Token already used')
+        }
+
+        // 寫入 pending queue 並將 token 標記為 used
+        transaction.set(pendingRef, noteData)
+        transaction.update(tokenRef, { status: 'used' })
+      })
 
       return token
     } catch (error) {
@@ -314,22 +331,41 @@ export const useFirestore = () => {
   }
 
   /**
+   * 驗證 token 狀態並回傳詳細原因
+   * @returns 'valid' | 'expired' | 'used' | 'invalid'
+   */
+  const checkTokenStatus = async (token: string): Promise<'valid' | 'expired' | 'used' | 'invalid'> => {
+    try {
+      const tokenSnap = await getDoc(doc(db, 'tokens', token))
+      if (!tokenSnap.exists()) return 'invalid'
+      const data = tokenSnap.data() as TokenDocument
+      if (data.status !== 'unused') return 'used'
+      if (!data.createdAt || typeof (data.createdAt as any).toMillis !== 'function') return 'invalid'
+
+      const createdMs = (data.createdAt as any).toMillis() as number
+      const nowMs = Date.now()
+      const THIRTY_MIN_MS = 30 * 60 * 1000
+
+      if (nowMs - createdMs > THIRTY_MIN_MS) return 'expired'
+
+      return 'valid'
+    } catch (error) {
+      console.error('Error checking token status:', error)
+      // 如果發生權限錯誤（前端可能無法直接讀取 tokens collection，除非 Rules 允許），
+      // 此函式可能會拋錯，需搭配前端 try-catch 處理，或調整 Rules
+      throw error
+    }
+  }
+
+  /**
    * 驗證 token 是否可用（目前僅供 admin 或內部工具使用）
    * 前台 Editor 主要依賴 Firestore Rules 做強制驗證
    */
   const validateToken = async (token: string): Promise<boolean> => {
     try {
-      const tokenSnap = await getDoc(doc(db, 'tokens', token))
-      if (!tokenSnap.exists()) return false
-      const data = tokenSnap.data() as TokenDocument
-      if (data.status !== 'unused') return false
-      if (!data.createdAt || typeof (data.createdAt as any).toMillis !== 'function') return false
-      const createdMs = (data.createdAt as any).toMillis() as number
-      const nowMs = Date.now()
-      const THIRTY_MIN_MS = 30 * 60 * 1000
-      return nowMs - createdMs <= THIRTY_MIN_MS
-    } catch (error) {
-      console.error('Error validating token:', error)
+      const status = await checkTokenStatus(token)
+      return status === 'valid'
+    } catch {
       return false
     }
   }
@@ -361,6 +397,7 @@ export const useFirestore = () => {
     moveToHistory,
     cleanupDuplicateHistory,
     validateToken,
+    checkTokenStatus,
     createToken
   }
 }

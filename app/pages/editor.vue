@@ -514,7 +514,7 @@ useHead({
 
 const route = useRoute()
 const router = useRouter()
-const { saveDraft, loadDraft, clearDraft, saveToken, loadToken } = useStorage()
+const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
 
 const MAX_TEXT_BLOCKS = 3
 
@@ -1307,16 +1307,75 @@ const confirmSubmit = async () => {
   isSubmitting.value = true
 
   try {
-    const { createNote } = useFirestore()
+    const { createNote, checkTokenStatus } = useFirestore()
 
+    // 1. 先透過 checkTokenStatus 取得詳細錯誤原因
+    const status = await checkTokenStatus(token).catch(() => 'unknown')
+    
+    if (status === 'expired') {
+      showSubmitModal.value = false
+      showAlert(
+        '這個 QR Code 已經超過 30 分鐘的有效期限囉！請向店員重新索取新的 QR Code。', 
+        '時間到了！', 
+        '⏳'
+      )
+      isSubmitting.value = false
+      return
+    }
+
+    if (status === 'used') {
+      showSubmitModal.value = false
+      showAlert(
+        '這個 QR Code 已經被使用過囉！如果還想再傳一張，請向店員重新索取新的 QR Code。', 
+        '已經用過囉！', 
+        '❌'
+      )
+      isSubmitting.value = false
+      return
+    }
+
+    if (status === 'invalid') {
+      showSubmitModal.value = false
+      showAlert(
+        '這個 QR Code 無效或不存在，請確認您掃描的是由店員提供的正確條碼。', 
+        '無效代碼', 
+        '❓'
+      )
+      isSubmitting.value = false
+      return
+    }
+
+    // 2. 狀態正確(valid)或無法判別時，嘗試正式送出
     await createNote({ content: previewNoteData.value.content, style: previewNoteData.value.style }, token)
 
+    // 上傳成功：清除草稿與快取的 Token
     clearDraft()
+    clearToken() // 將 SessionStorage 中的 Token 刪除
+    
+    // 如果網址上有 Token，把網址也清乾淨，避免重新整理再次讀取
+    const query = { ...route.query }
+    if (query.token) {
+      delete query.token
+      // 使用 replace 避免在歷史紀錄中留存帶有 token 的網址
+      await router.replace({ query })
+    }
+
     showSubmitModal.value = false
     router.push('/queue-status')
   } catch (e: any) {
+    showSubmitModal.value = false // 關閉「確認上傳」的 Modal，讓錯誤提示能正常顯示在最上層
     console.error('提交失敗:', e)
-    showAlert(`提交失敗：${e?.message || '請稍後再試'}`)
+    
+    // 如果因為 Firebase Rules 阻擋讀取 token 而拋錯，退回到這裡用泛用的錯誤提示
+    if (e?.code === 'permission-denied' || e?.message?.includes('Missing or insufficient permissions')) {
+      showAlert(
+        '您的專屬 QR Code 可能已失效 (超過限時 30 分鐘) 或已經被使用過。請向店員重新索取新的 QR Code！', 
+        '上傳授權失效', 
+        '⏳'
+      )
+    } else {
+      showAlert(`提交失敗：${e?.message || '請稍後再試'}`)
+    }
   } finally {
     isSubmitting.value = false
   }
