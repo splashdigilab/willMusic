@@ -51,14 +51,10 @@ gsap.registerPlugin(Flip)
    調整這裡可以統一改變所有動畫的快慢
    ─────────────────────────────────────────────────────────── */
 const ANIM = {
-  /** 便利貼位置 FLIP 動畫（移動到目標位置所需時間） */
-  flipDuration:    1.2,
-  /** 放大到 1.1x 的時間（拿起感） */
-  scaleUpDuration: 0.5,
-  /** 縮回 1x 的時間（放下感） */
-  scaleDnDuration: 0.5,
-  /** 入場 / 離場動畫 */
-  enterDuration:   1.2,
+  /** 所有移動 / 飛行動畫（進場飛入、跨區飛行、live 重排、離場飛出）*/
+  moveDuration:  1.2,
+  /** 所有 scale 縮放（1→1.1 拿起 / 1.1→1 放下，時間相同）*/
+  scaleDuration: 0.5,
 } as const
 
 /* ─── URL 參數 ─── */
@@ -320,61 +316,55 @@ onMounted(() => {
         }
       }
 
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 情境 4：離場飛出 (Leave)
+      //   - Phase 1：原地 scale 1→1.1（拿起感）
+      //   - Phase 2：維持 1.1，透明度不變，飛往 live 上方離開畫面
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      const liveLeaveRect = liveZoneRef.value!.getBoundingClientRect()
+      const leaveTargetX = liveLeaveRect.left + liveLeaveRect.width / 2
+      const leaveTargetY = -liveLeaveRect.height // 畫面上方完全超出視口
+
       for (const item of capturedElements) {
         if (!currentIds.has(item.flipId)) {
           const clone = item.clone
           clone.classList.add('is-leaving')
           clone.removeAttribute('data-flip-id')
-          
+
           const centerX = item.rect.left + item.rect.width / 2
           const centerY = item.rect.top + item.rect.height / 2
           const fixedLeft = centerX - item.offsetWidth / 2
-          const fixedTop = centerY - item.offsetHeight / 2
+          const fixedTop  = centerY - item.offsetHeight / 2
 
           clone.style.margin = '0'
-
           Object.assign(clone.style, {
             position: 'fixed',
-            left:   `${fixedLeft}px`,
-            top:    `${fixedTop}px`,
-            width:  `${item.offsetWidth}px`,
+            left: `${fixedLeft}px`,
+            top: `${fixedTop}px`,
+            width: `${item.offsetWidth}px`,
             height: `${item.offsetHeight}px`,
             transform: item.transform,
-            zIndex: '50', // 3. live 移出：最下層
-            pointerEvents: 'none'
+            zIndex: '50',
+            pointerEvents: 'none',
           })
           canvasRef.value!.appendChild(clone)
 
-          if (item.clone.classList.contains('p-canvas__note-wrap--display')) {
-            const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
-            const dRect = dZone.getBoundingClientRect()
-            const targetLeaveX = dRect.left + dRect.width / 2
-            const targetLeaveY = dRect.top - 150
-
-            gsap.to(clone, {
-              x: targetLeaveX - centerX,
-              y: targetLeaveY - centerY,
-              opacity: 0,
-              scale: 0.3,
-              duration: 1.2,
-              ease: 'power3.in',
-              onComplete: () => clone.remove()
-            })
-          } else {
-            const lRect = liveZoneRef.value!.getBoundingClientRect()
-            const targetLeaveX = lRect.left + lRect.width / 2
-            const targetLeaveY = lRect.top - 150
-
-            gsap.to(clone, {
-              x: targetLeaveX - centerX,
-              y: targetLeaveY - centerY,
-              opacity: 0,
-              scale: 0.3,
-              duration: 1.2,
-              ease: 'power3.in',
-              onComplete: () => clone.remove()
-            })
-          }
+          // Phase 1：原地放大到 1.1x（拿起感）
+          gsap.to(clone, {
+            scale: 1.1,
+            duration: ANIM.scaleDuration,
+            ease: 'power2.out',
+            onComplete: () => {
+              // Phase 2：維持 1.1，飛出畫面，透明度不變
+              gsap.to(clone, {
+                x: leaveTargetX - centerX,
+                y: leaveTargetY - centerY,
+                duration: ANIM.moveDuration,
+                ease: 'power3.in',
+                onComplete: () => clone.remove(),
+              })
+            },
+          })
         }
       }
 
@@ -391,96 +381,136 @@ onMounted(() => {
         }
       })
 
-      // ▸ FLIP 動畫（不覆寫 zIndex，沿用上面設定的階層）
+      // ── 分類所有便利貼目標 ────────────────────────────────────────────────
       const flipTargets = Array.from(
         document.querySelectorAll<HTMLElement>('.p-canvas__note-wrap:not(.is-leaving)')
       )
 
-      // 比對 before/after rect，只對真正有位移的便利貼播放放大縮小動畫
-      const movingTargets = flipTargets.filter(el => {
+      const newEnterTargets: HTMLElement[] = []    // 情境 1：全新進場，不在 snapshot 中
+      const crossZoneTargets: HTMLElement[] = []   // 情境 2：跨區移動（display↔live）
+      const liveRepoTargets: HTMLElement[] = []    // 情境 3：純 live 區內重排
+
+      flipTargets.forEach(el => {
         const flipId = el.getAttribute('data-flip-id')
         const captured = capturedElements.find(c => c.flipId === flipId)
-        if (!captured) return false // 新進入的元素由 onEnter 處理
+
+        if (!captured) {
+          newEnterTargets.push(el) // 不在 snapshot → 全新元素
+          return
+        }
+
         const cur = el.getBoundingClientRect()
-        return (
+        const hasMoved = (
           Math.abs(cur.left   - captured.rect.left)   > 1 ||
           Math.abs(cur.top    - captured.rect.top)    > 1 ||
           Math.abs(cur.width  - captured.rect.width)  > 1 ||
           Math.abs(cur.height - captured.rect.height) > 1
         )
+        if (!hasMoved) return // 靜止不動，無需 Flip
+
+        const wasDisplay = captured.clone.classList.contains('p-canvas__note-wrap--display')
+        const isDisplay  = el.classList.contains('p-canvas__note-wrap--display')
+
+        if (!wasDisplay && !isDisplay) {
+          liveRepoTargets.push(el)  // 一直在 live 區 → 純重排
+        } else {
+          crossZoneTargets.push(el) // 跨越兩區 → 跨區移動
+        }
       })
 
-      // Flip 管父層 transform（位移）；scale 動畫打子元素，兩者不搶同一個 transform
-      const movingInnerTargets = movingTargets
+      // 計算跨區元素的 inner children，供 scale 動畫使用
+      const crossInnerTargets = crossZoneTargets
         .map(el => el.firstElementChild as HTMLElement)
         .filter(Boolean)
 
-      // Phase 1: scale 1→1.1（立即開始，拿起感）
-      if (movingInnerTargets.length) {
-        gsap.to(movingInnerTargets, {
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 全部動畫：ONE Flip.from() 統一驅動
+      //
+      // ★ 根本修正：多次 Flip.from() 共用同一 snapshot + absolute:true 時，
+      //   第一次呼叫會改變 DOM 佈局（提升元素為 absolute），導致後續呼叫
+      //   讀到錯誤位置而閃現。改為一次呼叫，Flip 統一計算所有元素。
+      //
+      //  情境 1 (新進場)  → onEnter 回調處理飛入邏輯
+      //  情境 2 (跨區移動) → crossInner scale 另以 gsap.to 並行控制
+      //  情境 3 (live重排) → Flip 直接計算位移
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+      // Phase 1：crossZone 子元素立即放大（與 Flip 移動同步發動）
+      if (crossInnerTargets.length) {
+        gsap.to(crossInnerTargets, {
           scale: 1.1,
-          duration: ANIM.scaleUpDuration,
+          duration: ANIM.scaleDuration,
           ease: 'power2.out',
         })
       }
 
-      // Phase 2: Flip 位移 + 尺寸動畫（等 scale-up 完再開始）
-      // Phase 3: onComplete 觸發 scale 1.1→1（放下感）
-      Flip.from(flipSnapshot, {
-        targets: flipTargets,
-        duration: ANIM.flipDuration,
-        delay: ANIM.scaleUpDuration,
-        ease: 'power2.inOut',
-        absolute: true,
-        nested: true,
+      // 單一 Flip.from()，targets 包含所有需要動畫的元素
+      if (flipTargets.length) {
+        Flip.from(flipSnapshot, {
+          targets: flipTargets,
+          duration: ANIM.moveDuration,
+          ease: 'power2.inOut',
+          absolute: true,
 
-        // 動畫結束時：子元素縮回正常大小（放下感）
-        onComplete() {
-          if (!movingInnerTargets.length) return
-          gsap.to(movingInnerTargets, {
-            scale: 1,
-            duration: ANIM.scaleDnDuration,
-            ease: 'power2.inOut',
-          })
-        },
+          // 情境 1：新進場元素的飛入動畫
+          onEnter(elements: Element[]) {
+            // 飛入前子元素先設為 1.1
+            elements.forEach(el => {
+              const inner = (el as HTMLElement).firstElementChild as HTMLElement
+              if (inner) gsap.set(inner, { scale: 1.1 })
+            })
 
-        onEnter(elements: Element[]) {
-          return gsap.from(elements, {
-            x: (i, el) => {
-              const rect = el.getBoundingClientRect()
-              const centerX = rect.left + rect.width / 2
-              if (el.classList.contains('p-canvas__note-wrap--display')) {
+            return gsap.from(elements, {
+              x: (i, el) => {
+                const rect = el.getBoundingClientRect()
                 const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
                 const dRect = dZone.getBoundingClientRect()
-                return (dRect.left + dRect.width / 2) - centerX
-              } else {
-                const lRect = liveZoneRef.value!.getBoundingClientRect()
-                return (lRect.left + lRect.width / 2) - centerX
-              }
-            },
-            y: (i, el) => {
-              const rect = el.getBoundingClientRect()
-              const centerY = rect.top + rect.height / 2
-              if (el.classList.contains('p-canvas__note-wrap--display')) {
+                return (dRect.left + dRect.width / 2) - (rect.left + rect.width / 2)
+              },
+              y: (i, el) => {
+                const rect = el.getBoundingClientRect()
                 const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
                 const dRect = dZone.getBoundingClientRect()
-                if (displayState.value.mode === 'live') {
-                  return (dRect.bottom + 200) - centerY
-                } else {
-                  return (dRect.top - 200) - centerY
-                }
-              } else {
-                const lRect = liveZoneRef.value!.getBoundingClientRect()
-                return (lRect.top - 200) - centerY
-              }
-            },
-            opacity: 0,
-            scale: 0.3,
-            duration: ANIM.enterDuration,
-            ease: 'power3.out'
-          })
-        }
-      })
+                const fromY = displayState.value.mode === 'live'
+                  ? dRect.bottom + 200
+                  : dRect.top - 200
+                return fromY - (rect.top + rect.height / 2)
+              },
+              duration: ANIM.moveDuration,
+              ease: 'power3.out',
+              onComplete: () => {
+                // 落地後：display 元素 scale 1.1→1
+                elements.forEach(el => {
+                  if (el.classList.contains('p-canvas__note-wrap--display')) {
+                    const inner = (el as HTMLElement).firstElementChild as HTMLElement
+                    if (inner) {
+                      gsap.to(inner, {
+                        scale: 1,
+                        duration: ANIM.scaleDuration,
+                        ease: 'power2.inOut',
+                      })
+                    }
+                  }
+                })
+              },
+            })
+          },
+
+          // 情境 2：crossZone 落地後 scale 縮回
+          onComplete() {
+            if (crossInnerTargets.length) {
+              gsap.to(crossInnerTargets, {
+                scale: 1,
+                duration: ANIM.scaleDuration,
+                ease: 'power2.inOut',
+              })
+            }
+          },
+        })
+      }
+
+
+
 
       flipSnapshot = null
       capturedElements = []
