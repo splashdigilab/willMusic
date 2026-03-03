@@ -1332,6 +1332,26 @@ const confirmSubmit = async () => {
     // 1. 先透過 checkTokenStatus 取得詳細錯誤原因
     const status = await checkTokenStatus(token).catch(() => 'unknown')
     
+    // 中介檢查：OpenAI Moderation API 擋下不好的文字
+    const allText = previewNoteData.value.content;
+    if (allText.trim()) {
+      try {
+        const modRes: any = await $fetch('/api/moderation', {
+          method: 'POST',
+          body: { text: allText }
+        });
+        
+        if (modRes.flagged) {
+          showSubmitModal.value = false;
+          showAlert('您的文字包含不妥適的內容，為維護良好環境，請修改後再試一次！', '內容安全檢查未通過', '🚫');
+          isSubmitting.value = false;
+          return;
+        }
+      } catch (err) {
+        console.warn('Moderation check failed or bypassed, proceeding...', err);
+      }
+    }
+
     if (status === 'expired') {
       showSubmitModal.value = false
       showAlert(
