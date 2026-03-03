@@ -9,7 +9,8 @@ export default defineEventHandler(async (event) => {
     }
 
     // Runtime context API Key (e.g configured via standard host env variable)
-    const apiKey = process.env.OPENAI_API_KEY || ''
+    const config = useRuntimeConfig()
+    const apiKey = config.openaiApiKey || process.env.OPENAI_API_KEY || ''
 
     // If no API key is set, we bypass the check gracefully to avoid breaking the user application
     if (!apiKey) {
