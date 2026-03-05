@@ -329,16 +329,25 @@ let unsubHistory: any
 
 let loadingTimer: ReturnType<typeof setTimeout> | null = null
 
-onMounted(() => {
+onMounted(async () => {
   // 聽歷史
   unsubHistory = listenToHistory(300, (items) => {
     displayItems.value = items
   })
-  // 載入完成後按鈕變為「開始」（可改為依實際資料或 API 就緒後再設 false）
-  loadingTimer = setTimeout(() => {
-    loading.value = false
-    loadingTimer = null
-  }, 1200)
+
+  // 等待字體載入與最小延遲
+  try {
+    await Promise.all([
+      document.fonts.ready,
+      new Promise(resolve => {
+        loadingTimer = setTimeout(resolve, 800)
+      })
+    ])
+  } catch (e) {
+    console.warn('Font loading error', e)
+  }
+  
+  loading.value = false
 })
 
 onUnmounted(() => {

@@ -1,7 +1,16 @@
 <template>
   <div class="p-editor">
-    <!-- Header -->
-    <AppHeader show-back show-help relative @back="goBack" @help="showTutorialModal = true" />
+    <!-- Loading Overlay -->
+    <Transition name="fade">
+      <div v-if="isLoadingFonts" class="p-editor__loading-overlay">
+        <div class="p-editor__loading-spinner"></div>
+        <p>載入字體中...</p>
+      </div>
+    </Transition>
+
+    <template v-if="!isLoadingFonts">
+      <!-- Header -->
+      <AppHeader show-back show-help relative @back="goBack" @help="showTutorialModal = true" />
 
     <!-- Tutorial Modal -->
     <EditorTutorialModal v-model="showTutorialModal" />
@@ -480,7 +489,7 @@
         </button>
       </template>
     </div>
-
+    </template>
   </div>
 </template>
 
@@ -517,6 +526,9 @@ const router = useRouter()
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
 
 const MAX_TEXT_BLOCKS = 3
+
+// Loading state for fonts
+const isLoadingFonts = ref(true)
 
 // Editor State
 const backgroundImage = ref(BACKGROUND_IMAGES?.[0]?.url ?? '') // 預設第一張背景
@@ -1520,7 +1532,20 @@ const scalerStyle = ref({ transform: 'scale(1)' })
 const VIRTUAL_SIZE = 600
 let resizeObserver: ResizeObserver | null = null
 
-onMounted(() => {
+onMounted(async () => {
+  // 等待字體載入與最小延遲
+  try {
+    await Promise.all([
+      document.fonts.ready,
+      new Promise(resolve => setTimeout(resolve, 800))
+    ])
+  } catch (e) {
+    console.warn('Font loading error', e)
+  }
+  isLoadingFonts.value = false
+
+  await nextTick()
+
   // 處理 Token
   const tokenFromQuery = route.query.token as string
   if (tokenFromQuery) {
