@@ -1,36 +1,42 @@
 <template>
-  <div class="p-canvas" ref="canvasRef">
+  <div class="p-canvas" ref="canvasRef" :style="{ '--display-scale': displayNoteScale }">
 
-    <!-- ─── 左半：隨機散落區 ─── -->
-    <div class="p-canvas__live-zone" ref="liveZoneRef">
-      <div
-        v-for="item in displayState.liveGrid"
-        :key="getId(item)"
-        class="p-canvas__scatter-slot"
-      >
+    <!-- ─── 左側容器 ─── -->
+    <div class="p-canvas__half">
+      <!-- ─── 左半：隨機散落區 ─── -->
+      <div class="p-canvas__live-zone" ref="liveZoneRef">
         <div
-          v-if="displayState.borrowedId !== getId(item)"
-          :data-flip-id="getId(item)"
-          class="p-canvas__note-wrap"
-          :style="getScatterStyle(getId(item))"
+          v-for="item in displayState.liveGrid"
+          :key="getId(item)"
+          class="p-canvas__scatter-slot"
         >
-          <StickyNote :note="item" />
+          <div
+            v-if="displayState.borrowedId !== getId(item)"
+            :data-flip-id="getId(item)"
+            class="p-canvas__note-wrap"
+            :style="getScatterStyle(getId(item))"
+          >
+            <StickyNote :note="item" />
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- ─── 右半：單張展示區 ─── -->
-    <div class="p-canvas__display-zone">
-      <div
-        v-if="displayState.nowPlaying"
-        :key="'display-' + getId(displayState.nowPlaying)"
-        :data-flip-id="getId(displayState.nowPlaying)"
-        class="p-canvas__note-wrap p-canvas__note-wrap--display"
-      >
-        <StickyNote :note="displayState.nowPlaying" />
-      </div>
-      <div v-else class="p-canvas__empty-state">
-        <h2>等待便利貼中...</h2>
+    <!-- ─── 右側容器 ─── -->
+    <div class="p-canvas__half">
+      <!-- ─── 右半：單張展示區 ─── -->
+      <div class="p-canvas__display-zone">
+        <div
+          v-if="displayState.nowPlaying"
+          :key="'display-' + getId(displayState.nowPlaying)"
+          :data-flip-id="getId(displayState.nowPlaying)"
+          class="p-canvas__note-wrap p-canvas__note-wrap--display"
+        >
+          <StickyNote :note="displayState.nowPlaying" />
+        </div>
+        <div v-else class="p-canvas__empty-state">
+          <h2>等待便利貼中...</h2>
+        </div>
       </div>
     </div>
   </div>
@@ -61,6 +67,8 @@ const ANIM = {
 const route = useRoute()
 const maxNotes   = computed(() => Number(route.query.count) || 16)
 const displaySec = computed(() => Number(route.query.duration) || 5)
+const liveNoteScale = computed(() => Number(route.query.liveScale) || 0.95)
+const displayNoteScale = computed(() => Number(route.query.displayScale) || 1)
 
 /* ─── Conductor ─── */
 const { startConductor, stopConductor, displayState } = useConductor()
@@ -78,10 +86,10 @@ const getId = (item: any): string => item?.id ?? item?.token ?? ''
 const positionMap = reactive<Record<string, { left: number; top: number; rot: number; size: number }>>({})
 
 /** padding (px) 用於 live-zone 內邊距 */
-const PADDING = 8
+const PADDING = 20
 
 /** 虛擬座標系：便利貼邊長（用於 Fermat 螺旋 + 碰撞檢測，與 index 一致） */
-const VIRTUAL_ITEM_SIZE = 500
+const VIRTUAL_ITEM_SIZE = 550
 /** 便利貼間距：負值 = 更緊、正值 = 更鬆。半徑 = (對角線 + MARGIN) / 2，與 index MARGIN=-20 同概念 */
 const VIRTUAL_MARGIN = -50
 const VIRTUAL_COLLISION_RADIUS = (VIRTUAL_ITEM_SIZE * Math.SQRT2 + VIRTUAL_MARGIN) / 2
@@ -216,15 +224,19 @@ function recalcPositions() {
   }
 
   const scale = Math.min((zoneW / virtualW) || 1, (zoneH / virtualH) || 1)
-  const size = Math.max(40, VIRTUAL_ITEM_SIZE * scale)
+  const baseSize = VIRTUAL_ITEM_SIZE * scale
+  const size = Math.max(40, baseSize) * liveNoteScale.value
 
   items.forEach((id, index) => {
     const p = positions[index]!
     const existing = positionMap[id]
     const rot = existing ? existing.rot : (Math.random() - 0.5) * 12
 
-    const left = (p.x - VIRTUAL_ITEM_SIZE / 2 - minX) * scale
-    const top = (p.y - VIRTUAL_ITEM_SIZE / 2 - minY) * scale
+    const centerX = (p.x - minX) * scale
+    const centerY = (p.y - minY) * scale
+
+    const left = centerX - size / 2
+    const top = centerY - size / 2
 
     positionMap[id] = {
       left: Math.max(0, Math.min(left, zoneW - size)),
@@ -519,7 +531,7 @@ onMounted(() => {
 
   // 初始散落（Conductor 第一次 tick 後可能還沒有資料，監聽變化）
   watch(
-    () => displayState.value.liveGrid.length,
+    () => [displayState.value.liveGrid.length, liveNoteScale.value],
     () => { recalcPositions() },
     { immediate: true }
   )
