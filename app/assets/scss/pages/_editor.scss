@@ -143,9 +143,15 @@ body.is-editor-page #app {
     pointer-events: auto;
   }
 
-  &__canvas-text {
+  &__canvas-text-wrapper {
     @include sn.sticky-note-text-block-width;
     @include sn.sticky-note-text-box;
+    /* Wrapper doesn't need outline or word-break, it just provides padding and sizing */
+  }
+
+  &__canvas-text {
+    width: 100%;
+    height: 100%;
     outline: none;
     word-break: break-word;
     @include sn.sticky-note-font-size;
@@ -195,7 +201,7 @@ body.is-editor-page #app {
     @include sn.sticky-note-sticker-img;
   }
 
-  /* 手繪層 (Fabric.js)：永遠最底層，文字與貼紙在其上方 */
+  /* 手繪層 (Fabric.js)：永遠最底層，除非啟動 drawMode 才到最上層 */
   &__drawing-layer {
     display: flex;
     align-items: center;
@@ -316,6 +322,9 @@ body.is-editor-page #app {
     flex-shrink: 0;
     border-radius: 1rem 1rem 0 0;
     transition: height ed.$editor-transition-duration ease-in-out;
+    /* 使用 grid 讓子元素可以在同一個區域重疊，達到 position:absolute 的效果但不破壞父層高度 */
+    display: grid;
+    align-items: end;
   }
 
   &__top-actions {
@@ -324,25 +333,45 @@ body.is-editor-page #app {
     bottom: calc(72px + 56px + 0.5rem); // 落在 control-panel 上方，與 tab 區有距離
     display: flex;
     justify-content: flex-end;
-    z-index: 1;
+    z-index: 10;
   }
 
   &__clear-btn {
-    @include btn.btn-action;
-    flex: 0;
-    font-size: 1rem;
+    @include btn.btn-reset;
+    width: ed.$editor-draw-btn-size;
+    height: ed.$editor-draw-btn-height;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 999px;
     background: var.$will-red;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     color: white;
-    transition: opacity ed.$editor-transition-duration ease-out, background ed.$editor-transition-duration ease-out;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    transition: opacity ed.$editor-transition-duration ease-in-out, transform 0.1s ease-in-out;
+
+    &:active {
+      transform: scale(0.95);
+    }
+
+    &-icon {
+      width: 22px;
+      height: 22px;
+      display: block;
+      object-fit: contain;
+      /* 若 src="/undo.svg" 是黑色的，可用 filter 轉成白色 */
+      filter: brightness(0) invert(1);
+    }
   }
 
-  /* 一鍵清除區塊出現/消失漸變（與 tab bar 同條件）；出現 ease-out、消失 ease-in */
+  /* 一鍵清除區塊出現/消失漸變（與 tab bar 同條件）；出現 ease-in-out、消失 ease-in */
   .p-editor-top-actions-enter-active {
-    transition: opacity ed.$editor-transition-duration ease-out, transform ed.$editor-transition-duration ease-out;
+    transition: opacity ed.$editor-transition-duration ease-in-out, transform ed.$editor-transition-duration ease-in-out;
   }
 
   .p-editor-top-actions-leave-active {
-    transition: opacity ed.$editor-transition-duration ease-in, transform ed.$editor-transition-duration ease-in;
+    transition: opacity ed.$editor-transition-duration ease-in-out, transform ed.$editor-transition-duration ease-in-out;
   }
 
   .p-editor-top-actions-enter-from,
@@ -358,6 +387,9 @@ body.is-editor-page #app {
   }
 
   &__tab-bar {
+    /* 讓它與 tab-content 疊在同一個 grid 區域，互不推擠 */
+    grid-area: 1 / 1;
+    width: 100%;
     display: flex;
     gap: 0;
     padding: 0;
@@ -367,20 +399,20 @@ body.is-editor-page #app {
     box-sizing: border-box;
   }
 
-  /* Tab Bar 出現/消失：高度 + 透明度一起過渡；出現 ease-out、消失 ease-in */
+  /* Tab Bar 出現/消失：高度 + 透明度一起過渡；出現 ease-in-out、消失 ease-in */
   .p-editor-tab-bar-enter-active {
     transition:
-      opacity ed.$editor-transition-duration ease-out,
-      transform ed.$editor-transition-duration ease-out,
-      max-height ed.$editor-transition-duration ease-out;
+      opacity ed.$editor-transition-duration ease-in-out,
+      transform ed.$editor-transition-duration ease-in-out,
+      max-height ed.$editor-transition-duration ease-in-out;
     overflow: hidden;
   }
 
   .p-editor-tab-bar-leave-active {
     transition:
-      opacity ed.$editor-transition-duration ease-in,
-      transform ed.$editor-transition-duration ease-in,
-      max-height ed.$editor-transition-duration ease-in;
+      opacity ed.$editor-transition-duration ease-in-out,
+      transform ed.$editor-transition-duration ease-in-out,
+      max-height ed.$editor-transition-duration ease-in-out;
     overflow: hidden;
   }
 
@@ -442,6 +474,10 @@ body.is-editor-page #app {
   }
 
   &__tab-content {
+    /* 與 tab-bar 重疊在同一個 grid 區域 */
+    grid-area: 1 / 1;
+    width: 100%;
+
     padding: 1rem 0;
     max-width: ed.$editor-control-max-width;
     margin: 0 auto;
@@ -465,19 +501,19 @@ body.is-editor-page #app {
     }
   }
 
-  /* Tab 內容切換：用 max-height 做收合；出現 ease-out、消失 ease-in */
+  /* Tab 內容切換：用 max-height 做收合；出現 ease-in-out、消失 ease-in */
   .p-editor-tab-enter-active {
     transition:
-      opacity ed.$editor-transition-duration ease-out,
-      padding ed.$editor-transition-duration ease-out,
-      max-height ed.$editor-transition-duration ease-out;
+      opacity ed.$editor-transition-duration ease-in-out,
+      padding ed.$editor-transition-duration ease-in-out,
+      max-height ed.$editor-transition-duration ease-in-out;
   }
 
   .p-editor-tab-leave-active {
     transition:
-      opacity ed.$editor-transition-duration ease-in,
-      padding ed.$editor-transition-duration ease-in,
-      max-height ed.$editor-transition-duration ease-in;
+      opacity ed.$editor-transition-duration ease-in-out,
+      padding ed.$editor-transition-duration ease-in-out,
+      max-height ed.$editor-transition-duration ease-in-out;
   }
 
   .p-editor-tab-enter-from,

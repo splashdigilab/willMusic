@@ -23,8 +23,8 @@ export interface UseCanvasPinchOptions {
   onStickerTransformEnd: () => void
   onTextDragEnd: () => void
   onStickerDragEnd: () => void
-  /** 單擊文字區塊時呼叫（聚焦、可打字） */
-  onTextTap?: (blockId: string) => void
+  /** 單擊文字區塊時呼叫（聚焦、可打字）；clientX/clientY 為觸碰座標，供呼叫端定位游標 */
+  onTextTap?: (blockId: string, clientX: number, clientY: number) => void
   /** 在文字區塊上開始拖曳前呼叫（選取文字區塊，不聚焦） */
   onTextDragStart?: (blockId: string) => void
 }
@@ -41,34 +41,33 @@ interface PinchState {
 
 type CanvasDragState =
   | {
-      type: 'text'
-      textBlockId: string
-      startX: number
-      startY: number
-      initX: number
-      initY: number
-      halfWidthPct: number
-      halfHeightPct: number
-    }
+    type: 'text'
+    textBlockId: string
+    startX: number
+    startY: number
+    initX: number
+    initY: number
+    halfWidthPct: number
+    halfHeightPct: number
+  }
   | {
-      type: 'sticker'
-      stickerId: string
-      startX: number
-      startY: number
-      initX: number
-      initY: number
-      halfWidthPct: number
-      halfHeightPct: number
-    }
+    type: 'sticker'
+    stickerId: string
+    startX: number
+    startY: number
+    initX: number
+    initY: number
+    halfWidthPct: number
+    halfHeightPct: number
+  }
 
 const EMPTY_AREA_SELECTORS = [
-  '.p-editor__edit-frame',
   '.p-editor__canvas-text',
   '.p-editor__sticker-content',
   'button'
 ]
 
-const TEXT_AREA_SELECTORS = ['.p-editor__canvas-text', '.p-editor__edit-frame--text']
+const TEXT_AREA_SELECTORS = ['.p-editor__canvas-text']
 const DRAG_THRESHOLD_PX = 10
 
 /**
@@ -463,42 +462,63 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       if (isPointerOnTextArea(e.target)) {
         const blockId = getTextBlockIdFromTarget(e.target)
         if (blockId) {
-          if (e.cancelable) e.preventDefault()
-          e.stopPropagation()
-          pendingTextTouch = { startX: t.clientX, startY: t.clientY, blockId }
+          const isAlreadySelected = selectedTextBlockId.value === blockId
+          if (!isAlreadySelected) {
+            // 未選取的文字區塊：攔截並處理（拖曳門檻 or tap 選取）
+            if (e.cancelable) e.preventDefault()
+            e.stopPropagation()
+            pendingTextTouch = { startX: t.clientX, startY: t.clientY, blockId }
 
-          const onMove = (moveEvent: TouchEvent) => {
-            if (!pendingTextTouch || !moveEvent.touches[0]) return
-            const dx = moveEvent.touches[0].clientX - pendingTextTouch.startX
-            const dy = moveEvent.touches[0].clientY - pendingTextTouch.startY
-            if (Math.hypot(dx, dy) <= DRAG_THRESHOLD_PX) return
-            if (moveEvent.cancelable) moveEvent.preventDefault()
-            onTextDragStart?.(pendingTextTouch.blockId)
-            startCanvasDrag(pendingTextTouch.startX, pendingTextTouch.startY, true)
-            pendingTextTouch = null
-            el.removeEventListener('touchmove', onMove, { capture: true })
-            el.removeEventListener('touchend', onEnd)
-            el.removeEventListener('touchcancel', onEnd)
-          }
-
-          const onEnd = () => {
-            if (pendingTextTouch) {
-              onTextTap?.(pendingTextTouch.blockId)
+            const onMove = (moveEvent: TouchEvent) => {
+              if (!pendingTextTouch || !moveEvent.touches[0]) return
+              const dx = moveEvent.touches[0].clientX - pendingTextTouch.startX
+              const dy = moveEvent.touches[0].clientY - pendingTextTouch.startY
+              if (Math.hypot(dx, dy) <= DRAG_THRESHOLD_PX) return
+              if (moveEvent.cancelable) moveEvent.preventDefault()
+              onTextDragStart?.(pendingTextTouch.blockId)
+              startCanvasDrag(pendingTextTouch.startX, pendingTextTouch.startY, true)
               pendingTextTouch = null
+              el.removeEventListener('touchmove', onMove, { capture: true })
+              el.removeEventListener('touchend', onEnd)
+              el.removeEventListener('touchcancel', onEnd)
             }
-            el.removeEventListener('touchmove', onMove, { capture: true })
-            el.removeEventListener('touchend', onEnd)
-            el.removeEventListener('touchcancel', onEnd)
-          }
 
-          el.addEventListener('touchmove', onMove, { capture: true, passive: false })
-          el.addEventListener('touchend', onEnd)
-          el.addEventListener('touchcancel', onEnd)
+            const onEnd = () => {
+              if (pendingTextTouch) {
+                onTextTap?.(pendingTextTouch.blockId, pendingTextTouch.startX, pendingTextTouch.startY)
+                pendingTextTouch = null
+              }
+              el.removeEventListener('touchmove', onMove, { capture: true })
+              el.removeEventListener('touchend', onEnd)
+              el.removeEventListener('touchcancel', onEnd)
+            }
+
+            el.addEventListener('touchmove', onMove, { capture: true, passive: false })
+            el.addEventListener('touchend', onEnd)
+            el.addEventListener('touchcancel', onEnd)
+          } else {
+            // 已選取的文字區塊：完全不攔截，讓瀏覽器處理游標定位與長按選文
+            // 只記錄起始座標，供 touchend 偵測是否為 tap（vs 瀏覽器選文/scroll）
+            e.stopPropagation()
+            pendingTextTouch = { startX: t.clientX, startY: t.clientY, blockId }
+
+            const onEnd = () => {
+              if (pendingTextTouch) {
+                // 不呼叫 onTextTap，因為瀏覽器已自然處理游標
+                pendingTextTouch = null
+              }
+              el.removeEventListener('touchend', onEnd)
+              el.removeEventListener('touchcancel', onEnd)
+            }
+
+            el.addEventListener('touchend', onEnd)
+            el.addEventListener('touchcancel', onEnd)
+          }
           return
         }
       }
 
-          if (hasSelection() && isPointerOnEmptyArea(e.target)) {
+      if (hasSelection() && isPointerOnEmptyArea(e.target)) {
         if (e.cancelable) e.preventDefault()
         e.stopPropagation()
         startCanvasDrag(t.clientX, t.clientY, true)

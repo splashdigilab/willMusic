@@ -10,13 +10,21 @@
         <div class="p-index__intro-card">
           <img src="/logo.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
           <!-- <h1 class="p-index__intro-title">活動介紹</h1> -->
-          <p class="p-index__intro-desc">
-            歡迎來到 WillMusic！這裡是大家上傳的專屬便利貼，點擊下方「開始」進入活動牆。
-          </p>
+          <div class="p-index__intro-desc p-index__intro-rules">
+            <ol>
+              <li>於南西旗艦店消費達 599 元，即可獲得一張數位應援便利貼。</li>
+              <li>取得便利貼後，須於 30 分鐘內完成個人專屬內容製作並送出。（禁止任何敏感詞彙或圖像；如有違反，品牌有權不另行通知逕行撤下內容。若多次惡意違規，將依情節嚴重程度採取相應處置。微樂客對違規內容保有最終解釋之權利）</li>
+              <li>便利貼內容經審核通過後，將於 LED 牆輪播展示，並輪流放大顯示 15 秒。</li>
+            </ol>
+            <label class="p-index__intro-terms">
+              <input type="checkbox" v-model="termsAccepted" />
+              <span>我已閱讀並同意上述活動規範</span>
+            </label>
+          </div>
           <button
             type="button"
             class="p-index__intro-btn c-btn c-btn--primary"
-            :disabled="loading"
+            :disabled="loading || !termsAccepted"
             @click="onStartClick"
           >
             <span v-if="loading" class="p-index__intro-btn-inner">
@@ -97,6 +105,7 @@ const { centerContent } = usePanZoom(containerRef, canvasRef, {
 const displayItems = ref<QueueHistoryItem[]>([])
 const showIntroOverlay = ref(true)
 const loading = ref(true)
+const termsAccepted = ref(false)
 
 // ====== Layout Math: Fermat's Spiral with Collision Detection ======
 const ITEM_SIZE = 150 

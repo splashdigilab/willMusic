@@ -2,7 +2,12 @@
   <Teleport to="body">
     <Transition name="modal-fade">
       <div v-if="modelValue" class="c-modal-overlay">
-        <div class="c-modal c-modal--tutorial" @click.stop>
+        <div 
+          class="c-modal c-modal--tutorial" 
+          @click.stop
+          @touchstart="handleTouchStart"
+          @touchend="handleTouchEnd"
+        >
           <template v-if="currentStepData">
             <h2 class="c-modal__title">{{ currentStepData.title }}</h2>
             <p class="c-modal__message">{{ currentStepData.message }}</p>
@@ -19,7 +24,6 @@
                 <img :src="currentStepData.image" class="tutorial-demo__guesture" alt="" />
                 <div class="tutorial-demo__object">
                   <span class="tutorial-demo__object-text">文字</span>
-                  <div class="tutorial-demo__object-drag-bar">⋮⋮</div>
                 </div>
               </div>
             </div>
@@ -95,6 +99,33 @@ const steps = [
 ]
 
 const currentStepData = computed(() => steps[currentStep.value] ?? steps[0])
+
+const touchStartX = ref(0)
+const touchEndX = ref(0)
+const SWIPE_THRESHOLD = 50
+
+const handleTouchStart = (e: TouchEvent) => {
+  if (e.touches && e.touches.length > 0) {
+    touchStartX.value = e.touches[0]?.clientX ?? 0
+  }
+}
+
+const handleTouchEnd = (e: TouchEvent) => {
+  if (!e.changedTouches || e.changedTouches.length === 0) return
+  
+  touchEndX.value = e.changedTouches[0]?.clientX ?? 0
+  const deltaX = touchStartX.value - touchEndX.value
+  
+  if (Math.abs(deltaX) > SWIPE_THRESHOLD) {
+    if (deltaX > 0) {
+      // 向左滑動 (Swiped left) -> 下一步
+      nextStep()
+    } else {
+      // 向右滑動 (Swiped right) -> 上一步
+      prevStep()
+    }
+  }
+}
 
 function nextStep() {
   if (currentStep.value < steps.length - 1) {

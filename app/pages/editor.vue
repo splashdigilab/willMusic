@@ -49,18 +49,6 @@
       @confirm="showAlertModal = false"
     />
 
-    <!-- Unsaved Text Edit Modal -->
-    <AppModal
-      v-model="showUnsavedTextModal"
-      icon="✏️"
-      title="放棄文字編輯？"
-      message="目前這組文字的變更尚未完成，切換到其他物件會放棄這些變更，確定要繼續嗎？"
-      confirmText="放棄並切換"
-      cancelText="繼續編輯"
-      @confirm="confirmDiscardTextChanges"
-      @cancel="showUnsavedTextModal = false"
-    />
-
     <!-- Submit Confirmation Modal -->
     <AppModal
       v-model="showSubmitModal"
@@ -74,6 +62,18 @@
         <StickyNote v-if="previewNoteData" :note="previewNoteData" />
       </template>
     </AppModal>
+
+    <!-- Clear All Confirmation Modal -->
+    <AppModal
+      v-model="showClearAllModal"
+      icon="⚠️"
+      title="確認清除"
+      message="確定要清除畫面上所有的內容嗎？此動作無法復原。"
+      confirmText="確定清除"
+      cancelText="取消"
+      @confirm="confirmClearAll"
+      @cancel="showClearAllModal = false"
+    />
 
     <!-- Canvas Area -->
     <div class="p-editor__canvas-section">
@@ -101,17 +101,22 @@
             :style="[getTextBlockStyleComputed(block), drawMode ? { pointerEvents: 'none' } : {}, { zIndex: getObjectZIndex(block.id) }]"
             @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
           >
+            <!-- 外層包裹器：接收 padding，點擊時觸發拖曳 -->
             <div
-              :ref="(el: any) => setContentEditableRef(block.id, el)"
-              class="p-editor__canvas-text"
-              :class="{ 'is-empty': !block.content.trim() }"
+              class="p-editor__canvas-text-wrapper"
               :style="getTextStyleForBlock(block)"
-              :contenteditable="!drawMode"
-              @input="(e: Event) => handleTextInput(e, block.id)"
-              @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
-              @focus="() => { if (!drawMode) selectTextBlock(block.id) }"
-              data-placeholder="在這裡輸入文字..."
-            />
+            >
+              <div
+                :ref="(el: any) => setContentEditableRef(block.id, el)"
+                class="p-editor__canvas-text"
+                :class="{ 'is-empty': !block.content.trim() }"
+                :contenteditable="!drawMode"
+                @input="(e: Event) => handleTextInput(e, block.id)"
+                @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
+                @focus="() => { if (!drawMode) selectTextBlock(block.id) }"
+                data-placeholder="在這裡輸入文字..."
+              />
+            </div>
           </div>
 
           <!-- 貼紙圖片（可裁切）；便利貼/文字 tab 時點擊可進入貼紙編輯 -->
@@ -137,7 +142,10 @@
             ref="drawingLayerRef"
             class="p-editor__drawing-layer"
             :class="{ 'is-active': drawMode }"
-            :style="{ pointerEvents: drawMode ? 'auto' : 'none' }"
+            :style="{ 
+              pointerEvents: drawMode ? 'auto' : 'none',
+              zIndex: getObjectZIndex('drawing-layer')
+            }"
           >
             <canvas ref="drawingCanvasRef" class="p-editor__drawing-canvas" />
           </div>
@@ -159,7 +167,7 @@
             }"
             :style="[getTextBlockStyleComputed(block), { zIndex: getObjectZIndex(block.id) }]"
             @mousedown="() => selectTextBlock(block.id)"
-            @touchstart.stop="() => { if (!isTwoFingerGesture) selectTextBlock(block.id) }"
+            @touchstart="() => { if (!isTwoFingerGesture) selectTextBlock(block.id) }"
           >
             <!-- 隱藏 sizer：與 contenteditable 同字體/padding，讓編輯框寬高與文字一致；空白時用 placeholder 撐開寬度 -->
             <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="getTextStyleForBlock(block)">{{ block.content || '在這裡輸入文字...' }}</span>
@@ -229,10 +237,10 @@
         <button
           type="button"
           class="p-editor__clear-btn"
-          :disabled="!hasAnyContent"
           @click="handleClearAll"
+          aria-label="清除全部"
         >
-          Reset
+          <img src="/undo.svg" alt="清除全部" class="p-editor__clear-btn-icon" />
         </button>
       </div>
     </transition>
@@ -557,10 +565,6 @@ const textBlockInitialContents = new Map<string, string>()
 // 這次文字編輯流程中新建立的文字區塊（用於判斷取消時要刪除還是還原）
 const newTextBlockIds = new Set<string>()
 
-// 文字編輯中，切換到其他物件時的提醒與暫存目標
-const showUnsavedTextModal = ref(false)
-const pendingSelection = ref<{ type: 'text'; id: string } | { type: 'sticker'; id: string } | null>(null)
-
 const snapshotTextBlockInitial = (blockId: string) => {
   const block = textBlocks.value.find(b => b.id === blockId)
   if (block) {
@@ -584,8 +588,6 @@ const completeTextEditing = () => {
 
   textBlockInitialContents.clear()
   newTextBlockIds.clear()
-  pendingSelection.value = null
-  showUnsavedTextModal.value = false
   // 若目前選取的區塊已被刪除（空白被濾掉）才清掉選取；否則保留選取，讓該區塊維持在最上層
   if (selectedTextBlockId.value && !textBlocks.value.some(b => b.id === selectedTextBlockId.value)) {
     selectedTextBlockId.value = null
@@ -593,28 +595,9 @@ const completeTextEditing = () => {
   activeTab.value = null
 }
 
-// 貼紙模式「完成」：關閉貼紙 tab 並取消選取，編輯框消失（貼紙維持既有疊放順序）
 const completeStickerEditing = () => {
   selectedStickerId.value = null
   activeTab.value = null
-}
-
-const applyPendingSelection = () => {
-  const sel = pendingSelection.value
-  pendingSelection.value = null
-  if (!sel) return
-  if (sel.type === 'text') {
-    selectTextBlock(sel.id)
-  } else {
-    // 由「文字編輯模式」確認放棄後切換到貼紙：保持在 default tab，但選中貼紙
-    selectSticker(sel.id)
-  }
-}
-
-const confirmDiscardTextChanges = () => {
-  cancelTextEditing()
-  showUnsavedTextModal.value = false
-  applyPendingSelection()
 }
 
 // 計算屬性：當前選取的文字區塊
@@ -713,10 +696,14 @@ watch(activeTab, (tab) => {
   if (tab === 'draw') {
     drawMode.value = true
     fabricBrush.setDrawingMode(true)
+    bringToFront('drawing-layer')
   } else {
     if (drawMode.value) {
       syncDrawingDataFromFabric()
       fabricBrush.setDrawingMode(false)
+      // 使用者剛離開繪圖模式（例如按下完成），清除所有物件選取，確保沒有殘留的編輯框
+      selectedTextBlockId.value = null
+      selectedStickerId.value = null
     }
     drawMode.value = false
   }
@@ -768,11 +755,13 @@ const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
 
 const { wrapperStyles, innerStyles: canvasStyle } = useStickyNoteStyle(noteStyleProps)
 
-// 畫面是否有內容（文字 / 貼紙 / 繪圖任一存在）
+// 畫面是否有內容（文字 / 貼紙 / 繪圖任一存在，或背景/形狀已被更改）
 const hasAnyContent = computed(() =>
   textBlocks.value.some(b => b.content.trim()) ||
   stickers.value.length > 0 ||
-  !!drawingData.value
+  !!drawingData.value ||
+  backgroundImage.value !== (BACKGROUND_IMAGES?.[0]?.url ?? '') ||
+  shape.value !== DEFAULT_SHAPE_ID
 )
 
 // 文字區塊位置/大小樣式（接受 TextBlockInstance）
@@ -856,6 +845,38 @@ const placeCaretAtEnd = (el: HTMLElement) => {
   range.collapse(false)
   sel?.removeAllRanges()
   sel?.addRange(range)
+}
+
+/** 將游標放到指定座標位置（模擬手機點擊移動游標） */
+const placeCaretAtPoint = (el: HTMLElement, clientX: number, clientY: number) => {
+  let range: Range | null = null
+
+  // Chrome / Safari / Edge
+  if (document.caretRangeFromPoint) {
+    range = document.caretRangeFromPoint(clientX, clientY)
+  }
+  // Firefox
+  else if ((document as any).caretPositionFromPoint) {
+    const pos = (document as any).caretPositionFromPoint(clientX, clientY)
+    if (pos) {
+      range = document.createRange()
+      range.setStart(pos.offsetNode, pos.offset)
+      range.collapse(true)
+    }
+  }
+
+  if (range) {
+    // 確保 range 在目標 contenteditable 元素內
+    if (el.contains(range.startContainer)) {
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+      return
+    }
+  }
+
+  // fallback：無法定位時放到最後
+  placeCaretAtEnd(el)
 }
 
 const syncContentToDom = () => {
@@ -1004,15 +1025,13 @@ const addSticker = (stickerType: string) => {
 }
 
 const selectSticker = (id: string) => {
-  // 若正在文字編輯模式，且有文字變更，先提醒是否放棄
-  if (activeTab.value === 'text' && selectedTextBlockId.value && hasCurrentTextEdits()) {
-    pendingSelection.value = { type: 'sticker', id }
-    showUnsavedTextModal.value = true
-    return
-  }
-  if (activeTab.value === 'text' && selectedTextBlockId.value && !hasCurrentTextEdits()) {
-    // 沒有變更時，等同先按一次取消（可能會刪除新建空白文字）
-    cancelTextEditing()
+  // 若正在文字編輯模式，自動完成之前的編輯
+  if (activeTab.value === 'text' && selectedTextBlockId.value) {
+    if (hasCurrentTextEdits()) {
+      completeTextEditing()
+    } else {
+      cancelTextEditing()
+    }
   }
   // 如果正在便利貼模式（選擇材質/形狀），點擊貼紙時回到 default tab（null）
   if (activeTab.value === 'note') {
@@ -1025,34 +1044,31 @@ const selectSticker = (id: string) => {
 }
 
 const selectTextBlock = (blockId: string) => {
-  // 若正在文字編輯模式，且切換到另一組文字，先檢查是否有變更
-  if (
-    activeTab.value === 'text' &&
-    selectedTextBlockId.value &&
-    selectedTextBlockId.value !== blockId &&
-    hasCurrentTextEdits()
-  ) {
-    pendingSelection.value = { type: 'text', id: blockId }
-    showUnsavedTextModal.value = true
+  // 檢查在點擊之前，是否「已經在此文字區塊的編輯模式中」
+  const isCurrentlyEditing = selectedTextBlockId.value === blockId && activeTab.value === 'text'
+
+  // 進入文字編輯模式
+  activeTab.value = 'text'
+
+  // 若已經在編輯這個文字區塊，純粹是使用者點選不同位置來移動游標，不干涉瀏覽器
+  if (isCurrentlyEditing) {
+    bringToFront(blockId)
     return
   }
-  if (
-    activeTab.value === 'text' &&
-    selectedTextBlockId.value &&
-    selectedTextBlockId.value !== blockId &&
-    !hasCurrentTextEdits()
-  ) {
-    // 沒有變更時，等同先按一次取消（可能會刪除新建空白文字）
-    cancelTextEditing()
+
+  // 若正在文字編輯模式，且切換到另一組文字，自動完成之前的編輯
+  if (activeTab.value === 'text' && selectedTextBlockId.value && selectedTextBlockId.value !== blockId) {
+    if (hasCurrentTextEdits()) {
+      completeTextEditing()
+    } else {
+      cancelTextEditing()
+    }
   }
   
   snapshotTextBlockInitial(blockId)
   selectedTextBlockId.value = blockId
   selectedStickerId.value = null
   bringToFront(blockId)
-  
-  // 原本是強制將 activeTab.value = 'text'。如果是從 note tab 過來，也進入文字編輯
-  activeTab.value = 'text'
   
   nextTick(() => {
     const el = contentEditableRefs.get(blockId)
@@ -1123,15 +1139,13 @@ const {
   onStickerTransformEnd: saveDraftData,
   onTextDragEnd: saveDraftData,
   onStickerDragEnd: saveDraftData,
-  onTextTap: (blockId: string) => {
+  onTextTap: (blockId: string, clientX: number, clientY: number) => {
+    const alreadySelected = selectedTextBlockId.value === blockId
     selectTextBlock(blockId)
-    nextTick(() => {
-      const el = contentEditableRefs.get(blockId)
-      if (el) {
-        el.focus()
-        placeCaretAtEnd(el)
-      }
-    })
+    if (!alreadySelected) {
+      // 切換到新的文字區塊：游標放到最後（selectTextBlock 內部已處理）
+    }
+    // 已選取的文字區塊：不做任何操作，瀏覽器已在 touchstart 自然定位游標
   },
   onTextDragStart: (blockId: string) => selectTextBlock(blockId)
 })
@@ -1266,9 +1280,17 @@ const resetEditorToInitial = () => {
   syncContentToDom()
 }
 
+const showClearAllModal = ref(false)
+
 const handleClearAll = () => {
+  if (!hasAnyContent.value) return
+  showClearAllModal.value = true
+}
+
+const confirmClearAll = () => {
   resetEditorToInitial()
   clearDraft()
+  showClearAllModal.value = false
 }
 
 const handleDraftDecision = async (useDraft: boolean) => {

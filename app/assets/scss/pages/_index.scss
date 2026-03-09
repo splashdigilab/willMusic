@@ -35,7 +35,7 @@
     display: block;
     width: auto;
     height: 32px;
-    margin: 0 auto 1.5rem;
+    margin: 0 auto 2rem;
     object-fit: contain;
 }
 
@@ -46,11 +46,62 @@
     margin-bottom: 1rem;
 }
 
-.p-index__intro-desc {
-    font-size: 1rem;
-    color: var(--color-text-light, #666);
+.p-index__intro-rules {
+    font-size: 0.95rem;
+    color: var(--color-text-light, #555);
     line-height: 1.6;
     margin-bottom: 2rem;
+    text-align: left;
+
+    ol {
+        padding-left: 1.25rem;
+        margin-bottom: 1.5rem;
+
+        li {
+            margin-bottom: 0.75rem;
+        }
+    }
+}
+
+.p-index__intro-terms {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: var(--color-text, #333);
+    user-select: none;
+
+    input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 1.25rem;
+        height: 1.25rem;
+        border: 2px solid #ddd;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        background: white;
+
+        &:checked {
+            background-color: var.$will-blue;
+            border-color: var.$will-blue;
+
+            &::after {
+                content: '';
+                width: 5px;
+                height: 10px;
+                border: solid white;
+                border-width: 0 2px 2px 0;
+                transform: rotate(45deg);
+                margin-bottom: 2px;
+            }
+        }
+    }
 }
 
 .p-index__intro-btn {
@@ -164,6 +215,7 @@
 .intro-fade-leave-active {
     transition: opacity 0.3s ease;
 }
+
 .intro-fade-enter-from,
 .intro-fade-leave-to {
     opacity: 0;

@@ -43,7 +43,7 @@
     /* 內部 note-wrap 用 position:absolute */
     box-sizing: border-box;
     /* ⚠️ 不可加 overflow:hidden，否則 FLIP 跨區飛行動畫會被裁切 */
-    background-image: url('/bg.webp');
+    background-image: url('/liveBg.webp');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -73,7 +73,7 @@
     justify-content: center;
     box-sizing: border-box;
     position: relative;
-    background-image: url('/bg.webp');
+    background-image: url('/displayBg.webp');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
