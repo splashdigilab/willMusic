@@ -161,7 +161,7 @@ body.is-editor-page #app {
 
     &.is-empty::before {
       content: attr(data-placeholder);
-      color: color-mix(in srgb, var(--text-color, #333) 45%, transparent);
+      // color: color-mix(in srgb, var(--text-color, #333) 45%, transparent);
     }
   }
 

@@ -11,20 +11,12 @@
           <img src="/logo.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
           <!-- <h1 class="p-index__intro-title">活動介紹</h1> -->
           <div class="p-index__intro-desc p-index__intro-rules">
-            <ol>
-              <li>於南西旗艦店消費達 599 元，即可獲得一張數位應援便利貼。</li>
-              <li>取得便利貼後，須於 30 分鐘內完成個人專屬內容製作並送出。（禁止任何敏感詞彙或圖像；如有違反，品牌有權不另行通知逕行撤下內容。若多次惡意違規，將依情節嚴重程度採取相應處置。微樂客對違規內容保有最終解釋之權利）</li>
-              <li>便利貼內容經審核通過後，將於 LED 牆輪播展示，並輪流放大顯示 15 秒。</li>
-            </ol>
-            <label class="p-index__intro-terms">
-              <input type="checkbox" v-model="termsAccepted" />
-              <span>我已閱讀並同意上述活動規範</span>
-            </label>
-          </div>
-          <button
-            type="button"
-            class="p-index__intro-btn c-btn c-btn--primary"
-            :disabled="loading || !termsAccepted"
+            <p style="text-align: center; margin-bottom: 2rem; color: #666; font-size: 0.9rem; line-height: 1.6;">歡迎來到 WILL MUSIC 數位應援便利貼！<br>在這裡，您可以創作專屬於您的應援內容，<br>與大家一起分享對音樂的熱愛。</p>
+            </div>
+            <button
+              type="button"
+              class="p-index__intro-btn c-btn c-btn--primary"
+            :disabled="loading"
             @click="onStartClick"
           >
             <span v-if="loading" class="p-index__intro-btn-inner">
@@ -84,6 +76,7 @@ import type { QueuePendingItem, QueueHistoryItem } from '~/types'
 import { useFirestore } from '~/composables/useFirestore'
 import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
 import StickyNote from '~/components/StickyNote.vue'
+import AppModal from '~/components/AppModal.vue'
 
 definePageMeta({ layout: false })
 
@@ -97,7 +90,6 @@ const canvasRef = ref<HTMLElement | null>(null)
 const displayItems = ref<QueueHistoryItem[]>([])
 const showIntroOverlay = ref(true)
 const loading = ref(true)
-const termsAccepted = ref(false)
 
 // ====== Layout Math: Fermat's Spiral with Collision Detection ======
 const ITEM_SIZE = 150 
@@ -382,16 +374,40 @@ onMounted(async () => {
     displayItems.value = items
   })
 
-  // 等待字體載入與最小延遲
+  const waitForImages = async () => {
+    await nextTick()
+    const images = Array.from(document.images)
+    await Promise.all(
+      images.map(img => {
+        if (img.complete) return Promise.resolve()
+        return new Promise((resolve) => {
+          img.addEventListener('load', resolve as () => void, { once: true })
+          img.addEventListener('error', resolve as () => void, { once: true })
+        })
+      })
+    )
+  }
+
+  const windowLoaded = new Promise<void>(resolve => {
+    if (document.readyState === 'complete') {
+      resolve()
+    } else {
+      window.addEventListener('load', () => resolve(), { once: true })
+    }
+  })
+
+  // 等待字體、圖片載入與最小延遲
   try {
     await Promise.all([
       document.fonts.ready,
+      windowLoaded,
+      waitForImages(),
       new Promise(resolve => {
         loadingTimer = setTimeout(resolve, 800)
       })
     ])
   } catch (e) {
-    console.warn('Font loading error', e)
+    console.warn('Loading error', e)
   }
   
   loading.value = false

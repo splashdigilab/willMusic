@@ -1,19 +1,51 @@
 <template>
   <div class="p-editor">
-    <!-- Loading Overlay -->
-    <Transition name="fade">
-      <div v-if="isLoadingFonts" class="p-editor__loading-overlay">
-        <div class="p-editor__loading-spinner"></div>
-        <p>載入字體中...</p>
-      </div>
-    </Transition>
-
-    <template v-if="!isLoadingFonts">
       <!-- Header -->
       <AppHeader show-back show-help relative @back="goBack" @help="showTutorialModal = true" />
 
+      <!-- 活動介紹滿版 overlay：載入時顯示，loading 完後按「開始」關閉 -->
+      <Transition name="intro-fade">
+        <div v-if="showIntroOverlay" class="p-index__intro-overlay p-editor__intro-overlay">
+          <div class="p-index__intro-card">
+            <img src="/logo.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
+            <div class="p-index__intro-desc p-index__intro-rules">
+              <ol>
+                <li>於南西旗艦店消費達 599 元，即可獲得一張數位應援便利貼。</li>
+                <li>取得便利貼後，須於 30 分鐘內完成個人專屬內容製作並送出。（禁止任何敏感詞彙或圖像；如有違反，品牌有權不另行通知逕行撤下內容。若多次惡意違規，將依情節嚴重程度採取相應處置。微樂客對違規內容保有最終解釋之權利）</li>
+                <li>便利貼內容經審核通過後，將於 LED 牆輪播展示，並輪流放大顯示 15 秒。</li>
+              </ol>
+              <label class="p-index__intro-terms">
+                <input type="checkbox" v-model="termsAccepted" />
+                <span>我已閱讀並同意上述活動規範</span>
+              </label>
+            </div>
+            <button
+              type="button"
+              class="p-index__intro-btn c-btn c-btn--primary"
+              :disabled="loading"
+              @click="onStartClick"
+            >
+              <span v-if="loading" class="p-index__intro-btn-inner">
+                <span class="p-index__intro-spinner" aria-hidden="true" />
+                載入中...
+              </span>
+              <span v-else>開始</span>
+            </button>
+          </div>
+        </div>
+      </Transition>
+
     <!-- Tutorial Modal -->
     <EditorTutorialModal v-model="showTutorialModal" />
+
+    <AppModal
+      v-model="showTermsModal"
+      title="提示"
+      message="請先閱讀並同意活動規範"
+      confirm-text="確定"
+      cancel-text=""
+      @confirm="showTermsModal = false"
+    />
 
     <!-- Draft Modal -->
     <AppModal
@@ -494,7 +526,6 @@
         </button>
       </template>
     </div>
-    </template>
   </div>
 </template>
 
@@ -532,8 +563,23 @@ const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = u
 
 const MAX_TEXT_BLOCKS = 3
 
-// Loading state for fonts
-const isLoadingFonts = ref(true)
+// Loading state
+const loading = ref(true)
+const showIntroOverlay = ref(true)
+const termsAccepted = ref(false)
+const showTermsModal = ref(false)
+
+const onStartClick = () => {
+  if (loading.value) return
+  if (!termsAccepted.value) {
+    showTermsModal.value = true
+    return
+  }
+  showIntroOverlay.value = false
+  
+  // 顯示教學或草稿邏輯移至開始之後
+  checkInitialModals()
+}
 
 // Editor State
 const backgroundImage = ref(BACKGROUND_IMAGES?.[0]?.url ?? '') // 預設第一張背景
@@ -1551,26 +1597,8 @@ const scalerStyle = ref({ transform: 'scale(1)' })
 const VIRTUAL_SIZE = 600
 let resizeObserver: ResizeObserver | null = null
 
-onMounted(async () => {
-  // 等待字體載入與最小延遲
-  try {
-    await Promise.all([
-      document.fonts.ready,
-      new Promise(resolve => setTimeout(resolve, 800))
-    ])
-  } catch (e) {
-    console.warn('Font loading error', e)
-  }
-  isLoadingFonts.value = false
-
+const checkInitialModals = async () => {
   await nextTick()
-
-  // 處理 Token
-  const tokenFromQuery = route.query.token as string
-  if (tokenFromQuery) {
-    saveToken(tokenFromQuery)
-  }
-
   // 檢查草稿（僅顯示 modal，不預先載入內容；等使用者選擇「使用草稿」才載入）
   const existingDraft = loadDraft()
   if (existingDraft) {
@@ -1581,6 +1609,54 @@ onMounted(async () => {
     if (!hasSeen) {
       showTutorialModal.value = true
     }
+  }
+  
+  // 初始化 Fabric 手繪
+  initFabricBrush()
+}
+
+onMounted(async () => {
+  const waitForImages = async () => {
+    await nextTick()
+    const images = Array.from(document.images)
+    await Promise.all(
+      images.map(img => {
+        if (img.complete) return Promise.resolve()
+        return new Promise((resolve) => {
+          img.addEventListener('load', resolve as () => void, { once: true })
+          img.addEventListener('error', resolve as () => void, { once: true })
+        })
+      })
+    )
+  }
+
+  const windowLoaded = new Promise<void>(resolve => {
+    if (document.readyState === 'complete') {
+      resolve()
+    } else {
+      window.addEventListener('load', () => resolve(), { once: true })
+    }
+  })
+
+  // 等待字體載入與最小延遲
+  try {
+    await Promise.all([
+      document.fonts.ready,
+      windowLoaded,
+      waitForImages(),
+      new Promise(resolve => setTimeout(resolve, 800))
+    ])
+  } catch (e) {
+    console.warn('Font loading error', e)
+  }
+  loading.value = false
+
+  await nextTick()
+
+  // 處理 Token
+  const tokenFromQuery = route.query.token as string
+  if (tokenFromQuery) {
+    saveToken(tokenFromQuery)
   }
 
   // Scale observer
@@ -1594,11 +1670,6 @@ onMounted(async () => {
     })
     resizeObserver.observe(canvasRef.value)
   }
-
-  // 初始化 Fabric 手繪
-  nextTick(() => {
-    initFabricBrush()
-  })
 })
 
 onUnmounted(() => {
