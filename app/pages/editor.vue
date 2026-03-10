@@ -186,10 +186,10 @@
           </div>
 
           <!-- 貼紙編輯框：在貼紙 tab，或 default 狀態且有選取貼紙時顯示 -->
-          <template v-if="showStickerEditFrame">
           <div
             v-for="sticker in stickers"
             :key="`ui-${sticker.id}`"
+            v-show="showStickerEditFrame && selectedStickerId === sticker.id"
             class="p-editor__edit-frame p-editor__edit-frame--sticker"
             :data-sticker-id="sticker.id"
             :class="{ 
@@ -203,7 +203,6 @@
             @click.stop="onStickerClick(sticker.id)"
           >
             <button
-              v-if="selectedStickerId === sticker.id"
               class="p-editor__edit-frame-delete"
               @click.stop="removeSticker(sticker.id)"
               @touchstart.stop.prevent="removeSticker(sticker.id)"
@@ -214,7 +213,6 @@
               </svg>
             </button>
             <!-- <div
-              v-if="selectedStickerId === sticker.id"
               class="p-editor__edit-frame-transform-handle"
               @mousedown.stop="onTransformHandleMouseDown($event, sticker)"
               @touchstart.stop="onTransformHandleTouchStart($event, sticker)"
@@ -222,7 +220,6 @@
               ↻
             </div> -->
           </div>
-          </template>
         </div>
         </div>
       </div>

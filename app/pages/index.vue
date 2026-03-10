@@ -82,7 +82,7 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { gsap } from 'gsap'
 import type { QueuePendingItem, QueueHistoryItem } from '~/types'
 import { useFirestore } from '~/composables/useFirestore'
-import { usePanZoom } from '~/composables/usePanZoom'
+import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
 import StickyNote from '~/components/StickyNote.vue'
 
 definePageMeta({ layout: false })
@@ -92,14 +92,6 @@ const { listenToHistory } = useFirestore()
 // ====== UI Refs ======
 const containerRef = ref<HTMLElement | null>(null)
 const canvasRef = ref<HTMLElement | null>(null)
-
-// ====== Pan & Zoom ======
-const { centerContent } = usePanZoom(containerRef, canvasRef, {
-  minScale: 0.5,
-  maxScale: 3,
-  initialScale: 1,
-  initialCenter: true
-})
 
 // ====== Data ======
 const displayItems = ref<QueueHistoryItem[]>([])
@@ -118,6 +110,52 @@ const COLLISION_RADIUS = (MAX_BOUNDING_BOX + MARGIN) / 2
 // Cache calculated positions
 interface Position { x: number; y: number }
 const layoutCache = ref<Position[]>([])
+
+// Compute bounding box based on layout cache
+const computedBounds = computed<PanZoomBounds | null>(() => {
+  if (layoutCache.value.length === 0) return null
+
+  const firstPos = layoutCache.value[0]
+  if (!firstPos) return null
+
+  let minX = firstPos.x
+  let maxX = firstPos.x
+  let minY = firstPos.y
+  let maxY = firstPos.y
+
+  for (let i = 1; i < layoutCache.value.length; i++) {
+    const pos = layoutCache.value[i]
+    if (!pos) continue
+    if (pos.x < minX) minX = pos.x
+    if (pos.x > maxX) maxX = pos.x
+    if (pos.y < minY) minY = pos.y
+    if (pos.y > maxY) maxY = pos.y
+  }
+
+  // Force bounds to be perfectly symmetric around (0,0) so dragging feels centered
+  const maxAbsX = Math.max(Math.abs(minX), Math.abs(maxX))
+  const maxAbsY = Math.max(Math.abs(minY), Math.abs(maxY))
+
+  // Account for the item size itself so bounds cover the entire objects
+  const halfSize = MAX_BOUNDING_BOX / 2
+  return {
+    minX: -maxAbsX - halfSize,
+    maxX: maxAbsX + halfSize,
+    minY: -maxAbsY - halfSize,
+    maxY: maxAbsY + halfSize
+  }
+})
+
+// ====== Pan & Zoom ======
+const { centerContent } = usePanZoom(containerRef, canvasRef, {
+  minScale: 0.5,
+  maxScale: 3,
+  initialScale: 1,
+  initialCenter: true,
+  disabled: showIntroOverlay,
+  bounds: computedBounds,
+  boundsPadding: 0.7 // allow 70% of the screen width/height empty space margin
+})
 
 // Helper to check if a new position collides with any existing positions
 // Optimize to O(1) by using Spatial Grid Partitioning

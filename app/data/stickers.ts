@@ -66,6 +66,18 @@ export const STICKER_LIBRARY: StickerType[] = [
   { id: 'sticker-55', defaultScale: 1, svgFile: '/svg/stickers/sticker-55.svg' },
   { id: 'sticker-56', defaultScale: 1, svgFile: '/svg/stickers/sticker-56.svg' },
   { id: 'sticker-57', defaultScale: 1, svgFile: '/svg/stickers/sticker-57.svg' },
+  { id: 'sticker-58', defaultScale: 1, svgFile: '/svg/stickers/sticker-58.svg' },
+  { id: 'sticker-59', defaultScale: 1, svgFile: '/svg/stickers/sticker-59.svg' },
+  { id: 'sticker-60', defaultScale: 1, svgFile: '/svg/stickers/sticker-60.svg' },
+  { id: 'sticker-61', defaultScale: 1, svgFile: '/svg/stickers/sticker-61.svg' },
+  { id: 'sticker-62', defaultScale: 1, svgFile: '/svg/stickers/sticker-62.svg' },
+  { id: 'sticker-63', defaultScale: 1, svgFile: '/svg/stickers/sticker-63.svg' },
+  { id: 'sticker-64', defaultScale: 1, svgFile: '/svg/stickers/sticker-64.svg' },
+  { id: 'sticker-65', defaultScale: 1, svgFile: '/svg/stickers/sticker-65.svg' },
+  { id: 'sticker-66', defaultScale: 1, svgFile: '/svg/stickers/sticker-66.svg' },
+  { id: 'sticker-67', defaultScale: 1, svgFile: '/svg/stickers/sticker-67.svg' },
+  { id: 'sticker-68', defaultScale: 1, svgFile: '/svg/stickers/sticker-68.svg' },
+  { id: 'sticker-69', defaultScale: 1, svgFile: '/svg/stickers/sticker-69.svg' },
 ]
 
 /**

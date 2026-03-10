@@ -13,6 +13,9 @@ body.is-editor-page {
   height: 100dvh;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
+  background-image: url('/paperBg.webp');
+  background-size: cover;
+  background-position: center;
 }
 
 body.is-editor-page #__nuxt,

@@ -1,10 +1,17 @@
-import { ref, watch, onMounted, onUnmounted, type Ref } from 'vue'
+import { ref, watch, onMounted, onUnmounted, unref, type Ref } from 'vue'
 import { gsap } from 'gsap'
 
 export interface PanZoomState {
     x: number
     y: number
     scale: number
+}
+
+export interface PanZoomBounds {
+    minX: number
+    maxX: number
+    minY: number
+    maxY: number
 }
 
 interface UsePanZoomOptions {
@@ -14,6 +21,9 @@ interface UsePanZoomOptions {
     initialY?: number
     initialScale?: number
     initialCenter?: boolean
+    disabled?: Ref<boolean> | boolean
+    bounds?: Ref<PanZoomBounds | null>
+    boundsPadding?: number // 0.0 ~ 1.0 螢幕比例緩衝
     onTransformChange?: (state: PanZoomState) => void
 }
 
@@ -53,18 +63,94 @@ export function usePanZoom(
     let pinchStartStateX = 0
     let pinchStartStateY = 0
 
-    const updateTransform = () => {
-        // Vue components like TransitionGroup return the component instance, not the DOM element directly.
-        // We safely unpack the actual HTMLElement by checking for $el.
-        const contentEl = contentRef.value ? ((contentRef.value as any).$el || contentRef.value) : null
+    let renderRafId: number | null = null
 
-        if (contentEl && contentEl.style) {
-            contentEl.style.transform = `translate(${state.value.x}px, ${state.value.y}px) scale(${state.value.scale})`
-            contentEl.style.transformOrigin = '0 0'
+    // 實際用來渲染在 DOM 上的座標與縮放值（平滑過渡用）
+    let currentX = options.initialX ?? 0
+    let currentY = options.initialY ?? 0
+    let currentScale = options.initialScale ?? 1
+
+    const renderLoop = () => {
+        const lerpFactor = 0.35
+        
+        currentX += (state.value.x - currentX) * lerpFactor
+        currentY += (state.value.y - currentY) * lerpFactor
+        currentScale += (state.value.scale - currentScale) * lerpFactor
+
+        const isClose = Math.abs(state.value.x - currentX) < 0.05 && 
+                        Math.abs(state.value.y - currentY) < 0.05 && 
+                        Math.abs(state.value.scale - currentScale) < 0.005
+
+        if (isClose) {
+            currentX = state.value.x
+            currentY = state.value.y
+            currentScale = state.value.scale
+            renderRafId = null
         } else {
-            console.warn('[usePanZoom] contentRef failed to resolve to a valid HTMLElement', contentRef.value)
+            renderRafId = requestAnimationFrame(renderLoop)
         }
+
+        const contentEl = contentRef.value ? ((contentRef.value as any).$el || contentRef.value) : null
+        if (contentEl && contentEl.style) {
+            contentEl.style.transform = `translate(${currentX}px, ${currentY}px) scale(${currentScale})`
+            contentEl.style.transformOrigin = '0 0'
+        }
+    }
+
+    const updateTransform = () => {
+        // Apply bounding constraints before updating style
+        const boundsVal = unref(options.bounds)
+        if (boundsVal && containerRef.value) {
+            const rect = containerRef.value.getBoundingClientRect()
+            const paddingMult = options.boundsPadding ?? 0.5
+            const padX = rect.width * paddingMult
+            const padY = rect.height * paddingMult
+
+            // Elements in index.vue are centered using left: 50%, top: 50%
+            // Therefore, a raw coordinate of (0,0) in unscaled space actually renders at (rect.width / 2, rect.height / 2) in the container.
+            // The scaled visual boundaries of the content relative to the container's (0,0) point are:
+            const visualMinX = (rect.width / 2 + boundsVal.minX) * state.value.scale
+            const visualMaxX = (rect.width / 2 + boundsVal.maxX) * state.value.scale
+            const visualMinY = (rect.height / 2 + boundsVal.minY) * state.value.scale
+            const visualMaxY = (rect.height / 2 + boundsVal.maxY) * state.value.scale
+
+            // 1. Right edge shouldn't go further left than `padX`
+            // => state.value.x + visualMaxX >= padX
+            const minAllowedX = padX - visualMaxX
+            
+            // 2. Left edge shouldn't go further right than `rect.width - padX`
+            // => state.value.x + visualMinX <= rect.width - padX
+            const maxAllowedX = rect.width - padX - visualMinX
+
+            // 3. Bottom edge shouldn't go further UP than `padY`
+            // => state.value.y + visualMaxY >= padY
+            const minAllowedY = padY - visualMaxY
+
+            // 4. Top edge shouldn't go further DOWN than `rect.height - padY`
+            // => state.value.y + visualMinY <= rect.height - padY
+            const maxAllowedY = rect.height - padY - visualMinY
+
+            // If content is smaller than the allowed drag area, center it or just clamp safely
+            if (minAllowedX <= maxAllowedX) {
+                state.value.x = Math.max(minAllowedX, Math.min(state.value.x, maxAllowedX))
+            } else {
+                state.value.x = (minAllowedX + maxAllowedX) / 2
+            }
+            
+            if (minAllowedY <= maxAllowedY) {
+                state.value.y = Math.max(minAllowedY, Math.min(state.value.y, maxAllowedY))
+            } else {
+                state.value.y = (minAllowedY + maxAllowedY) / 2
+            }
+        } else if (!containerRef.value || !contentRef.value) {
+            console.warn('[usePanZoom] containerRef or contentRef failed validation')
+        }
+        
         options.onTransformChange?.(state.value)
+        
+        if (!renderRafId) {
+            renderRafId = requestAnimationFrame(renderLoop)
+        }
     }
 
     // watch 外部直接改變 state 的情況
@@ -74,6 +160,7 @@ export function usePanZoom(
     const onPointerDown = (e: PointerEvent) => {
         // 忽略右鍵
         if (e.button !== 0 && e.pointerType === 'mouse') return
+        if (unref(options.disabled)) return
 
         // 若不是在此容器觸發（而是內部元素），可以透過 class 判斷是否要防止拖曳
         // 例如：點擊便利貼本身有可能是要別的操作，不過在此需求中，點擊背景拖曳最直覺
@@ -111,8 +198,18 @@ export function usePanZoom(
         }
     }
 
+    const onPointerCancel = (e: PointerEvent) => {
+        if (!isDragging.value) return
+        isDragging.value = false
+        if (containerRef.value) {
+            containerRef.value.releasePointerCapture(e.pointerId)
+            containerRef.value.style.cursor = 'grab'
+        }
+    }
+
     // ─── Wheel (Zoom) ───
     const onWheel = (e: WheelEvent) => {
+        if (unref(options.disabled)) return
         e.preventDefault()
 
         if (!containerRef.value) return
@@ -162,6 +259,7 @@ export function usePanZoom(
     }
 
     const onTouchStart = (e: TouchEvent) => {
+        if (unref(options.disabled)) return
         if (!containerRef.value) return
         activeTouches = e.touches.length
 
@@ -186,6 +284,7 @@ export function usePanZoom(
     }
 
     const onTouchMove = (e: TouchEvent) => {
+        if (unref(options.disabled)) return
         e.preventDefault() // 防止滾動與預設雙指縮放
         if (!containerRef.value) return
 
@@ -232,6 +331,7 @@ export function usePanZoom(
     }
 
     const onTouchEnd = (e: TouchEvent) => {
+        if (unref(options.disabled)) return
         activeTouches = e.touches.length
         if (activeTouches === 0) {
             isDragging.value = false
@@ -270,7 +370,7 @@ export function usePanZoom(
             el.addEventListener('pointerdown', onPointerDown)
             el.addEventListener('pointermove', onPointerMove)
             el.addEventListener('pointerup', onPointerUp)
-            el.addEventListener('pointercancel', onPointerUp)
+            el.addEventListener('pointercancel', onPointerCancel)
             el.addEventListener('wheel', onWheel, { passive: false })
 
             // Touch events for Pinch Zoom
@@ -283,6 +383,8 @@ export function usePanZoom(
                 const rect = el.getBoundingClientRect()
                 state.value.x = (rect.width / 2) * (1 - state.value.scale)
                 state.value.y = (rect.height / 2) * (1 - state.value.scale)
+                currentX = state.value.x
+                currentY = state.value.y
             }
 
             updateTransform()
@@ -290,12 +392,15 @@ export function usePanZoom(
     })
 
     onUnmounted(() => {
+        if (renderRafId) {
+            cancelAnimationFrame(renderRafId)
+        }
         const el = containerRef.value
         if (el) {
             el.removeEventListener('pointerdown', onPointerDown)
             el.removeEventListener('pointermove', onPointerMove)
             el.removeEventListener('pointerup', onPointerUp)
-            el.removeEventListener('pointercancel', onPointerUp)
+            el.removeEventListener('pointercancel', onPointerCancel)
             el.removeEventListener('wheel', onWheel)
 
             el.removeEventListener('touchstart', onTouchStart)
