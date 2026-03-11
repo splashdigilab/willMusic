@@ -21,24 +21,12 @@
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-
-    /* 左側容器內容靠右，讓左邊螢幕置右 */
-    &:first-child {
-        justify-content: flex-end;
-    }
-
-    /* 右側容器內容靠左，讓右邊螢幕置左 */
-    &:last-child {
-        justify-content: flex-start;
-    }
 }
 
 /* ─── 左半：隨機散落區 ─── */
 .p-canvas__live-zone {
     width: 100%;
-    max-width: calc(100vh * 7 / 8);
-    max-height: 100vh;
-    aspect-ratio: 7 / 8;
+    height: 100%;
     position: relative;
     /* 內部 note-wrap 用 position:absolute */
     box-sizing: border-box;
@@ -65,9 +53,7 @@
 /* ─── 右半：單張展示區 ─── */
 .p-canvas__display-zone {
     width: 100%;
-    max-width: calc(100vh * 7 / 8);
-    max-height: 100vh;
-    aspect-ratio: 7 / 8;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;

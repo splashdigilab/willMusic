@@ -120,17 +120,27 @@ const contentWrapStyle = computed(() => {
 const getStickerData = (type: string) => STICKER_LIBRARY.find(s => s.id === type)
 
 // GSAP 動畫（如果需要）與縮放
-const scalerStyle = ref({ transform: 'scale(1)' })
+ const scalerStyle = ref({ transform: 'scale(1)' })
 const VIRTUAL_SIZE = 600
 
-onMounted(() => {
-  // 一次性測量父層寬度計算縮放比，取代持續性的 ResizeObserver
+function updateScale() {
   if (noteRef.value) {
     const width = noteRef.value.clientWidth
     if (width > 0) {
-      const scale = width / VIRTUAL_SIZE
-      scalerStyle.value = { transform: `scale(${scale})` }
+      scalerStyle.value = { transform: `scale(${width / VIRTUAL_SIZE})` }
     }
+  }
+}
+
+let ro: ResizeObserver | null = null
+
+onMounted(() => {
+  updateScale()
+
+  // 使用 ResizeObserver 監聽大小變化，保證 GSAP Flip 重排後 scale 始終正確
+  if (noteRef.value && typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(() => { updateScale() })
+    ro.observe(noteRef.value)
   }
 
   if (props.animate && import.meta.client && noteRef.value) {
@@ -142,6 +152,10 @@ onMounted(() => {
       ease: 'back.out(1.7)'
     })
   }
+})
+
+onUnmounted(() => {
+  ro?.disconnect()
 })
 </script>
 

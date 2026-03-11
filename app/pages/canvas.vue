@@ -223,9 +223,9 @@ function recalcPositions() {
     virtualH = maxY - minY
   }
 
+  // 所有 note 在同一次 recalcPositions 內尺寸完全一致，依張數軎小确保不重疊
   const scale = Math.min((zoneW / virtualW) || 1, (zoneH / virtualH) || 1)
-  const baseSize = VIRTUAL_ITEM_SIZE * scale
-  const size = Math.max(40, baseSize) * liveNoteScale.value
+  const size = Math.max(40, VIRTUAL_ITEM_SIZE * scale) * liveNoteScale.value
 
   items.forEach((id, index) => {
     const p = positions[index]!
