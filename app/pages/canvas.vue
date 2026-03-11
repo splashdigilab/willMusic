@@ -66,7 +66,7 @@ const ANIM = {
 /* ─── URL 參數 ─── */
 const route = useRoute()
 const maxNotes   = computed(() => Number(route.query.count) || 16)
-const displaySec = computed(() => Number(route.query.duration) || 15)
+const displaySec = computed(() => Number(route.query.duration) || 5)
 const liveNoteScale = computed(() => Number(route.query.liveScale) || 0.95)
 const displayNoteScale = computed(() => Number(route.query.displayScale) || 1)
 
@@ -346,7 +346,7 @@ onMounted(() => {
           const centerX = item.rect.left + item.rect.width / 2
           const centerY = item.rect.top + item.rect.height / 2
           const fixedLeft = centerX - item.offsetWidth / 2
-          const fixedTop  = centerY - item.offsetHeight / 2
+          const fixedTop = centerY - item.offsetHeight / 2
 
           clone.style.margin = '0'
           Object.assign(clone.style, {
@@ -389,90 +389,71 @@ onMounted(() => {
         } else if (flipId && wasInDisplayIds.has(flipId)) {
           elEl.style.zIndex = '200' // 2. display→live：中層
         } else {
-          elEl.style.zIndex = '100' // 靜態 live 或其它
+          elEl.style.zIndex = '100' // 3. 靜態 live：底層
         }
       })
 
-      // ── 分類所有便利貼目標 ────────────────────────────────────────────────
-      const flipTargets = Array.from(
-        document.querySelectorAll<HTMLElement>('.p-canvas__note-wrap:not(.is-leaving)')
-      )
+      // 找出所有需要 Flip 動畫的元素
+      const flipTargets: Element[] = []
+      const crossInnerTargets: HTMLElement[] = [] // 跨區移動的元素，其內部元素需要額外縮放動畫
+      const movingFlipTargets: Element[] = []     // 真正有產生位置變化的元素
 
-      const newEnterTargets: HTMLElement[] = []    // 情境 1：全新進場，不在 snapshot 中
-      const crossZoneTargets: HTMLElement[] = []   // 情境 2：跨區移動（display↔live）
-      const liveRepoTargets: HTMLElement[] = []    // 情境 3：純 live 區內重排
-
-      flipTargets.forEach(el => {
+      document.querySelectorAll('.p-canvas__note-wrap:not(.is-leaving)').forEach(el => {
         const flipId = el.getAttribute('data-flip-id')
-        const captured = capturedElements.find(c => c.flipId === flipId)
+        if (flipId) {
+          flipTargets.push(el)
 
-        if (!captured) {
-          newEnterTargets.push(el) // 不在 snapshot → 全新元素
-          return
-        }
+          // 判斷是否真的有移動
+          const captured = capturedElements.find(c => c.flipId === flipId)
+          let hasMoved = false
 
-        const cur = el.getBoundingClientRect()
-        const hasMoved = (
-          Math.abs(cur.left   - captured.rect.left)   > 1 ||
-          Math.abs(cur.top    - captured.rect.top)    > 1 ||
-          Math.abs(cur.width  - captured.rect.width)  > 1 ||
-          Math.abs(cur.height - captured.rect.height) > 1
-        )
-        if (!hasMoved) return // 靜止不動，無需 Flip
+          if (captured) {
+            const cur = el.getBoundingClientRect()
+            hasMoved = (
+              Math.abs(cur.left   - captured.rect.left)   > 1 ||
+              Math.abs(cur.top    - captured.rect.top)    > 1 ||
+              Math.abs(cur.width  - captured.rect.width)  > 1 ||
+              Math.abs(cur.height - captured.rect.height) > 1
+            )
+          } else {
+            hasMoved = true // 新進場的元素視同有移動
+          }
 
-        const wasDisplay = captured.clone.classList.contains('p-canvas__note-wrap--display')
-        const isDisplay  = el.classList.contains('p-canvas__note-wrap--display')
+          if (hasMoved) {
+            movingFlipTargets.push(el)
+          }
 
-        if (!wasDisplay && !isDisplay) {
-          liveRepoTargets.push(el)  // 一直在 live 區 → 純重排
-        } else {
-          crossZoneTargets.push(el) // 跨越兩區 → 跨區移動
+          if (hasMoved && wasInDisplayIds.has(flipId) && !el.classList.contains('p-canvas__note-wrap--display')) {
+            // 從 display 區移動到 live 區的元素
+            const inner = (el as HTMLElement).firstElementChild as HTMLElement
+            if (inner) crossInnerTargets.push(inner)
+          }
         }
       })
-
-      // 計算跨區元素的 inner children，供 scale 動畫使用
-      const crossInnerTargets = crossZoneTargets
-        .map(el => el.firstElementChild as HTMLElement)
-        .filter(Boolean)
 
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // 全部動畫：ONE Flip.from() 統一驅動
-      //
-      // ★ 根本修正：多次 Flip.from() 共用同一 snapshot + absolute:true 時，
-      //   第一次呼叫會改變 DOM 佈局（提升元素為 absolute），導致後續呼叫
-      //   讀到錯誤位置而閃現。改為一次呼叫，Flip 統一計算所有元素。
-      //
-      //  情境 1 (新進場)  → onEnter 回調處理飛入邏輯
-      //  情境 2 (跨區移動) → crossInner scale 另以 gsap.to 並行控制
-      //  情境 3 (live重排) → Flip 直接計算位移
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-      // Phase 1：crossZone 子元素立即放大（與 Flip 移動同步發動）
-      if (crossInnerTargets.length) {
-        gsap.to(crossInnerTargets, {
-          scale: 1.1,
-          duration: ANIM.scaleDuration,
-          ease: 'power2.out',
-        })
-      }
 
       // 單一 Flip.from()，targets 包含所有需要動畫的元素
       if (flipTargets.length) {
-        Flip.from(flipSnapshot, {
+        // 先建立 Flip 動畫時間軸
+        const flipAnim = Flip.from(flipSnapshot, {
           targets: flipTargets,
           duration: ANIM.moveDuration,
           ease: 'power2.inOut',
           absolute: true,
-
+          scale: true, // 關鍵：讓元素以 transform scale 的方式變形，而非直接改 width/height，避免瞬間爆大
+          paused: true, // 先暫停，由我們的手動時間軸控制
           // 情境 1：新進場元素的飛入動畫
-          onEnter(elements: Element[]) {
+          onEnter: (elements: Element[]) => {
             // 飛入前子元素先設為 1.1
             elements.forEach(el => {
               const inner = (el as HTMLElement).firstElementChild as HTMLElement
               if (inner) gsap.set(inner, { scale: 1.1 })
             })
 
-            return gsap.from(elements, {
+            gsap.from(elements, {
               x: (i, el) => {
                 const rect = el.getBoundingClientRect()
                 const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
@@ -490,6 +471,7 @@ onMounted(() => {
               },
               duration: ANIM.moveDuration,
               ease: 'power3.out',
+              delay: flipTargets.length ? ANIM.scaleDuration : 0, // 等待拿起動作
               onComplete: () => {
                 // 落地後：display 元素 scale 1.1→1
                 elements.forEach(el => {
@@ -506,23 +488,38 @@ onMounted(() => {
                 })
               },
             })
-          },
-
-          // 情境 2：crossZone 落地後 scale 縮回
-          onComplete() {
-            if (crossInnerTargets.length) {
-              gsap.to(crossInnerTargets, {
-                scale: 1,
-                duration: ANIM.scaleDuration,
-                ease: 'power2.inOut',
-              })
-            }
-          },
+          }
         })
+
+        // 提取所有要移動的元素的內部節點（用來放大縮小）
+        const flipInnerTargets = movingFlipTargets.map(el => (el as HTMLElement).firstElementChild as HTMLElement).filter(Boolean)
+
+        // 建立主時間軸，安排動畫順序： 1. 拿起(放大) -> 2. 移動(Flip) -> 3. 放下(縮小)
+        const tl = gsap.timeline()
+
+        // 步驟 1：所有要移動的元素原地放大 (拿起)
+        if (flipInnerTargets.length) {
+          tl.to(flipInnerTargets, {
+            scale: 1.1,
+            duration: ANIM.scaleDuration,
+            ease: 'power2.out',
+          })
+        }
+
+        // 步驟 2：執行所有位置移動 (Live重排 + 跨區移動)
+        tl.add(flipAnim.play(), flipInnerTargets.length ? ANIM.scaleDuration : 0)
+
+        // 步驟 3：所有移動的元素到達目的地後縮小 (放下)
+        if (flipInnerTargets.length) {
+          // `<` 代表對齊上一個動畫(也就是移動)的開端，加上移動時間代表「一抵達目標就馬上縮小」
+          tl.to(flipInnerTargets, {
+            scale: 1,
+            duration: ANIM.scaleDuration,
+            ease: 'power2.inOut',
+          }, `<${ANIM.moveDuration}`)
+        }
+
       }
-
-
-
 
       flipSnapshot = null
       capturedElements = []

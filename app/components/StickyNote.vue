@@ -119,21 +119,18 @@ const contentWrapStyle = computed(() => {
 
 const getStickerData = (type: string) => STICKER_LIBRARY.find(s => s.id === type)
 
-// GSAP 動畫（如果需要）與縮放監聽
+// GSAP 動畫（如果需要）與縮放
 const scalerStyle = ref({ transform: 'scale(1)' })
 const VIRTUAL_SIZE = 600
-let resizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
+  // 一次性測量父層寬度計算縮放比，取代持續性的 ResizeObserver
   if (noteRef.value) {
-    resizeObserver = new ResizeObserver(entries => {
-      const entry = entries[0]
-      if (entry && entry.contentRect.width > 0) {
-        const scale = entry.contentRect.width / VIRTUAL_SIZE
-        scalerStyle.value = { transform: `scale(${scale})` }
-      }
-    })
-    resizeObserver.observe(noteRef.value)
+    const width = noteRef.value.clientWidth
+    if (width > 0) {
+      const scale = width / VIRTUAL_SIZE
+      scalerStyle.value = { transform: `scale(${scale})` }
+    }
   }
 
   if (props.animate && import.meta.client && noteRef.value) {
@@ -144,12 +141,6 @@ onMounted(() => {
       duration: 0.6,
       ease: 'back.out(1.7)'
     })
-  }
-})
-
-onUnmounted(() => {
-  if (resizeObserver) {
-    resizeObserver.disconnect()
   }
 })
 </script>

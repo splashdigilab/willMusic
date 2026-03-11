@@ -94,14 +94,14 @@ body.is-editor-page #app {
 
     /* 
       編輯器預覽：模擬實體便利貼黏在牆壁上的陰影。
-      因為子層 .p-editor__canvas 會套用 mask-image，陰影必須放在這層（Wrapper）。
+      我們現在將陰影移到 canvas-scaler，因為那裡才有 --shadow-mask 變數。
     */
-    @include sn.sticky-note-shadow;
   }
 
   /* 虛擬縮放層：永遠固定 600px 大小 */
   &__canvas-scaler {
     @include sn.sticky-note-virtual-scaler(editor-canvas);
+    @include sn.sticky-note-shadow; // Apply shadow here to inherit --shadow-mask
     flex-shrink: 0;
     transform-origin: center center;
     position: relative;

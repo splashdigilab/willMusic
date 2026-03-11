@@ -8,7 +8,7 @@
     <Transition name="intro-fade">
       <div v-if="showIntroOverlay" class="p-index__intro-overlay">
         <div class="p-index__intro-card">
-          <img src="/logo.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
+          <img src="/postBoardLogoColumn.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
           <!-- <h1 class="p-index__intro-title">活動介紹</h1> -->
           <div class="p-index__intro-desc p-index__intro-rules">
             <p style="text-align: center; margin-bottom: 2rem; color: #666; font-size: 0.9rem; line-height: 1.6;">歡迎來到 WILL MUSIC 數位應援便利貼！<br>在這裡，您可以創作專屬於您的應援內容，<br>與大家一起分享對音樂的熱愛。</p>
@@ -370,7 +370,7 @@ let loadingTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
   // 聽歷史
-  unsubHistory = listenToHistory(300, (items) => {
+  unsubHistory = listenToHistory(200, (items) => {
     displayItems.value = items
   })
 

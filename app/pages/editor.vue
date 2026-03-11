@@ -7,7 +7,7 @@
       <Transition name="intro-fade">
         <div v-if="showIntroOverlay" class="p-index__intro-overlay p-editor__intro-overlay">
           <div class="p-index__intro-card">
-            <img src="/logo.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
+            <img src="/postBoardLogoColumn.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
             <div class="p-index__intro-desc p-index__intro-rules">
               <ol>
                 <li>於南西旗艦店消費達 599 元，即可獲得一張數位應援便利貼。</li>

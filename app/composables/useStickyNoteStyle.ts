@@ -30,11 +30,13 @@ export function useStickyNoteStyle(styleRef: Ref<StickyNoteStyleProps>) {
     // 外層容器：負責位置與字體大小，並且加上 drop-shadow（不可含有 mask）
     const wrapperStyles = computed(() => {
         const fontPct = 4
+        const maskUrl = shapeMaskUrl.value
         return {
             color: styleRef.value.textColor || '#333',
             textAlign: (styleRef.value.textAlign || 'center') as any, // explicit bypass for TS
             ...(styleRef.value.fontFamily ? { fontFamily: styleRef.value.fontFamily } : {}),
-            '--font-size-pct': fontPct
+            '--font-size-pct': fontPct,
+            '--shadow-mask': `url(${maskUrl})`
         }
     })
 
