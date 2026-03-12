@@ -42,6 +42,45 @@
           </div>
         </section>
 
+        <!-- Token 統計 -->
+        <section class="p-admin__card">
+          <h2 class="p-admin__card-title">Token 使用統計</h2>
+          <div class="p-admin__stats-filter">
+            <button
+              class="p-admin__filter-btn"
+              :class="{ 'p-admin__filter-btn--active': statsFilter === 'all' }"
+              @click="setStatsFilter('all')"
+            >全部</button>
+            <button
+              class="p-admin__filter-btn"
+              :class="{ 'p-admin__filter-btn--active': statsFilter === 'date' }"
+              @click="setStatsFilter('date')"
+            >日期</button>
+            <input
+              v-if="statsFilter === 'date'"
+              type="date"
+              class="p-admin__date-input"
+              v-model="customDate"
+              :max="todayStr"
+            />
+          </div>
+          <div v-if="statsLoading" class="p-admin__stats-loading">載入中…</div>
+          <div v-else class="p-admin__stats-grid">
+            <div class="p-admin__stat-card">
+              <div class="p-admin__stat-value">{{ statsIssued }}</div>
+              <div class="p-admin__stat-label">發出 Token 數</div>
+            </div>
+            <div class="p-admin__stat-card p-admin__stat-card--used">
+              <div class="p-admin__stat-value">{{ statsUsed }}</div>
+              <div class="p-admin__stat-label">已使用 Token 數</div>
+            </div>
+            <div class="p-admin__stat-card p-admin__stat-card--unused">
+              <div class="p-admin__stat-value">{{ statsIssued - statsUsed }}</div>
+              <div class="p-admin__stat-label">未使用 Token 數</div>
+            </div>
+          </div>
+        </section>
+
         <!-- 所有便利貼 -->
         <section class="p-admin__card">
           <h2 class="p-admin__card-title">所有便利貼管理</h2>
@@ -117,7 +156,9 @@ import {
   query,
   orderBy,
   onSnapshot,
-  setDoc
+  setDoc,
+  where,
+  Timestamp
 } from 'firebase/firestore'
 import QRCode from 'qrcode'
 import AppModal from '~/components/AppModal.vue'
@@ -199,6 +240,56 @@ const copyToken = (token: string) => {
   alert('編輯連結已複製到剪貼簿')
 }
 
+// ── Token 統計 ────────────────────────────────────────────
+const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD
+const statsFilter = ref<'date' | 'all'>('date')
+const customDate = ref(todayStr)
+const statsLoading = ref(false)
+const statsIssued = ref(0)
+const statsUsed = ref(0)
+let statsUnsubscribe: (() => void) | null = null
+
+const setStatsFilter = (filter: 'date' | 'all') => {
+  statsFilter.value = filter
+  loadStats()
+}
+
+const loadStats = () => {
+  if (statsUnsubscribe) {
+    statsUnsubscribe()
+    statsUnsubscribe = null
+  }
+  statsLoading.value = true
+
+  let q: any
+  if (statsFilter.value === 'all') {
+    q = query(collection(db, 'tokens'), orderBy('createdAt', 'asc'))
+  } else {
+    const parts = customDate.value.split('-')
+    const start = new Date(parseInt(parts[0] || '0'), parseInt(parts[1] || '1') - 1, parseInt(parts[2] || '1'), 0, 0, 0, 0)
+    const end   = new Date(parseInt(parts[0] || '0'), parseInt(parts[1] || '1') - 1, parseInt(parts[2] || '1'), 23, 59, 59, 999)
+    q = query(
+      collection(db, 'tokens'),
+      where('createdAt', '>=', Timestamp.fromDate(start)),
+      where('createdAt', '<=', Timestamp.fromDate(end)),
+      orderBy('createdAt', 'asc')
+    )
+  }
+
+  statsUnsubscribe = onSnapshot(q, (snapshot: any) => {
+    statsIssued.value = snapshot.size
+    statsUsed.value = snapshot.docs.filter((d: any) => d.data().status === 'used').length
+    statsLoading.value = false
+  }, () => {
+    statsLoading.value = false
+  })
+}
+
+// Re-fetch when date changes
+watch(customDate, () => {
+  if (statsFilter.value === 'date') loadStats()
+})
+
 // 便利貼清單
 const pendingNotes = ref<any[]>([])
 const historyNotes = ref<any[]>([])
@@ -255,10 +346,12 @@ const formatTime = (ts: any) => {
 
 onMounted(() => {
   startNotesListeners()
+  loadStats()
 })
 
 onUnmounted(() => {
   notesUnsubscribes.forEach(unsub => unsub())
+  if (statsUnsubscribe) statsUnsubscribe()
   clearQrCode()
 })
 </script>
