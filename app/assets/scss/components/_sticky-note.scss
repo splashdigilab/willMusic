@@ -170,6 +170,7 @@
     @include sticky-note-text-box;
     word-break: break-word;
     @include sticky-note-font-size;
+    padding: 0;
   }
 
   /* 貼紙元素 - 大小為文字的 2 倍（與 editor 基準一致：2em） */
