@@ -43,7 +43,7 @@
     >
       <!-- 便利貼容器 -->
       <div 
-        v-for="(item, index) in displayItems" 
+        v-for="item in displayItems" 
         :key="item.id || item.token"
         :data-id="item.id || item.token"
         class="p-index__note-wrap"
@@ -80,7 +80,6 @@ import type { QueuePendingItem, QueueHistoryItem } from '~/types'
 import { useFirestore } from '~/composables/useFirestore'
 import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
 import StickyNote from '~/components/StickyNote.vue'
-import AppModal from '~/components/AppModal.vue'
 
 definePageMeta({ layout: false, ssr: false })
 
@@ -94,6 +93,7 @@ const canvasRef = ref<HTMLElement | null>(null)
 const displayItems = ref<QueueHistoryItem[]>([])
 const showIntroOverlay = ref(true)
 const loading = ref(true)
+const HISTORY_FETCH_LIMIT = 100
 
 // ====== Intro Random Stickers ======
 const introStickers = ref<{src: string, x: number, y: number, rotation: number, scale: number, zIndex: number}[]>([])
@@ -415,16 +415,27 @@ watch(
 )
 
 let loadingTimer: ReturnType<typeof setTimeout> | null = null
+const waitForNextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+
+const appendItemsInBatches = async (
+  items: QueueHistoryItem[],
+  batchSize = 12
+) => {
+  displayItems.value = []
+
+  for (let i = 0; i < items.length; i += batchSize) {
+    displayItems.value.push(...items.slice(i, i + batchSize))
+    // 讓行動裝置在批次間有機會完成 layout/paint，避免一次性渲染尖峰
+    await waitForNextFrame()
+  }
+}
 
 onMounted(async () => {
-  // 一次性讀取歷史（重整頁面才更新）
-  getHistory(100).then(({ items }) => {
-    displayItems.value = items
-  }).catch(e => console.error('Error fetching history:', e))
-
-  const waitForImages = async () => {
+  const waitForIntroImages = async () => {
     await nextTick()
-    const images = Array.from(document.images)
+    const introRoot = containerRef.value
+    if (!introRoot) return
+    const images = Array.from(introRoot.querySelectorAll<HTMLImageElement>('.p-index__intro-overlay img'))
     await Promise.all(
       images.map(img => {
         if (img.complete) return Promise.resolve()
@@ -446,10 +457,17 @@ onMounted(async () => {
 
   // 等待字體、圖片載入與最小延遲
   try {
+    const historyPromise = getHistory(HISTORY_FETCH_LIMIT)
+      .then(async ({ items }) => {
+        await appendItemsInBatches(items)
+      })
+      .catch(e => console.error('Error fetching history:', e))
+
     await Promise.all([
+      historyPromise,
       document.fonts.ready,
       windowLoaded,
-      waitForImages(),
+      waitForIntroImages(),
       new Promise(resolve => {
         loadingTimer = setTimeout(resolve, 800)
       })

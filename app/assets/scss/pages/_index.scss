@@ -181,7 +181,6 @@
 .p-index__canvas {
     position: absolute;
     top: 0;
-    will-change: transform;
     left: 0;
     width: 100%;
     height: 100%;
@@ -190,10 +189,10 @@
     &::before {
         content: '';
         position: absolute;
-        // 縮小背景範圍：原本 1000vw×1000vh 會產生巨大材質佔用 GPU 記憶體
-        // 200vw×200vh 已足夠 0.5x 縮放下的拖曳範圍
-        width: 2000vw;
-        height: 2000vh;
+        // iOS Safari 在高 DPR 裝置上對超大圖層很敏感，避免巨大貼圖造成 GPU crash
+        // 320vw × 320vh 可保留拖曳視覺連續性，同時顯著降低記憶體尖峰
+        width: 320vw;
+        height: 320vh;
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);

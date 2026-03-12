@@ -44,6 +44,9 @@
           :src="getStickerData(sticker.type)?.svgFile"
           :alt="getStickerData(sticker.type)?.id"
           class="c-sticky-note__sticker-img"
+          loading="lazy"
+          decoding="async"
+          fetchpriority="low"
         />
       </div>
       <!-- 手繪圖層 -->
@@ -52,6 +55,9 @@
         :src="props.note.style.drawing"
         alt=""
         class="c-sticky-note__drawing"
+        loading="lazy"
+        decoding="async"
+        fetchpriority="low"
       />
     </div>
     </div>
