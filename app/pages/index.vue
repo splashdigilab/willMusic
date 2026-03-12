@@ -84,7 +84,7 @@ import AppModal from '~/components/AppModal.vue'
 
 definePageMeta({ layout: false })
 
-const { listenToHistory } = useFirestore()
+const { getHistory } = useFirestore()
 
 // ====== UI Refs ======
 const containerRef = ref<HTMLElement | null>(null)
@@ -414,15 +414,13 @@ watch(
   }
 )
 
-let unsubHistory: any
-
 let loadingTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
-  // 聽歷史
-  unsubHistory = listenToHistory(200, (items) => {
+  // 一次性讀取歷史（重整頁面才更新）
+  getHistory(200).then(({ items }) => {
     displayItems.value = items
-  })
+  }).catch(e => console.error('Error fetching history:', e))
 
   const waitForImages = async () => {
     await nextTick()
@@ -464,7 +462,6 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (unsubHistory) unsubHistory()
   if (loadingTimer) clearTimeout(loadingTimer)
 })
 </script>
