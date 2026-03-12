@@ -1536,15 +1536,15 @@ const handleShare = async () => {
     }
 
     // 2. 針對 iOS 的預熱 Hack (Warm-up)
-    // 多呼叫一次可以強迫 html-to-image 進行資源綁定，避免機率性破圖
-    await toPng(exportNodeRef.value, { cacheBust: true, skipFonts: true }).catch(() => {})
+    // 使用低解析度預熱，強迫 html-to-image 綁定資源，但節省記憶體（pixelRatio: 0.5）
+    await toPng(exportNodeRef.value, { cacheBust: true, skipFonts: true, pixelRatio: 0.5 }).catch(() => {})
 
     // 給予渲染緩衝時間
     await new Promise(resolve => setTimeout(resolve, 300))
     
-    // 3. 正式輸出
+    // 3. 正式輸出（pixelRatio 1.5：相較 2x 節省約 44% 記憶體，畫質在手機上仍充足）
     const dataUrl = await toPng(exportNodeRef.value, {
-      pixelRatio: 2, // 提升匯出畫質
+      pixelRatio: 1.5,
       cacheBust: true,
       skipFonts: false
     })
@@ -1589,9 +1589,10 @@ const handleExitConfirm = () => {
 }
 
 // Lifecycle
-const initFabricBrush = () => {
+// initFabricBrush 改為 async：Fabric.js 動態載入，await init 後再設定筆刷參數
+const initFabricBrush = async () => {
   if (typeof window === 'undefined' || !canvasRef.value || !drawingCanvasRef.value || !drawingLayerRef.value) return
-  fabricBrush.init(drawingCanvasRef.value, 600, 600)
+  await fabricBrush.init(drawingCanvasRef.value, 600, 600)
   fabricBrush.setOnUndoRedoChange(() => {
     drawCanUndo.value = fabricBrush.canUndo()
     drawCanRedo.value = fabricBrush.canRedo()
@@ -1603,7 +1604,7 @@ const initFabricBrush = () => {
   fabricBrush.setEraserMode(eraserMode.value)
   fabricBrush.setDrawingMode(drawMode.value)
   if (drawingData.value) {
-    fabricBrush.loadFromDataURL(drawingData.value)
+    await fabricBrush.loadFromDataURL(drawingData.value)
   }
   drawCanUndo.value = fabricBrush.canUndo()
   drawCanRedo.value = fabricBrush.canRedo()
@@ -1632,18 +1633,26 @@ const checkInitialModals = async () => {
 }
 
 onMounted(async () => {
+  // 在背景預載 Fabric.js（不 await，讓它在使用者閱讀規範的期間下載完畢）
+  if (import.meta.client) {
+    import('fabric').catch(() => {})
+  }
+
+  // waitForImages：加入 3 秒超時保護，防止 iOS 上部分圖片永遠不觸發 load/error 導致卡死
   const waitForImages = async () => {
     await nextTick()
     const images = Array.from(document.images)
-    await Promise.all(
+    const timeout = new Promise<void>(resolve => setTimeout(resolve, 3000))
+    const allLoaded = Promise.all(
       images.map(img => {
         if (img.complete) return Promise.resolve()
-        return new Promise((resolve) => {
-          img.addEventListener('load', resolve as () => void, { once: true })
-          img.addEventListener('error', resolve as () => void, { once: true })
+        return new Promise<void>((resolve) => {
+          img.addEventListener('load', () => resolve(), { once: true })
+          img.addEventListener('error', () => resolve(), { once: true })
         })
       })
     )
+    await Promise.race([allLoaded, timeout])
   }
 
   const windowLoaded = new Promise<void>(resolve => {
@@ -1654,10 +1663,14 @@ onMounted(async () => {
     }
   })
 
-  // 等待字體載入與最小延遲
+  // 等待字體載入與最小延遲（加入 5 秒整體超時，防止字體 API 掛住）
   try {
-    await Promise.all([
+    const fontsReady = Promise.race([
       document.fonts.ready,
+      new Promise<void>(resolve => setTimeout(resolve, 5000))
+    ])
+    await Promise.all([
+      fontsReady,
       windowLoaded,
       waitForImages(),
       new Promise(resolve => setTimeout(resolve, 800))

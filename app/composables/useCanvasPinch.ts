@@ -269,23 +269,36 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       transformingStickerId.value = target.stickerId
     }
 
+    // 在 pinch 開始時計算一次 maxScale（此值在 pinch 過程中為常數，無需每 frame 重算）
+    const cachedMaxScale = getMaxScaleForBounds(el, pinchState!.target)
+
+    // RAF throttle：避免每個 touchmove 都同步計算並更新 DOM
+    let pinchRafPending = false
+
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 2 || !pinchState) return
       const a0 = e.touches[0]
       const a1 = e.touches[1]
       if (!a0 || !a1) return
       if (e.cancelable) e.preventDefault()
+
+      if (pinchRafPending) return
+      pinchRafPending = true
+
       const d = Math.hypot(a1.clientX - a0.clientX, a1.clientY - a0.clientY) || 1
       const a = Math.atan2(a1.clientY - a0.clientY, a1.clientX - a0.clientX)
       const scaleRatio = d / pinchState.initDist
       const angleDelta = (a - pinchState.initAngle) * RAD_TO_DEG
-      // 若放大後會超出畫布，則限制 scale 不超過邊界允許的最大值
-      const maxScale = getMaxScaleForBounds(el, pinchState.target)
       const desiredScale = pinchState.initScale * scaleRatio
-      const effectiveScale = clamp(desiredScale, SCALE_MIN, Math.min(maxScale, SCALE_MAX))
+      const effectiveScale = clamp(desiredScale, SCALE_MIN, Math.min(cachedMaxScale, SCALE_MAX))
       const effectiveRatio = effectiveScale / pinchState.initScale
-      applyPinch(pinchState, effectiveRatio, angleDelta)
-      clampTargetWithinCanvas(el, pinchState.target)
+
+      requestAnimationFrame(() => {
+        pinchRafPending = false
+        if (!pinchState) return
+        applyPinch(pinchState, effectiveRatio, angleDelta)
+        clampTargetWithinCanvas(el, pinchState.target)
+      })
     }
 
     const onTouchEnd = () => {
@@ -313,39 +326,26 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   const startCanvasDrag = (clientX: number, clientY: number, isTouch: boolean) => {
     const el = canvasRef.value
     if (!el) return
-    const rect = el.getBoundingClientRect()
+    // 在拖曳開始時讀取一次 rect（避免在每個 touchmove 都觸發 forced layout）
+    const cachedRect = el.getBoundingClientRect()
+    if (!cachedRect.width || !cachedRect.height) return
 
-    const getHalfSizePctForText = (blockId: string): { halfWidthPct: number; halfHeightPct: number } => {
-      const frameEl = el.querySelector(
-        `.p-editor__edit-frame--text[data-text-block-id="${blockId}"]`
-      ) as HTMLElement | null
-      if (!frameEl || !rect.width || !rect.height) {
-        return { halfWidthPct: 5, halfHeightPct: 5 }
-      }
+    const getHalfSizePct = (frameEl: HTMLElement | null): { halfWidthPct: number; halfHeightPct: number } => {
+      if (!frameEl) return { halfWidthPct: 5, halfHeightPct: 5 }
       const r = frameEl.getBoundingClientRect()
       return {
-        halfWidthPct: (r.width / rect.width) * 50,
-        halfHeightPct: (r.height / rect.height) * 50
+        halfWidthPct: (r.width / cachedRect.width) * 50,
+        halfHeightPct: (r.height / cachedRect.height) * 50
       }
     }
 
-    const getHalfSizePctForSticker = (stickerId: string): { halfWidthPct: number; halfHeightPct: number } => {
-      const frameEl = el.querySelector(
-        `.p-editor__edit-frame--sticker[data-sticker-id="${stickerId}"]`
-      ) as HTMLElement | null
-      if (!frameEl || !rect.width || !rect.height) {
-        return { halfWidthPct: 5, halfHeightPct: 5 }
-      }
-      const r = frameEl.getBoundingClientRect()
-      return {
-        halfWidthPct: (r.width / rect.width) * 50,
-        halfHeightPct: (r.height / rect.height) * 50
-      }
-    }
     if (selectedTextBlockId.value) {
       const block = getSelectedBlock()
       if (!block) return
-      const { halfWidthPct, halfHeightPct } = getHalfSizePctForText(block.id)
+      const frameEl = el.querySelector(
+        `.p-editor__edit-frame--text[data-text-block-id="${block.id}"]`
+      ) as HTMLElement | null
+      const { halfWidthPct, halfHeightPct } = getHalfSizePct(frameEl)
       canvasDragState = {
         type: 'text',
         textBlockId: block.id,
@@ -360,7 +360,10 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     } else if (selectedStickerId.value) {
       const s = stickers.value.find(st => st.id === selectedStickerId.value!)
       if (!s) return
-      const { halfWidthPct, halfHeightPct } = getHalfSizePctForSticker(s.id)
+      const frameEl = el.querySelector(
+        `.p-editor__edit-frame--sticker[data-sticker-id="${s.id}"]`
+      ) as HTMLElement | null
+      const { halfWidthPct, halfHeightPct } = getHalfSizePct(frameEl)
       canvasDragState = {
         type: 'sticker',
         stickerId: s.id,
@@ -374,42 +377,39 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       draggingStickerId.value = s.id
     } else return
 
+    // RAF throttle：確保每幀最多更新一次，與螢幕刷新率同步（60fps）
+    let dragRafPending = false
+
     const onMove = (e: MouseEvent | TouchEvent) => {
       if (!canvasDragState || !el) return
       if ('touches' in e && e.touches.length >= 2) return
-      const rect = el.getBoundingClientRect()
+
+      if (dragRafPending) return
+      dragRafPending = true
+
       const x = 'touches' in e ? e.touches[0]?.clientX ?? canvasDragState.startX : (e as MouseEvent).clientX
       const y = 'touches' in e ? e.touches[0]?.clientY ?? canvasDragState.startY : (e as MouseEvent).clientY
-      const deltaX = ((x - canvasDragState.startX) / rect.width) * 100
-      const deltaY = ((y - canvasDragState.startY) / rect.height) * 100
-      if (canvasDragState.type === 'text') {
-        const block = textBlocks.value.find(b => b.id === (canvasDragState as any).textBlockId)
-        if (block) {
-          const newX = canvasDragState.initX + deltaX
-          const newY = canvasDragState.initY + deltaY
-          const minX = canvasDragState.halfWidthPct
-          const maxX = 100 - canvasDragState.halfWidthPct
-          const minY = canvasDragState.halfHeightPct
-          const maxY = 100 - canvasDragState.halfHeightPct
-          // 文字整個框（含 scale 後寬高）都必須留在畫布內
-          block.x = clamp(newX, minX, maxX)
-          block.y = clamp(newY, minY, maxY)
+      // 使用拖曳開始時快取的 rect，避免 forced layout
+      const deltaX = ((x - canvasDragState.startX) / cachedRect.width) * 100
+      const deltaY = ((y - canvasDragState.startY) / cachedRect.height) * 100
+
+      requestAnimationFrame(() => {
+        dragRafPending = false
+        if (!canvasDragState) return
+        if (canvasDragState.type === 'text') {
+          const block = textBlocks.value.find(b => b.id === (canvasDragState as any).textBlockId)
+          if (block) {
+            block.x = clamp(canvasDragState.initX + deltaX, canvasDragState.halfWidthPct, 100 - canvasDragState.halfWidthPct)
+            block.y = clamp(canvasDragState.initY + deltaY, canvasDragState.halfHeightPct, 100 - canvasDragState.halfHeightPct)
+          }
+        } else if (canvasDragState.type === 'sticker') {
+          const st = stickers.value.find(s => s.id === (canvasDragState as any).stickerId)
+          if (st) {
+            st.x = clamp(canvasDragState.initX + deltaX, canvasDragState.halfWidthPct, 100 - canvasDragState.halfWidthPct)
+            st.y = clamp(canvasDragState.initY + deltaY, canvasDragState.halfHeightPct, 100 - canvasDragState.halfHeightPct)
+          }
         }
-      } else if (canvasDragState.type === 'sticker') {
-        const state = canvasDragState
-        const st = stickers.value.find(s => s.id === state.stickerId)
-        if (st) {
-          const newX = state.initX + deltaX
-          const newY = state.initY + deltaY
-          const minX = state.halfWidthPct
-          const maxX = 100 - state.halfWidthPct
-          const minY = state.halfHeightPct
-          const maxY = 100 - state.halfHeightPct
-          // 貼紙整個框（含 scale 後寬高）都必須留在畫布內
-          st.x = clamp(newX, minX, maxX)
-          st.y = clamp(newY, minY, maxY)
-        }
-      }
+      })
     }
 
     const onEnd = () => {

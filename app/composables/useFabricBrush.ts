@@ -1,12 +1,13 @@
-import { Canvas, PencilBrush, Path, FabricObject } from 'fabric'
-import type { Point } from 'fabric'
+/**
+ * useFabricBrush
+ *
+ * Fabric.js 以動態 import 載入，讓編輯器主 bundle 不包含 ~500KB 的 Fabric.js，
+ * 顯著降低低端手機因 JS 解析/執行過重而崩潰的機率。
+ * Fabric.js 只在使用者首次呼叫 init() 時才開始下載（瀏覽器通常會快取，後續載入幾乎免費）。
+ */
 
-type TSimplePathData = Parameters<PencilBrush['createPath']>[0]
-type TBrushEventData = Parameters<PencilBrush['onMouseMove']>[1]
-
-function segmentToPathData(p1: Point, p2: Point): TSimplePathData {
-  return [['M', p1.x, p1.y], ['L', p2.x, p2.y]]
-}
+// ── 橡皮擦路徑取樣距離平方（避免每個 touchmove 都新增 Path 物件）
+const MIN_ERASER_DIST_SQ = 9 // ≥ 3px 才累積下一個點
 
 function drawBrushCursor(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
   ctx.save()
@@ -21,95 +22,118 @@ function drawBrushCursor(ctx: CanvasRenderingContext2D, x: number, y: number, ra
 /** 標記橡皮擦路徑所屬的筆畫 ID，undo 時一次移除同筆畫 */
 const ERASER_STROKE_KEY = '__eraserStrokeId'
 
-class EraserBrush extends PencilBrush {
-  private _currentStrokeId = 0
-
-  override _setBrushStyles(ctx: CanvasRenderingContext2D) {
-    super._setBrushStyles(ctx)
-    ctx.strokeStyle = 'rgba(255, 255, 255, 1)'
-  }
-
-  override _saveAndTransform(ctx: CanvasRenderingContext2D) {
-    super._saveAndTransform(ctx)
-    ctx.globalCompositeOperation = 'destination-out'
-  }
-
-  override _render(ctx: CanvasRenderingContext2D = this.canvas.contextTop) {
-    if (this._points.length > 0) {
-      const p = this._points[this._points.length - 1]
-      if (p) {
-        this._saveAndTransform(ctx)
-        ctx.globalCompositeOperation = 'source-over'
-        drawBrushCursor(ctx, p.x, p.y, this.width / 2)
-        ctx.restore()
-      }
-    }
-  }
-
-  override onMouseDown(pointer: Point, ev: TBrushEventData) {
-    this._currentStrokeId += 1
-    super.onMouseDown(pointer, ev)
-    this.canvas.renderTop()
-  }
-
-  override onMouseMove(pointer: Point, ev: TBrushEventData) {
-    super.onMouseMove(pointer, ev)
-    if (this._points.length >= 2) {
-      const p1 = this._points[this._points.length - 2]
-      const p2 = this._points[this._points.length - 1]
-      if (p1 && p2) {
-        const pathData = segmentToPathData(p1, p2)
-        const path = this.createPath(pathData)
-        ;(path as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] = this._currentStrokeId
-        this.canvas.add(path)
-      }
-    }
-    if (this._points.length > 0) {
-      this.canvas.renderTop()
-    }
-    this.canvas.requestRenderAll()
-  }
-
-  override onMouseUp(ev: TBrushEventData) {
-    if (!this.canvas._isMainEvent(ev.e)) {
-      return true
-    }
-    this.drawStraightLine = false
-    this.oldEnd = undefined
-    this.canvas.clearContext(this.canvas.contextTop)
-    this.canvas.requestRenderAll()
-    this.canvas.fire('path:created', { path: undefined as unknown as FabricObject })
-    return false
-  }
-
-  override createPath(pathData: TSimplePathData): Path {
-    const path = super.createPath(pathData)
-    path.set({
-      fill: null,
-      stroke: 'rgba(255, 255, 255, 1)',
-      globalCompositeOperation: 'destination-out'
-    })
-    return path
-  }
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyObj = any
 
 export function useFabricBrush(onPathCreated?: () => void) {
-  let fabricCanvas: Canvas | null = null
-  let pencilBrush: PencilBrush | null = null
-  let eraserBrush: EraserBrush | null = null
-  const redoStack: FabricObject[] = []
+  let fabricCanvas: AnyObj = null
+  let pencilBrush: AnyObj = null
+  let eraserBrush: AnyObj = null
+  const redoStack: AnyObj[] = []
   let onUndoRedoChange: (() => void) | null = null
   let initialWidth = 0
   let initialHeight = 0
 
-  const getPathObjects = (): FabricObject[] =>
-    fabricCanvas?.getObjects().filter((obj) => obj?.isType?.('Path', 'path')) ?? []
+  const getPathObjects = (): AnyObj[] =>
+    fabricCanvas?.getObjects().filter((obj: AnyObj) => obj?.isType?.('Path', 'path')) ?? []
 
-  const init = (canvasEl: HTMLCanvasElement | null, width: number, height: number) => {
+  /**
+   * 非同步初始化：動態載入 Fabric.js，首次呼叫後 Vite 會快取成獨立 chunk。
+   * 後續所有 set* 方法均做 null 防護，在 init 完成前呼叫只是 no-op，不會崩潰。
+   */
+  const init = async (canvasEl: HTMLCanvasElement | null, width: number, height: number): Promise<void> => {
     if (!canvasEl || !import.meta.client) return
+    if (fabricCanvas) return // 防止重複初始化
 
     initialWidth = width
     initialHeight = height
+
+    // ── 動態載入 Fabric.js（不進入主 bundle）
+    const { Canvas, PencilBrush } = await import('fabric')
+
+    // ── 橡皮擦筆刷：繼承 PencilBrush，使用 destination-out 混合模式
+    //    關鍵修正：onMouseMove 加入距離門檻，避免每個 touchmove 點都新增 Path 物件
+    class EraserBrush extends PencilBrush {
+      _currentStrokeId = 0
+      _lastAddedPoint: { x: number; y: number } | null = null
+
+      override _setBrushStyles(ctx: CanvasRenderingContext2D) {
+        super._setBrushStyles(ctx)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 1)'
+      }
+
+      override _saveAndTransform(ctx: CanvasRenderingContext2D) {
+        super._saveAndTransform(ctx)
+        ctx.globalCompositeOperation = 'destination-out'
+      }
+
+      override _render(ctx: CanvasRenderingContext2D = (this as AnyObj).canvas.contextTop) {
+        const points: AnyObj[] = (this as AnyObj)._points
+        if (points.length > 0) {
+          const p = points[points.length - 1]
+          if (p) {
+            this._saveAndTransform(ctx)
+            ctx.globalCompositeOperation = 'source-over'
+            drawBrushCursor(ctx, p.x, p.y, (this as AnyObj).width / 2)
+            ctx.restore()
+          }
+        }
+      }
+
+      override onMouseDown(pointer: AnyObj, ev: AnyObj) {
+        this._currentStrokeId += 1
+        this._lastAddedPoint = null
+        super.onMouseDown(pointer, ev)
+        ;(this as AnyObj).canvas.renderTop()
+      }
+
+      override onMouseMove(pointer: AnyObj, ev: AnyObj) {
+        super.onMouseMove(pointer, ev)
+        const points: AnyObj[] = (this as AnyObj)._points
+        if (points.length >= 2) {
+          const p1 = points[points.length - 2]
+          const p2 = points[points.length - 1]
+          if (p1 && p2) {
+            // 距離門檻：避免每個微小移動都累積 Path 物件
+            const dx = p2.x - p1.x
+            const dy = p2.y - p1.y
+            if (dx * dx + dy * dy >= MIN_ERASER_DIST_SQ) {
+              const pathData: AnyObj = [['M', p1.x, p1.y], ['L', p2.x, p2.y]]
+              const path = (this as AnyObj).createPath(pathData)
+              ;(path as AnyObj)[ERASER_STROKE_KEY] = this._currentStrokeId
+              ;(this as AnyObj).canvas.add(path)
+              this._lastAddedPoint = p2
+            }
+          }
+        }
+        if (points.length > 0) {
+          ;(this as AnyObj).canvas.renderTop()
+        }
+        ;(this as AnyObj).canvas.requestRenderAll()
+      }
+
+      override onMouseUp(ev: AnyObj) {
+        const canvas: AnyObj = (this as AnyObj).canvas
+        if (!canvas._isMainEvent(ev.e)) return true
+        ;(this as AnyObj).drawStraightLine = false
+        ;(this as AnyObj).oldEnd = undefined
+        this._lastAddedPoint = null
+        canvas.clearContext(canvas.contextTop)
+        canvas.requestRenderAll()
+        canvas.fire('path:created', { path: undefined as AnyObj })
+        return false
+      }
+
+      override createPath(pathData: AnyObj): AnyObj {
+        const path = super.createPath(pathData)
+        path.set({
+          fill: null,
+          stroke: 'rgba(255, 255, 255, 1)',
+          globalCompositeOperation: 'destination-out'
+        })
+        return path
+      }
+    }
 
     fabricCanvas = new Canvas(canvasEl, {
       width,
@@ -136,14 +160,10 @@ export function useFabricBrush(onPathCreated?: () => void) {
     eraserBrush.width = 16
 
     fabricCanvas.freeDrawingBrush = pencilBrush
-
-    return fabricCanvas
   }
 
   const setDrawingMode = (enabled: boolean) => {
-    if (fabricCanvas) {
-      fabricCanvas.isDrawingMode = enabled
-    }
+    if (fabricCanvas) fabricCanvas.isDrawingMode = enabled
   }
 
   const setEraserMode = (enabled: boolean) => {
@@ -152,21 +172,15 @@ export function useFabricBrush(onPathCreated?: () => void) {
   }
 
   const setBrushColor = (color: string) => {
-    if (pencilBrush) {
-      pencilBrush.color = color
-    }
+    if (pencilBrush) pencilBrush.color = color
   }
 
   const setBrushWidth = (width: number) => {
-    if (pencilBrush) {
-      pencilBrush.width = width
-    }
+    if (pencilBrush) pencilBrush.width = width
   }
 
   const setEraserWidth = (width: number) => {
-    if (eraserBrush) {
-      eraserBrush.width = width
-    }
+    if (eraserBrush) eraserBrush.width = width
   }
 
   const exportToDataURL = (): string | null => {
@@ -183,9 +197,9 @@ export function useFabricBrush(onPathCreated?: () => void) {
     const paths = getPathObjects()
     const last = paths[paths.length - 1]
     if (!last) return
-    const strokeId = (last as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] as number | undefined
+    const strokeId = (last as AnyObj)[ERASER_STROKE_KEY] as number | undefined
     if (strokeId !== undefined) {
-      const toRemove = paths.filter((p) => (p as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] === strokeId)
+      const toRemove = paths.filter((p) => (p as AnyObj)[ERASER_STROKE_KEY] === strokeId)
       toRemove.reverse()
       for (const p of toRemove) {
         fabricCanvas.remove(p)
@@ -202,18 +216,17 @@ export function useFabricBrush(onPathCreated?: () => void) {
   const redo = () => {
     if (!fabricCanvas || redoStack.length === 0) return
     const lastPopped = redoStack.pop()!
-    const strokeId = (lastPopped as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] as number | undefined
-    const toAdd: FabricObject[] = [lastPopped]
+    const strokeId = (lastPopped as AnyObj)[ERASER_STROKE_KEY] as number | undefined
+    const toAdd: AnyObj[] = [lastPopped]
     if (strokeId !== undefined) {
       while (redoStack.length > 0) {
         const next = redoStack[redoStack.length - 1]
-        if ((next as unknown as Record<string, unknown>)[ERASER_STROKE_KEY] === strokeId) {
+        if ((next as AnyObj)[ERASER_STROKE_KEY] === strokeId) {
           toAdd.push(redoStack.pop()!)
         } else {
           break
         }
       }
-      // redoStack 中同一筆畫的順序是 [first,...,last]，還原時要 [first,...,last] 加入 canvas
       toAdd.reverse()
     }
     for (const p of toAdd) {
@@ -226,7 +239,7 @@ export function useFabricBrush(onPathCreated?: () => void) {
   const canUndo = () => getPathObjects().length > 0
   const canRedo = () => redoStack.length > 0
 
-  const loadFromDataURL = async (dataUrl: string) => {
+  const loadFromDataURL = async (dataUrl: string): Promise<void> => {
     if (!fabricCanvas) return
     try {
       redoStack.length = 0
@@ -237,12 +250,10 @@ export function useFabricBrush(onPathCreated?: () => void) {
       if (img.width && img.height) {
         const w = fabricCanvas.getWidth()
         const h = fabricCanvas.getHeight()
-        // 如果還沒初始化基準尺寸，以當前尺寸為基準
         if (initialWidth === 0 || initialHeight === 0) {
           initialWidth = w
           initialHeight = h
         }
-        // 圖片按當前 canvas 尺寸縮放（與 init 時的基準一致）
         const scale = Math.min(w / img.width, h / img.height)
         img.set({
           left: w / 2,
@@ -278,7 +289,6 @@ export function useFabricBrush(onPathCreated?: () => void) {
   const resize = (width: number, height: number) => {
     if (!fabricCanvas || width <= 0 || height <= 0) return
     if (initialWidth === 0 || initialHeight === 0) {
-      // 首次初始化，記錄尺寸
       initialWidth = width
       initialHeight = height
       fabricCanvas.setDimensions({ width, height })
@@ -286,29 +296,24 @@ export function useFabricBrush(onPathCreated?: () => void) {
       return
     }
 
-    // 計算縮放比例（canvas 是正方形，用 width 即可）
     const scaleRatio = width / initialWidth
-    if (Math.abs(scaleRatio - 1) < 0.001) return // 幾乎沒變化，跳過
+    if (Math.abs(scaleRatio - 1) < 0.001) return
 
-    // 縮放所有物件：scale 和 position 都要調整，讓畫的內容隨 canvas 尺寸縮放
     const objects = fabricCanvas.getObjects()
     for (const obj of objects) {
       const currentLeft = obj.left ?? 0
       const currentTop = obj.top ?? 0
       const currentScaleX = obj.scaleX ?? 1
       const currentScaleY = obj.scaleY ?? 1
-
       obj.set({
         left: currentLeft * scaleRatio,
         top: currentTop * scaleRatio,
         scaleX: currentScaleX * scaleRatio,
         scaleY: currentScaleY * scaleRatio
       })
-      obj.setCoords() // 更新控制點座標
+      obj.setCoords()
     }
-    // 筆刷寬度保持用戶設定值，不隨 canvas 縮放（用戶設定的就是想要的視覺粗細）
 
-    // 更新 canvas 尺寸
     initialWidth = width
     initialHeight = height
     fabricCanvas.setDimensions({ width, height })
@@ -323,6 +328,8 @@ export function useFabricBrush(onPathCreated?: () => void) {
       onUndoRedoChange = null
       fabricCanvas.dispose()
       fabricCanvas = null
+      pencilBrush = null
+      eraserBrush = null
     }
   }
 
