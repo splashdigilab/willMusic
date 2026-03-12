@@ -8,14 +8,18 @@
     <Transition name="intro-fade">
       <div v-if="showIntroOverlay" class="p-index__intro-overlay">
         <div class="p-index__intro-card">
+          <!-- 邊緣裝飾貼紙 -->
+          <img src="/svg/stickers/sticker-35.webp" class="p-index__card-sticker p-index__card-sticker--tl" alt="" />
+          <img src="/svg/stickers/sticker-41.webp" class="p-index__card-sticker p-index__card-sticker--br" alt="" />
+
           <img src="/postBoardLogoColumn.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
           <!-- <h1 class="p-index__intro-title">活動介紹</h1> -->
           <div class="p-index__intro-desc p-index__intro-rules">
             <p style="text-align: center; margin-bottom: 2rem; color: #666; font-size: 0.9rem; line-height: 1.6;">歡迎來到 WILL MUSIC 數位應援便利貼！<br>在這裡，您可以創作專屬於您的應援內容，<br>與大家一起分享對音樂的熱愛。</p>
-            </div>
-            <button
-              type="button"
-              class="p-index__intro-btn c-btn c-btn--primary"
+          </div>
+          <button
+            type="button"
+            class="p-index__intro-btn c-btn c-btn--primary"
             :disabled="loading"
             @click="onStartClick"
           >
@@ -91,6 +95,52 @@ const displayItems = ref<QueueHistoryItem[]>([])
 const showIntroOverlay = ref(true)
 const loading = ref(true)
 
+// ====== Intro Random Stickers ======
+const introStickers = ref<{src: string, x: number, y: number, rotation: number, scale: number, zIndex: number}[]>([])
+const generateRandomStickers = () => {
+  // Use a mix of the available stickers
+  const stickerFiles = [
+    'sticker-1.svg', 'sticker-2.svg', 'sticker-3.svg', 'sticker-4.svg', 'sticker-5.svg',
+    'sticker-10.svg', 'sticker-11.svg', 'sticker-12.svg', 'sticker-17.svg', 'sticker-25.svg',
+    'sticker-32.svg', 'sticker-44.svg', 'sticker-51.svg', 'sticker-60.svg',
+    'sticker-13.webp', 'sticker-16.webp', 'sticker-20.webp', 'sticker-35.webp', 'sticker-41.webp'
+  ]
+  const count = Math.floor(Math.random() * 5) + 6 // 6 to 10 stickers
+  const result = []
+  
+  for (let i = 0; i < count; i++) {
+    const file = stickerFiles[Math.floor(Math.random() * stickerFiles.length)]
+    
+    // Random position avoiding the center
+    // Center card is roughly 400px wide (maybe 30vw to 70vw) and height (30vh to 70vh)
+    let x = 0
+    let y = 0
+    let isCenter = true
+    
+    // Ensure it's not placed directly behind the intro card
+    while(isCenter) {
+      x = Math.random() * 90 // 0vw to 90vw
+      y = Math.random() * 90 // 0vh to 90vh
+      
+      // If outside the 25% - 75% region (both X and Y), it's safe
+      if (x < 25 || x > 75 || y < 25 || y > 75) {
+        isCenter = false
+      }
+    }
+
+    result.push({
+      src: `/svg/stickers/${file}`,
+      x,
+      y,
+      rotation: (Math.random() - 0.5) * 60, // -30deg to 30deg
+      scale: 0.6 + Math.random() * 0.6, // 0.6x to 1.2x
+      zIndex: Math.floor(Math.random() * 10)
+    })
+  }
+  introStickers.value = result
+}
+generateRandomStickers()
+
 // ====== Layout Math: Fermat's Spiral with Collision Detection ======
 const ITEM_SIZE = 150 
 const MARGIN = -20 // Increase margin significantly
@@ -146,7 +196,7 @@ const { centerContent } = usePanZoom(containerRef, canvasRef, {
   initialCenter: true,
   disabled: showIntroOverlay,
   bounds: computedBounds,
-  boundsPadding: 0.7 // allow 70% of the screen width/height empty space margin
+  boundsPadding: 0.9 // allow 70% of the screen width/height empty space margin
 })
 
 // Helper to check if a new position collides with any existing positions

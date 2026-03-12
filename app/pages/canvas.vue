@@ -453,21 +453,20 @@ onMounted(() => {
               if (inner) gsap.set(inner, { scale: 1.1 })
             })
 
+            const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
+            const dRect = dZone.getBoundingClientRect()
+            const displayCenterX = dRect.left + dRect.width / 2
+            // 起始 Y：display zone 底部再加上元素高度，確保完全在畫面外
+            const entryBottomY = dRect.bottom
+
             gsap.from(elements, {
               x: (i, el) => {
                 const rect = el.getBoundingClientRect()
-                const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
-                const dRect = dZone.getBoundingClientRect()
-                return (dRect.left + dRect.width / 2) - (rect.left + rect.width / 2)
+                return displayCenterX - (rect.left + rect.width / 2)
               },
               y: (i, el) => {
                 const rect = el.getBoundingClientRect()
-                const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
-                const dRect = dZone.getBoundingClientRect()
-                const fromY = displayState.value.mode === 'live'
-                  ? dRect.bottom + 200
-                  : dRect.top - 200
-                return fromY - (rect.top + rect.height / 2)
+                return entryBottomY + rect.height - (rect.top + rect.height / 2)
               },
               duration: ANIM.moveDuration,
               ease: 'power3.out',
@@ -489,6 +488,7 @@ onMounted(() => {
               },
             })
           }
+
         })
 
         // 提取所有要移動的元素的內部節點（用來放大縮小）

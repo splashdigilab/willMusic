@@ -10,6 +10,8 @@
     height: 100dvh;
     overflow: hidden;
     background-color: #f5f5f5;
+    /* 禁用快速雙擊放大 (double-tap to zoom)，消除 300ms 點擊延遲 */
+    touch-action: manipulation;
 }
 
 /* 活動介紹滿版 overlay */
@@ -26,17 +28,59 @@
     align-items: center;
     justify-content: center;
     padding: 2rem;
+    overflow: hidden;
 }
 
 .p-index__intro-card {
+    position: relative;
+    z-index: 10;
     max-width: 400px;
     width: 100%;
     text-align: center;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 2rem;
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+    overflow: visible;
+}
+
+.p-index__card-sticker {
+    position: absolute;
+    width: 90px;
+    height: auto;
+    pointer-events: none;
+    filter: drop-shadow(2px 3px 5px rgba(0, 0, 0, 0.18));
+    z-index: 20;
+}
+
+.p-index__card-sticker--tl {
+    top: -35px;
+    left: -30px;
+    transform: rotate(-15deg) scale(0.9);
+}
+
+.p-index__card-sticker--tr {
+    top: -20px;
+    right: -25px;
+    transform: rotate(20deg) scaleX(0.9);
+}
+
+.p-index__card-sticker--bl {
+    bottom: -25px;
+    left: -20px;
+    transform: rotate(15deg);
+}
+
+.p-index__card-sticker--br {
+    bottom: -35px;
+    right: -30px;
+    transform: rotate(15deg) scale(0.7);
 }
 
 .p-index__intro-logo {
     display: block;
-    width: 90%;
+    width: 80%;
     height: auto;
     margin: 0 auto 2rem;
     object-fit: contain;
@@ -110,11 +154,12 @@
 
 .p-index__intro-btn {
     @include btn.btn-action;
-    width: 100%;
+    width: 80%;
     background: var.$will-blue;
     color: white;
     padding: 0.75rem 1.5rem;
     font-size: 1.1rem;
+    margin: 0 auto;
 
     &:disabled {
         opacity: 0.7;
@@ -159,8 +204,8 @@
         position: absolute;
         // 縮小背景範圍：原本 1000vw×1000vh 會產生巨大材質佔用 GPU 記憶體
         // 200vw×200vh 已足夠 0.5x 縮放下的拖曳範圍
-        width: 200vw;
-        height: 200vh;
+        width: 2000vw;
+        height: 2000vh;
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);

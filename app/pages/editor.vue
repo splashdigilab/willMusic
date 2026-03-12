@@ -7,6 +7,8 @@
       <Transition name="intro-fade">
         <div v-if="showIntroOverlay" class="p-index__intro-overlay p-editor__intro-overlay">
           <div class="p-index__intro-card">
+            <img src="/svg/stickers/sticker-35.webp" class="p-index__card-sticker p-index__card-sticker--tl" alt="" />
+            <img src="/svg/stickers/sticker-41.webp" class="p-index__card-sticker p-index__card-sticker--br" alt="" />
             <img src="/postBoardLogoColumn.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
             <div class="p-index__intro-desc p-index__intro-rules">
               <ol>
@@ -1130,6 +1132,15 @@ const deselectAll = () => {
 
 // saveDraftData 需在 composable 之前定義（作為 callback）
 const saveDraftData = () => {
+  // 如果沒有任何有效內容（文字、貼紙、繪圖皆為空，且背景/形狀皆為預設值），不存草稿
+  const hasContent =
+    textBlocks.value.some(b => b.content.trim()) ||
+    stickers.value.length > 0 ||
+    !!drawingData.value ||
+    backgroundImage.value !== (BACKGROUND_IMAGES?.[0]?.url ?? '') ||
+    shape.value !== DEFAULT_SHAPE_ID
+  if (!hasContent) return
+
   const draft: DraftData = {
     content: textBlocks.value.map(b => b.content).join('\n'),
     backgroundImage: backgroundImage.value,
