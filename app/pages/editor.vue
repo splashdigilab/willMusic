@@ -552,6 +552,8 @@ import StickyNote from '~/components/StickyNote.vue'
 import AppModal from '~/components/AppModal.vue'
 import EditorTutorialModal from '~/components/EditorTutorialModal.vue'
 
+definePageMeta({ ssr: false })
+
 useHead({
   meta: [
     { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover' }
@@ -1141,15 +1143,18 @@ const saveDraftData = () => {
     shape.value !== DEFAULT_SHAPE_ID
   if (!hasContent) return
 
+  // 僅儲存有內容的文字區塊（空白內容的區塊不存入草稿）
+  const nonEmptyTextBlocks = textBlocks.value.filter(b => b.content.trim())
+
   const draft: DraftData = {
-    content: textBlocks.value.map(b => b.content).join('\n'),
+    content: nonEmptyTextBlocks.map(b => b.content).join('\n'),
     backgroundImage: backgroundImage.value,
     shape: shape.value,
-    textColor: textBlocks.value[0]?.color ?? '#ffffff',
-    textAlign: textBlocks.value[0]?.align ?? 'center',
+    textColor: nonEmptyTextBlocks[0]?.color ?? '#ffffff',
+    textAlign: nonEmptyTextBlocks[0]?.align ?? 'center',
     stickers: stickers.value,
-    textTransform: textBlocks.value[0] ? { x: textBlocks.value[0].x, y: textBlocks.value[0].y, scale: textBlocks.value[0].scale, rotation: textBlocks.value[0].rotation } : undefined,
-    textBlocks: textBlocks.value,
+    textTransform: nonEmptyTextBlocks[0] ? { x: nonEmptyTextBlocks[0].x, y: nonEmptyTextBlocks[0].y, scale: nonEmptyTextBlocks[0].scale, rotation: nonEmptyTextBlocks[0].rotation } : undefined,
+    textBlocks: nonEmptyTextBlocks,
     drawing: drawingData.value ?? undefined,
     objectLayerOrder: { ...objectZOrder.value },
     timestamp: Date.now()

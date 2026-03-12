@@ -82,7 +82,7 @@ import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
 import StickyNote from '~/components/StickyNote.vue'
 import AppModal from '~/components/AppModal.vue'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, ssr: false })
 
 const { getHistory } = useFirestore()
 
@@ -418,7 +418,7 @@ let loadingTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
   // 一次性讀取歷史（重整頁面才更新）
-  getHistory(200).then(({ items }) => {
+  getHistory(100).then(({ items }) => {
     displayItems.value = items
   }).catch(e => console.error('Error fetching history:', e))
 

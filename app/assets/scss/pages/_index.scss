@@ -56,25 +56,13 @@
 
 .p-index__card-sticker--tl {
     top: -35px;
-    left: -30px;
-    transform: rotate(-15deg) scale(0.9);
-}
-
-.p-index__card-sticker--tr {
-    top: -20px;
-    right: -25px;
-    transform: rotate(20deg) scaleX(0.9);
-}
-
-.p-index__card-sticker--bl {
-    bottom: -25px;
-    left: -20px;
-    transform: rotate(15deg);
+    left: -25px;
+    transform: rotate(-15deg) scaleX(0.9);
 }
 
 .p-index__card-sticker--br {
     bottom: -35px;
-    right: -30px;
+    right: -25px;
     transform: rotate(15deg) scale(0.7);
 }
 
@@ -211,7 +199,7 @@
         transform: translate(-50%, -50%);
         background-image: url('/paperBg.webp');
         background-repeat: repeat;
-        background-size: 500px;
+        background-size: 2500px;
         z-index: -1;
     }
 }
