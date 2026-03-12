@@ -33,6 +33,7 @@ export function useFabricBrush(onPathCreated?: () => void) {
   let onUndoRedoChange: (() => void) | null = null
   let initialWidth = 0
   let initialHeight = 0
+  let _isMinimized = false
 
   const getPathObjects = (): AnyObj[] =>
     fabricCanvas?.getObjects().filter((obj: AnyObj) => obj?.isType?.('Path', 'path')) ?? []
@@ -322,10 +323,34 @@ export function useFabricBrush(onPathCreated?: () => void) {
 
   const isInitialized = () => !!fabricCanvas
 
+  /**
+   * 最小化畫布：透過 Fabric.js setDimensions 將 canvas 縮為 1×1，
+   * 釋放 GPU backing store（~1.4MB），離開繪圖模式時呼叫。
+   * 使用官方 API 確保 Fabric.js 內部 width/height 與 DOM 保持同步，
+   * 避免後續 restoreCanvas 呼叫 setWidth 時因「值未變」而跳過 DOM 更新。
+   */
+  const minimizeCanvas = () => {
+    if (!fabricCanvas || _isMinimized) return
+    fabricCanvas.setDimensions({ width: 1, height: 1 })
+    _isMinimized = true
+  }
+
+  /**
+   * 恢復畫布：僅在 minimizeCanvas 呼叫過的情況才執行，
+   * 避免第一次進入繪圖 tab 時觸發不必要的 setDimensions + renderAll。
+   */
+  const restoreCanvas = () => {
+    if (!fabricCanvas || !_isMinimized || !initialWidth || !initialHeight) return
+    fabricCanvas.setDimensions({ width: initialWidth, height: initialHeight })
+    fabricCanvas.renderAll()
+    _isMinimized = false
+  }
+
   const dispose = () => {
     if (fabricCanvas) {
       redoStack.length = 0
       onUndoRedoChange = null
+      _isMinimized = false
       fabricCanvas.dispose()
       fabricCanvas = null
       pencilBrush = null
@@ -345,6 +370,8 @@ export function useFabricBrush(onPathCreated?: () => void) {
     clear,
     resize,
     dispose,
+    minimizeCanvas,
+    restoreCanvas,
     isInitialized,
     getCanvas: () => fabricCanvas,
     undo,

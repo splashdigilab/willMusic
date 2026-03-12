@@ -59,7 +59,6 @@
 </template>
 
 <script setup lang="ts">
-import { gsap } from 'gsap'
 import type { QueuePendingItem, QueueHistoryItem, StickerInstance, TextBlockInstance } from '~/types'
 import { STICKER_LIBRARY } from '~/data/stickers'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
@@ -134,7 +133,7 @@ function updateScale() {
 
 let ro: ResizeObserver | null = null
 
-onMounted(() => {
+onMounted(async () => {
   updateScale()
 
   // 使用 ResizeObserver 監聽大小變化，保證 GSAP Flip 重排後 scale 始終正確
@@ -144,6 +143,8 @@ onMounted(() => {
   }
 
   if (props.animate && import.meta.client && noteRef.value) {
+    // 只在實際需要動畫時才載入 GSAP，減少不需要動畫時的記憶體與解析成本
+    const { gsap } = await import('gsap')
     gsap.from(noteRef.value, {
       scale: 0,
       rotation: -180,

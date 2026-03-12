@@ -132,7 +132,7 @@
             :key="block.id"
             :data-text-block-id="block.id"
             class="p-editor__text-content"
-            :style="[getTextBlockStyleComputed(block), drawMode ? { pointerEvents: 'none' } : {}, { zIndex: getObjectZIndex(block.id) }]"
+            :style="[getTextBlockStyleComputed(block), drawMode ? STYLE_POINTER_NONE : STYLE_EMPTY, { zIndex: getObjectZIndex(block.id) }]"
             @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
           >
             <!-- 外層包裹器：接收 padding，點擊時觸發拖曳 -->
@@ -143,8 +143,10 @@
               <div
                 :ref="(el: any) => setContentEditableRef(block.id, el)"
                 class="p-editor__canvas-text"
-                :class="{ 'is-empty': !block.content.trim() }"
+                :class="{ 'is-empty': !block.content.trim() && !(selectedTextBlockId === block.id && isComposing) }"
                 :contenteditable="!drawMode"
+                @compositionstart="() => { isComposing = true }"
+                @compositionend="(e: Event) => handleCompositionEnd(e, block.id)"
                 @input="(e: Event) => handleTextInput(e, block.id)"
                 @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
                 @focus="() => { if (!drawMode) selectTextBlock(block.id) }"
@@ -181,7 +183,16 @@
               zIndex: getObjectZIndex('drawing-layer')
             }"
           >
+            <!-- Fabric.js canvas：始終留在 DOM（init 需要），縮小後視覺空白 -->
             <canvas ref="drawingCanvasRef" class="p-editor__drawing-canvas" />
+            <!-- 非繪圖模式時，用已儲存的 PNG 靜態預覽蓋住空白的縮小 canvas -->
+            <img
+              v-if="!drawMode && drawingData"
+              :src="drawingData"
+              class="p-editor__drawing-preview"
+              alt=""
+              draggable="false"
+            />
           </div>
         </div>
 
@@ -204,7 +215,7 @@
             @touchstart="() => { if (!isTwoFingerGesture) selectTextBlock(block.id) }"
           >
             <!-- 隱藏 sizer：與 contenteditable 同字體/padding，讓編輯框寬高與文字一致；空白時用 placeholder 撐開寬度 -->
-            <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="getTextStyleForBlock(block)">{{ block.content || '在這裡輸入文字...' }}</span>
+            <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="getTextStyleForBlock(block)">{{ (selectedTextBlockId === block.id && composingPreviewText != null) ? (composingPreviewText || '在這裡輸入文字...') : (block.content || '在這裡輸入文字...') }}</span>
             <!-- 刪除按鈕 -->
             <button
               v-if="selectedTextBlockId === block.id"
@@ -307,7 +318,7 @@
                 :class="{ 'is-active': backgroundImage === bg.url }"
                 @click="backgroundImage = bg.url"
               >
-                <img :src="bg.url" :alt="bg.id" class="p-editor__background-img" />
+                <img :src="bg.url" :alt="bg.id" loading="lazy" class="p-editor__background-img" />
                 <img v-if="backgroundImage === bg.url" src="/check.svg" alt="" class="p-editor__background-check" />
               </button>
             </div>
@@ -428,6 +439,7 @@
                 v-if="sticker.svgFile"
                 :src="sticker.svgFile"
                 :alt="sticker.id"
+                loading="lazy"
                 class="p-editor__sticker-btn-img"
               />
             </button>
@@ -437,11 +449,11 @@
       </transition>
     </div>
 
-    <!-- Hidden node for high-res export (html-to-image) -->
-    <div style="position: fixed; left: -9999px; top: -9999px; pointer-events: none;">
+    <!-- Hidden node for high-res export (html-to-image)：只在實際分享時才掛載，避免長時間佔用 GPU 記憶體 -->
+    <div v-if="showExportNode" style="position: fixed; left: -9999px; top: -9999px; pointer-events: none; visibility: hidden;">
       <div ref="exportNodeRef" style="width: 1080px; height: 1080px; background: transparent; display: flex; justify-content: center; align-items: center;">
         <div style="width: 100%; height: 100%; position: relative;">
-          <StickyNote v-if="previewNoteData" :note="previewNoteData" style="position: absolute; left: 0; top: 0; transform: none; width: 100%; height: 100%;" />
+          <StickyNote :note="previewNoteData" style="position: absolute; left: 0; top: 0; transform: none; width: 100%; height: 100%;" />
         </div>
       </div>
     </div>
@@ -556,7 +568,11 @@ definePageMeta({ ssr: false })
 
 useHead({
   meta: [
-    { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover' }
+    // interactive-widget=overlays-content：iOS 鍵盤以疊加方式顯示，不壓縮 layout viewport。
+    // 核心作用：防止鍵盤彈出 → body 100dvh 縮小 → canvas container 尺寸改變 → ResizeObserver 在
+    // 300ms 鍵盤動畫期間觸發 ~18 次 → Vue 重新渲染整個編輯器 → 每次渲染分配虛擬 DOM 記憶體 →
+    // 疊加鍵盤本身的 ~100MB → 超出 iOS Safari tab 上限 → 「重複發生問題」崩潰。
+    { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content' }
   ],
   bodyAttrs: { class: 'is-editor-page' }
 })
@@ -630,16 +646,27 @@ const hasCurrentTextEdits = () => {
 
 // 文字模式「完成」：移除空白文字區塊，結束文字編輯流程；保留選取使該區塊維持最上層
 const completeTextEditing = () => {
-  // 將內容為空（或只含空白）的文字區塊直接刪除
-  textBlocks.value = textBlocks.value.filter(b => b.content.trim())
+  // 若 IME 組字中按完成，先提交組字內容
+  commitComposingContent()
+
+  // 將內容為空（或只含空白）的文字區塊 in-place 刪除（避免整個陣列替換觸發全量 v-for diff）
+  for (let i = textBlocks.value.length - 1; i >= 0; i--) {
+    const b = textBlocks.value[i]
+    if (b && !b.content.trim()) {
+      textBlocks.value.splice(i, 1)
+    }
+  }
 
   textBlockInitialContents.clear()
   newTextBlockIds.clear()
-  // 若目前選取的區塊已被刪除（空白被濾掉）才清掉選取；否則保留選取，讓該區塊維持在最上層
   if (selectedTextBlockId.value && !textBlocks.value.some(b => b.id === selectedTextBlockId.value)) {
     selectedTextBlockId.value = null
   }
   activeTab.value = null
+
+  // 延遲到下一個 event loop：讓 Vue 先完成 DOM 更新，再做 JSON.stringify + localStorage 重 I/O，
+  // 避免同步 JSON.stringify 大型 drawingData（500KB+ base64）與 DOM 更新搶 CPU 造成 OOM
+  setTimeout(saveDraftData, 0)
 }
 
 const completeStickerEditing = () => {
@@ -697,6 +724,7 @@ const TOKEN_ALERT_ICON = '🛍️'
 const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
 
 const isSharing = ref(false)
+const showExportNode = ref(false)  // 控制 1080px export node 的掛載時機
 const exportNodeRef = ref<HTMLElement | null>(null)
 
 // 手繪筆刷
@@ -718,11 +746,18 @@ const showStickerEditFrame = computed(() => {
 
 // Sticker Management
 
-// 僅在有實際筆畫時更新 drawingData，避免空白繪圖讓 Reset 可觸發
-const syncDrawingDataFromFabric = () => {
+// ── 繪圖存檔防抖
+// 每筆畫完成 (path:created) 後 exportToDataURL 會產生大型 PNG 字串，
+// 加上 JSON.stringify 存到 localStorage 會短暫分配 1–2MB。
+// 防抖 1.5s 確保快速畫多筆時只存一次，顯著降低 iOS Safari 的 GC 壓力。
+let drawSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+// 僅在有實際筆畫時更新 drawingData；saveImmediately=true 時略過防抖（離開繪圖模式時使用）
+const syncDrawingDataFromFabric = (saveImmediately = false) => {
   if (!fabricBrush.canUndo()) {
     if (drawingData.value !== null) {
       drawingData.value = null
+      if (drawSaveTimer) { clearTimeout(drawSaveTimer); drawSaveTimer = null }
       saveDraftData()
     }
     return
@@ -730,7 +765,16 @@ const syncDrawingDataFromFabric = () => {
   const data = fabricBrush.exportToDataURL()
   if (data && data !== drawingData.value) {
     drawingData.value = data
-    saveDraftData()
+    if (saveImmediately) {
+      if (drawSaveTimer) { clearTimeout(drawSaveTimer); drawSaveTimer = null }
+      saveDraftData()
+    } else {
+      if (drawSaveTimer) clearTimeout(drawSaveTimer)
+      drawSaveTimer = setTimeout(() => {
+        drawSaveTimer = null
+        saveDraftData()
+      }, 1500)
+    }
   }
 }
 
@@ -742,12 +786,17 @@ watch(activeTab, (tab) => {
   // 繪圖：進入/退出繪圖模式
   if (tab === 'draw') {
     drawMode.value = true
+    // 恢復畫布尺寸（從 1×1 最小化還原為 600×600，重新分配 GPU backing store）
+    fabricBrush.restoreCanvas()
     fabricBrush.setDrawingMode(true)
     bringToFront('drawing-layer')
   } else {
     if (drawMode.value) {
-      syncDrawingDataFromFabric()
+      // 離開繪圖模式：立即存檔（saveImmediately=true），不用防抖，避免資料遺失
+      syncDrawingDataFromFabric(true)
       fabricBrush.setDrawingMode(false)
+      // 最小化畫布：釋放 ~1.4MB GPU backing store，降低文字編輯時的記憶體壓力
+      fabricBrush.minimizeCanvas()
       // 使用者剛離開繪圖模式（例如按下完成），清除所有物件選取，確保沒有殘留的編輯框
       selectedTextBlockId.value = null
       selectedStickerId.value = null
@@ -811,6 +860,10 @@ const hasAnyContent = computed(() =>
   shape.value !== DEFAULT_SHAPE_ID
 )
 
+// 快取靜態 style 物件：避免每次 render 都建立新物件，降低 GC 壓力
+const STYLE_POINTER_NONE = Object.freeze({ pointerEvents: 'none' as const })
+const STYLE_EMPTY = Object.freeze({})
+
 // 文字區塊位置/大小樣式（接受 TextBlockInstance）
 const getTextBlockStyleComputed = (block: TextBlockInstance) => ({
   ...getTextBlockStyle(block.x, block.y, block.scale, block.rotation),
@@ -849,7 +902,6 @@ const clampSelectedTextBlockToCanvas = () => {
   const halfWidthPct = (fr.width / rect.width) * 50
   const halfHeightPct = (fr.height / rect.height) * 50
   const eps = 1e-6
-  // 允許重新調整位置，因此只要半寬/半高 <= 50% 就一定能找到合法位置
   const maxScaleX = halfWidthPct > eps ? (50 * block.scale) / halfWidthPct : TEXT_SCALE_MAX
   const maxScaleY = halfHeightPct > eps ? (50 * block.scale) / halfHeightPct : TEXT_SCALE_MAX
   const maxScale = Math.min(maxScaleX, maxScaleY, TEXT_SCALE_MAX)
@@ -861,28 +913,75 @@ const clampSelectedTextBlockToCanvas = () => {
   const newHalfH = halfHeightPct * (block.scale / oldScale)
   block.x = clamp(block.x, newHalfW, 100 - newHalfW)
   block.y = clamp(block.y, newHalfH, 100 - newHalfH)
-  saveDraftData()
+}
+
+// ── IME 狀態追蹤（韓文/日文/中文輸入法）
+const isComposing = ref(false)
+// 組字中的即時文字：僅供 sizer 使用，不觸發 textBlocks 深層反應鏈
+const composingPreviewText = ref<string | null>(null)
+
+// ── RAF-throttled clamp：合併同一幀內多次呼叫為一次，避免重複 getBoundingClientRect 引發回流
+let _clampRafId: number | null = null
+const scheduleClamp = () => {
+  if (_clampRafId !== null) return
+  _clampRafId = requestAnimationFrame(() => {
+    _clampRafId = null
+    clampSelectedTextBlockToCanvas()
+  })
+}
+
+// 清理 IME 組字狀態並將 contenteditable 中的最終文字寫入 block.content
+const commitComposingContent = () => {
+  if (selectedTextBlockId.value) {
+    const el = contentEditableRefs.get(selectedTextBlockId.value)
+    if (el) {
+      const text = el.innerText.slice(0, MAX_CONTENT_LENGTH)
+      const block = textBlocks.value.find(b => b.id === selectedTextBlockId.value)
+      if (block && block.content !== text) block.content = text
+    }
+  }
+  isComposing.value = false
+  composingPreviewText.value = null
 }
 
 // Methods
-let textInputDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const handleTextInput = (e: Event, blockId: string) => {
   const target = e.target as HTMLElement
   const text = target.innerText.slice(0, MAX_CONTENT_LENGTH)
-  const block = textBlocks.value.find(b => b.id === blockId)
-  if (block) {
-    block.content = text
+
+  if (isComposing.value || (e as InputEvent).isComposing) {
+    // IME 組字中：僅更新輕量 composingPreviewText（只驅動 sizer 寬度），
+    // 不碰 block.content → 不觸發 hasAnyContent / previewNoteData 等重型 computed
+    composingPreviewText.value = text
+    scheduleClamp()
+    return
   }
+
+  composingPreviewText.value = null
+  const block = textBlocks.value.find(b => b.id === blockId)
+  if (block) block.content = text
   if (target.innerText.length > MAX_CONTENT_LENGTH) {
     target.innerText = text
     placeCaretAtEnd(target)
   }
-  saveDraftData()
-  nextTick(() => clampSelectedTextBlockToCanvas())
-  if (textInputDebounceTimer) clearTimeout(textInputDebounceTimer)
-  textInputDebounceTimer = setTimeout(() => {
-    textInputDebounceTimer = null
-  }, 400)
+  scheduleClamp()
+}
+
+const handleCompositionEnd = (e: Event, blockId: string) => {
+  // 保持 isComposing=true 直到 block.content 提交完成，避免 placeholder 閃現
+  nextTick(() => {
+    const target = e.target as HTMLElement
+    const text = target.innerText.slice(0, MAX_CONTENT_LENGTH)
+    const block = textBlocks.value.find(b => b.id === blockId)
+    if (block) block.content = text
+    isComposing.value = false
+    composingPreviewText.value = null
+    if (target.innerText.length > MAX_CONTENT_LENGTH) {
+      target.innerText = text
+      placeCaretAtEnd(target)
+    }
+    scheduleClamp()
+  })
 }
 
 const placeCaretAtEnd = (el: HTMLElement) => {
@@ -1014,6 +1113,10 @@ const handleTabClick = (tabId: string) => {
 
 // 文字模式「取消」：新增未輸入時 = 刪除；編輯時 = 還原到編輯前內容
 const cancelTextEditing = () => {
+  // 清除任何進行中的 IME 狀態
+  isComposing.value = false
+  composingPreviewText.value = null
+
   const id = selectedTextBlockId.value
   if (!id) {
     activeTab.value = null
@@ -1024,17 +1127,15 @@ const cancelTextEditing = () => {
   const isNew = newTextBlockIds.has(id)
 
   if (block && isNew) {
-    // 新增的文字區塊：不論有沒有輸入內容，按取消都直接刪除
     removeTextBlock(id)
     activeTab.value = null
     return
   }
 
   if (block) {
-    // 既有文字區塊：還原到編輯前內容
     block.content = initial
     syncContentToDom()
-    saveDraftData()
+    setTimeout(saveDraftData, 0)
   }
 
   textBlockInitialContents.delete(id)
@@ -1072,8 +1173,9 @@ const addSticker = (stickerType: string) => {
 }
 
 const selectSticker = (id: string) => {
-  // 若正在文字編輯模式，自動完成之前的編輯
+  // 若正在文字編輯模式，先提交 IME 並自動完成之前的編輯
   if (activeTab.value === 'text' && selectedTextBlockId.value) {
+    commitComposingContent()
     if (hasCurrentTextEdits()) {
       completeTextEditing()
     } else {
@@ -1091,20 +1193,18 @@ const selectSticker = (id: string) => {
 }
 
 const selectTextBlock = (blockId: string) => {
-  // 檢查在點擊之前，是否「已經在此文字區塊的編輯模式中」
   const isCurrentlyEditing = selectedTextBlockId.value === blockId && activeTab.value === 'text'
 
-  // 進入文字編輯模式
   activeTab.value = 'text'
 
-  // 若已經在編輯這個文字區塊，純粹是使用者點選不同位置來移動游標，不干涉瀏覽器
   if (isCurrentlyEditing) {
     bringToFront(blockId)
     return
   }
 
-  // 若正在文字編輯模式，且切換到另一組文字，自動完成之前的編輯
-  if (activeTab.value === 'text' && selectedTextBlockId.value && selectedTextBlockId.value !== blockId) {
+  // 切換到另一組文字時，先提交舊區塊的 IME 組字並自動完成/取消編輯
+  if (selectedTextBlockId.value && selectedTextBlockId.value !== blockId) {
+    commitComposingContent()
     if (hasCurrentTextEdits()) {
       completeTextEditing()
     } else {
@@ -1128,6 +1228,7 @@ const selectTextBlock = (blockId: string) => {
 
 const deselectAll = () => {
   if (lastCanvasDragEndAt.value && Date.now() - lastCanvasDragEndAt.value < 400) return
+  if (selectedTextBlockId.value) commitComposingContent()
   selectedStickerId.value = null
   selectedTextBlockId.value = null
 }
@@ -1517,13 +1618,19 @@ const confirmSubmit = async () => {
 import { toPng } from 'html-to-image'
 
 const handleShare = async () => {
-  if (isSharing.value || !exportNodeRef.value) return
+  if (isSharing.value) return
   isSharing.value = true
 
   try {
+    // 1. 掛載 export node（只在此時才建立，避免長期佔用 GPU 記憶體）
+    showExportNode.value = true
     await nextTick()
+    // 讓瀏覽器完成 layout 與 paint（雙 RAF 確保 CSS mask 與背景圖都已渲染）
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
 
-    // 1. 強制預載背景圖片，確保瀏覽器快取中已經具備該圖，防止 html-to-image 抓不到
+    if (!exportNodeRef.value) throw new Error('Export node not ready')
+
+    // 2. 強制預載背景圖片，確保瀏覽器快取中已經具備該圖，防止 html-to-image 抓不到
     const bgUrl = previewNoteData.value?.style?.backgroundImage
     if (bgUrl) {
       await new Promise((resolve) => {
@@ -1535,14 +1642,14 @@ const handleShare = async () => {
       })
     }
 
-    // 2. 針對 iOS 的預熱 Hack (Warm-up)
+    // 3. 針對 iOS 的預熱 Hack (Warm-up)
     // 使用低解析度預熱，強迫 html-to-image 綁定資源，但節省記憶體（pixelRatio: 0.5）
     await toPng(exportNodeRef.value, { cacheBust: true, skipFonts: true, pixelRatio: 0.5 }).catch(() => {})
 
     // 給予渲染緩衝時間
     await new Promise(resolve => setTimeout(resolve, 300))
     
-    // 3. 正式輸出（pixelRatio 1.5：相較 2x 節省約 44% 記憶體，畫質在手機上仍充足）
+    // 4. 正式輸出（pixelRatio 1.5：相較 2x 節省約 44% 記憶體，畫質在手機上仍充足）
     const dataUrl = await toPng(exportNodeRef.value, {
       pixelRatio: 1.5,
       cacheBust: true,
@@ -1559,7 +1666,6 @@ const handleShare = async () => {
         files: [file]
       })
     } else {
-      // Fallback
       const link = document.createElement('a')
       link.download = 'willmusic-note.png'
       link.href = dataUrl
@@ -1570,6 +1676,8 @@ const handleShare = async () => {
     showAlert('圖片生成失敗，請稍後再試')
   } finally {
     isSharing.value = false
+    // 分享完成後立即卸載 export node，釋放 GPU 記憶體
+    showExportNode.value = false
   }
 }
 
@@ -1688,14 +1796,22 @@ onMounted(async () => {
     saveToken(tokenFromQuery)
   }
 
-  // Scale observer
+  // Scale observer（加防抖：即使 interactive-widget=overlays-content 未生效的舊 iOS，
+  // 也能限制鍵盤動畫期間最多每 150ms 觸發一次 Vue re-render，避免記憶體暴衝）
   if (canvasRef.value) {
+    let resizeRafId: number | null = null
     resizeObserver = new ResizeObserver(entries => {
       const entry = entries[0]
-      if (entry && entry.contentRect.width > 0) {
-        const scale = entry.contentRect.width / VIRTUAL_SIZE
-        scalerStyle.value = { transform: `scale(${scale})` }
-      }
+      if (!entry || entry.contentRect.width <= 0) return
+      const newWidth = entry.contentRect.width
+      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId)
+      resizeRafId = requestAnimationFrame(() => {
+        resizeRafId = null
+        const scale = newWidth / VIRTUAL_SIZE
+        if (scalerStyle.value.transform !== `scale(${scale})`) {
+          scalerStyle.value = { transform: `scale(${scale})` }
+        }
+      })
     })
     resizeObserver.observe(canvasRef.value)
   }
@@ -1703,6 +1819,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (resizeObserver) resizeObserver.disconnect()
+  if (_clampRafId !== null) { cancelAnimationFrame(_clampRafId); _clampRafId = null }
+  if (drawSaveTimer) { clearTimeout(drawSaveTimer); drawSaveTimer = null; saveDraftData() }
   fabricBrush.dispose()
 })
 
