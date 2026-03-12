@@ -11,7 +11,6 @@
     position: relative;
     align-items: center;
     justify-content: center;
-    gap: 5rem;
 }
 
 /* 佈局容器，各佔一半 */
@@ -32,10 +31,22 @@
     /* 內部 note-wrap 用 position:absolute */
     box-sizing: border-box;
     /* ⚠️ 不可加 overflow:hidden，否則 FLIP 跨區飛行動畫會被裁切 */
-    background-image: url('/paperBg.webp');
+    background-image: url('/liveBg.webp');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+
+    /* 右側留白分界線（配合 JS PADDING_RIGHT = 120px） */
+    &::after {
+        content: '';
+        position: absolute;
+        top: 5%;
+        right: 120px;
+        width: 1px;
+        height: 90%;
+        background: rgba(0, 0, 0, 0);
+        pointer-events: none;
+    }
 }
 
 /* scatter-slot: 只是 v-for 的容器殼，不做排版（內部 note-wrap 自己 absolute）*/
@@ -57,7 +68,7 @@
     justify-content: center;
     box-sizing: border-box;
     position: relative;
-    background-image: url('/paperBg.webp');
+    background-image: url('/displayBg.webp');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;

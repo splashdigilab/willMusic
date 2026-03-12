@@ -85,8 +85,10 @@ const getId = (item: any): string => item?.id ?? item?.token ?? ''
 /** 已分配的位置快取 { flipId → { left, top, rot, size } } */
 const positionMap = reactive<Record<string, { left: number; top: number; rot: number; size: number }>>({})
 
-/** padding (px) 用於 live-zone 內邊距 */
+/** padding (px) 用於 live-zone 四邊內邊距 */
 const PADDING = 20
+/** live-zone 右側額外留白（px），便利貼不會出現在此區域 */
+const PADDING_RIGHT = 120
 
 /** 虛擬座標系：便利貼邊長（用於 Fermat 螺旋 + 碰撞檢測，與 index 一致） */
 const VIRTUAL_ITEM_SIZE = 550
@@ -170,7 +172,7 @@ function calculatePositionsVirtual(itemCount: number): VirtualPosition[] {
 function recalcPositions() {
   const zone = liveZoneRef.value
   if (!zone) return
-  const zoneW = zone.clientWidth - PADDING * 2
+  const zoneW = zone.clientWidth - PADDING - (PADDING + PADDING_RIGHT) // 右側扣掉額外留白
   const zoneH = zone.clientHeight - PADDING * 2
 
   const items = displayState.value.liveGrid.map((n: any) => getId(n))
