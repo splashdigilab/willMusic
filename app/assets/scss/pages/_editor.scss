@@ -114,11 +114,15 @@ body.is-editor-page #app {
     overflow: hidden;
     cursor: default;
 
-    /* 
-      模擬實體便利貼光影（與 StickyNote 共用物理打光邏輯）
+    /*
+      模擬實體便利貼光影與紙張材質（與 StickyNote 共用物理打光邏輯）
     */
     &::before {
       @include sn.sticky-note-lighting-overlay;
+    }
+
+    &::after {
+      @include sn.sticky-note-paper-texture-overlay;
     }
   }
 

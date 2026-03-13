@@ -108,6 +108,20 @@
   mix-blend-mode: normal;
 }
 
+/* 紙張材質疊加層：使用 mix-blend-mode 疊上真實紙紋理 */
+@mixin sticky-note-paper-texture-overlay {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url('/paperTexture.webp');
+  background-size: cover;
+  background-repeat: repeat;
+  opacity: 0.45;
+  mix-blend-mode: multiply;
+}
+
 /* 
   共通虛擬畫布縮放層 (Virtual Scaler)
   用於鎖定 600px 實體渲染大小，解開瀏覽器字體限制
@@ -154,6 +168,10 @@
 
     &::before {
       @include sticky-note-lighting-overlay;
+    }
+
+    &::after {
+      @include sticky-note-paper-texture-overlay;
     }
   }
 
