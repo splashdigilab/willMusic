@@ -215,12 +215,13 @@
     transform: translate(0px, 0px) scale(0);
 
     // === 效能優化 ===
-    // 移除昂貴的 drop-shadow filter 和光影效果
+    // 首頁同時顯示數十張便利貼，使用輕量單層陰影（縮小模糊半徑），兼顧視覺深度與 GPU 效能。
+    // 編輯器 / 預覽頁保留完整雙層陰影（由 sticky-note-shadow mixin 提供）。
     .c-sticky-note__scaler {
-        filter: none;
+        filter: drop-shadow(3px 4px 6px rgba(0, 0, 0, 0.22));
     }
 
-    // 移除每張便利貼內的光影疊加偽元素
+    // 移除每張便利貼內的光影疊加偽元素（首頁效能優化）
     .c-sticky-note__inner::before {
         display: none;
     }

@@ -63,28 +63,13 @@
 }
 
 /* 
-  擬真陰影效果定案（效能優化版）：
-  捨棄極度消耗手機 GPU 的 filter: drop-shadow，改用 SVG Mask 繪製純色塊作為陰影。
-  藉由向下偏移 (translateY) 重疊出與原形狀相符的影子，效能可提升數十倍。
+  擬真柔和陰影：直接在縮放層套 filter: drop-shadow()。
+  drop-shadow 會依照 mask-image 裁切後的實際形狀計算陰影輪廓，
+  blur-radius 設大讓陰影擴散柔和，模擬真實便利貼的漫射打光。
 */
 @mixin sticky-note-shadow {
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background-color: rgba(0, 0, 0, 0.2);
-    mask-image: var(--shadow-mask);
-    mask-size: 100% 100%;
-    mask-repeat: no-repeat;
-    mask-position: center;
-    -webkit-mask-image: var(--shadow-mask);
-    -webkit-mask-size: 100% 100%;
-    -webkit-mask-repeat: no-repeat;
-    -webkit-mask-position: center;
-    transform: translate(6px, 6px); // 陰影向下偏移
-    pointer-events: none;
-  }
+  filter: drop-shadow(2px 4px 3px rgba(0, 0, 0, 0.05))
+          drop-shadow(1px 2px 1.5px rgba(0, 0, 0, 0.2));
 }
 
 /* 
