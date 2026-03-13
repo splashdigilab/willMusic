@@ -66,7 +66,7 @@ const ANIM = {
 /* ─── URL 參數 ─── */
 const route = useRoute()
 const maxNotes   = computed(() => Number(route.query.count) || 16)
-const displaySec = computed(() => Number(route.query.duration) || 5)
+const displaySec = computed(() => Number(route.query.duration) || 15)
 const liveNoteScale = computed(() => Number(route.query.liveScale) || 0.95)
 const displayNoteScale = computed(() => Number(route.query.displayScale) || 1)
 
