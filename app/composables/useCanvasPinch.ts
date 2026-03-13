@@ -137,7 +137,12 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     const el = target as HTMLElement
     if (!el?.closest) return null
     const textEl = el.closest('[data-text-block-id]') as HTMLElement | null
-    return textEl?.dataset.textBlockId ?? null
+    const id = textEl?.dataset.textBlockId ?? null
+    if (!id) return null
+    // 鎖定的文字區塊不啟動拖曳／縮放互動（僅能長按解鎖）
+    const block = textBlocks.value.find(b => b.id === id)
+    if (block?.locked) return null
+    return id
   }
 
   const getSelectedBlock = (): TextBlockInstance | undefined => {

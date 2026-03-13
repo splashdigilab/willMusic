@@ -139,17 +139,23 @@
             <div
               class="p-editor__canvas-text-wrapper"
               :style="getTextStyleForBlock(block)"
+              @touchstart="onLockedTextTouchStart(block.id, $event)"
+              @touchend="onLockedTextTouchEnd"
+              @touchcancel="onLockedTextTouchEnd"
             >
               <div
                 :ref="(el: any) => setContentEditableRef(block.id, el)"
                 class="p-editor__canvas-text"
-                :class="{ 'is-empty': !block.content.trim() && !(selectedTextBlockId === block.id && isComposing) }"
+                :class="{
+                  'is-empty': !block.content.trim() && !(selectedTextBlockId === block.id && isComposing),
+                  'is-locked': block.locked
+                }"
                 :contenteditable="!drawMode"
                 @compositionstart="() => { isComposing = true }"
                 @compositionend="(e: Event) => handleCompositionEnd(e, block.id)"
                 @input="(e: Event) => handleTextInput(e, block.id)"
-                @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
-                @focus="() => { if (!drawMode) selectTextBlock(block.id) }"
+                @click.stop="() => { if (!drawMode && !block.locked) selectTextBlock(block.id) }"
+                @focus="() => { if (!drawMode && !block.locked) selectTextBlock(block.id) }"
                 data-placeholder="在這裡輸入文字..."
               />
             </div>
@@ -498,15 +504,25 @@
         </button>
       </template>
 
-      <!-- 文字模式：完成（回到 default，Tab Bar 會再出現） -->
+      <!-- 文字模式：完成（回到 default，Tab Bar 會再出現） + 鎖定圖層 -->
       <template v-else-if="activeTab === 'text'">
-        <button
-          type="button"
-          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
-          @click="completeTextEditing"
-        >
-          完成
-        </button>
+        <div class="p-editor__text-actions">
+          <button
+            type="button"
+            class="p-editor__action-btn p-editor__action-btn--secondary p-editor__action-btn--lock"
+            :disabled="!selectedBlock || !selectedBlock.content.trim()"
+            @click="toggleLockSelectedTextBlock"
+          >
+            {{ selectedBlock?.locked ? '解除鎖定' : '鎖定（長按可解鎖）' }}
+          </button>
+          <button
+            type="button"
+            class="p-editor__action-btn p-editor__action-btn--primary"
+            @click="completeTextEditing"
+          >
+            完成
+          </button>
+        </div>
       </template>
 
       <!-- 便利貼模式：完成（回到 default，Tab Bar 會再出現） -->
@@ -1061,7 +1077,8 @@ const addTextBlock = (): TextBlockInstance => {
     scale: 2,
     rotation: 0,
     color: '#ffffff',
-    align: 'center'
+    align: 'center',
+    locked: false
   }
   textBlocks.value.push(newBlock)
   snapshotTextBlockInitial(newBlock.id)
@@ -1214,6 +1231,8 @@ const selectTextBlock = (blockId: string) => {
 
   if (isCurrentlyEditing) {
     bringToFront(blockId)
+    // 已經在文字模式下再次點擊同一個文字區塊：確保重新聚焦並叫出鍵盤
+    focusSelectedTextBlock()
     return
   }
 
@@ -1252,6 +1271,50 @@ const focusSelectedTextBlock = () => {
     }
   })
 }
+
+const toggleLockSelectedTextBlock = () => {
+  const id = selectedTextBlockId.value
+  if (!id) return
+  const block = textBlocks.value.find(b => b.id === id)
+  if (!block) return
+  block.locked = !block.locked
+  // 鎖定時回到 default 模式（activeTab = null），但保留選取與圖層順序
+  if (block.locked) {
+    activeTab.value = null
+  }
+  saveDraftData()
+}
+
+let lockedLongPressTimer: ReturnType<typeof setTimeout> | null = null
+
+const onLockedTextTouchStart = (blockId: string, e: TouchEvent) => {
+  const block = textBlocks.value.find(b => b.id === blockId)
+  if (!block?.locked) return
+
+  if (e.cancelable) e.preventDefault()
+  e.stopPropagation()
+
+  if (lockedLongPressTimer) {
+    clearTimeout(lockedLongPressTimer)
+    lockedLongPressTimer = null
+  }
+
+  lockedLongPressTimer = setTimeout(() => {
+    lockedLongPressTimer = null
+    const target = textBlocks.value.find(b => b.id === blockId)
+    if (!target) return
+    target.locked = false
+    selectTextBlock(blockId)
+  }, 600)
+}
+
+const onLockedTextTouchEnd = () => {
+  if (lockedLongPressTimer) {
+    clearTimeout(lockedLongPressTimer)
+    lockedLongPressTimer = null
+  }
+}
+
 
 const deselectAll = () => {
   if (lastCanvasDragEndAt.value && Date.now() - lastCanvasDragEndAt.value < 400) return

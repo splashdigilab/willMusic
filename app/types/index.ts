@@ -24,6 +24,8 @@ export interface TextBlockInstance {
   rotation: number
   color: string
   align: TextAlign
+  /** 鎖定圖層：無法被點擊選取，只能長按解鎖 */
+  locked?: boolean
 }
 
 /**
