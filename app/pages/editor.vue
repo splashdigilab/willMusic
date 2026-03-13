@@ -466,8 +466,12 @@
       </transition>
     </div>
 
-    <!-- Hidden node for high-res export (html-to-image)：只在實際分享時才掛載，避免長時間佔用 GPU 記憶體 -->
-    <div v-if="showExportNode" style="position: fixed; left: -9999px; top: -9999px; pointer-events: none; visibility: hidden;">
+    <!-- Hidden node for high-res export (html-to-image)：只在實際分享時才掛載，避免長時間佔用 GPU 記憶體
+         注意：不能使用 visibility:hidden，否則 html-to-image 會輸出透明圖片；改用 off-screen + opacity:0 -->
+    <div
+      v-if="showExportNode"
+      style="position: fixed; left: -9999px; top: -9999px; pointer-events: none; opacity: 0;"
+    >
       <div ref="exportNodeRef" style="width: 1080px; height: 1080px; background: transparent; display: flex; justify-content: center; align-items: center;">
         <div style="width: 100%; height: 100%; position: relative;">
           <StickyNote :note="previewNoteData" style="position: absolute; left: 0; top: 0; transform: none; width: 100%; height: 100%;" />
@@ -786,11 +790,8 @@ let drawSaveTimer: ReturnType<typeof setTimeout> | null = null
 // 僅在有實際筆畫時更新 drawingData；saveImmediately=true 時略過防抖（離開繪圖模式時使用）
 const syncDrawingDataFromFabric = (saveImmediately = false) => {
   if (!fabricBrush.canUndo()) {
-    if (drawingData.value !== null) {
-      drawingData.value = null
-      if (drawSaveTimer) { clearTimeout(drawSaveTimer); drawSaveTimer = null }
-      saveDraftData()
-    }
+    // 當前沒有任何筆畫：保留既有的 drawingData（例如使用者先前的繪圖），
+    // 清空動作交給「一鍵清除」等顯式操作，避免誤將完成的畫作設為 null。
     return
   }
   const data = fabricBrush.exportToDataURL()
@@ -1278,9 +1279,14 @@ const toggleLockSelectedTextBlock = () => {
   const block = textBlocks.value.find(b => b.id === id)
   if (!block) return
   block.locked = !block.locked
-  // 鎖定時回到 default 模式（activeTab = null），但保留選取與圖層順序
+  // 鎖定時回到 default 模式並清除選取與編輯狀態；解鎖則僅改狀態，需長按重新選取才能編輯
   if (block.locked) {
     activeTab.value = null
+    selectedTextBlockId.value = null
+    textBlockDragging.value = false
+    textBlockTransforming.value = false
+    // 清除所有文字框的 focus，避免仍可輸入文字
+    contentEditableRefs.forEach(el => el?.blur())
   }
   saveDraftData()
 }
@@ -1740,18 +1746,45 @@ const handleShare = async () => {
       })
     }
 
-    // 3. 針對 iOS 的預熱 Hack (Warm-up)
+    // 3. 強制載入 export node 內所有圖片
+    // StickyNote 的 <img> 帶有 loading="lazy" + decoding="async"，
+    // 在畫面外（-9999px）不會自動載入；必須改成 eager/sync 才能讓 html-to-image 截到完整內容。
+    const exportImgs = Array.from(exportNodeRef.value.querySelectorAll('img'))
+    for (const img of exportImgs) {
+      img.loading = 'eager'
+      img.decoding = 'sync'
+      // 若圖片尚未開始載入（src 存在但 naturalWidth=0），重設 src 觸發載入
+      if (!img.complete || img.naturalWidth === 0) {
+        const src = img.src
+        img.src = ''
+        img.src = src
+      }
+    }
+    // 等待所有圖片完成載入（含 base64 drawing 與 SVG 貼紙）
+    await Promise.all(
+      exportImgs.map(img => {
+        if (img.complete && img.naturalWidth > 0) return Promise.resolve()
+        return new Promise<void>(resolve => {
+          img.addEventListener('load', () => resolve(), { once: true })
+          img.addEventListener('error', () => resolve(), { once: true })
+        })
+      })
+    )
+
+    // 4. 針對 iOS 的預熱 Hack (Warm-up)
     // 使用低解析度預熱，強迫 html-to-image 綁定資源，但節省記憶體（pixelRatio: 0.5）
     await toPng(exportNodeRef.value, { cacheBust: true, skipFonts: true, pixelRatio: 0.5 }).catch(() => {})
 
     // 給予渲染緩衝時間
     await new Promise(resolve => setTimeout(resolve, 300))
     
-    // 4. 正式輸出（pixelRatio 1.5：相較 2x 節省約 44% 記憶體，畫質在手機上仍充足）
+    // 5. 正式輸出（pixelRatio 1.5：相較 2x 節省約 44% 記憶體，畫質在手機上仍充足）
+    // skipFonts: true 避免 html-to-image 嘗試讀取跨網域 Google Fonts CSS 規則觸發 CORS SecurityError；
+    // 瀏覽器在截圖時仍會使用已載入的字型，輸出字體外觀不受影響。
     const dataUrl = await toPng(exportNodeRef.value, {
       pixelRatio: 1.5,
       cacheBust: true,
-      skipFonts: false
+      skipFonts: true
     })
 
     const blob = await (await fetch(dataUrl)).blob()
@@ -1769,9 +1802,23 @@ const handleShare = async () => {
       link.href = dataUrl
       link.click()
     }
-  } catch (error) {
-    console.error('分享失敗:', error)
-    showAlert('圖片生成失敗，請稍後再試')
+  } catch (error: any) {
+    // 使用者在系統分享面板按「取消」時，navigator.share 會丟 AbortError，不需要跳錯誤提示
+    const name = error?.name || ''
+    const message = error?.message || ''
+    const isAbort =
+      name === 'AbortError' ||
+      message.includes('AbortError') ||
+      message.includes('The user aborted') ||
+      message.includes('canceled') ||
+      message.includes('cancelled')
+
+    if (isAbort) {
+      console.warn('使用者取消分享/下載動作:', error)
+    } else {
+      console.error('分享失敗:', error)
+      showAlert('圖片生成失敗，請稍後再試')
+    }
   } finally {
     isSharing.value = false
     // 分享完成後立即卸載 export node，釋放 GPU 記憶體

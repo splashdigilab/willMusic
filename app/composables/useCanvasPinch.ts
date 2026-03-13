@@ -113,7 +113,12 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   /** 雙指縮放／旋轉中：此期間不應因誤觸而切換選取其他物件 */
   const isTwoFingerGesture = ref(false)
 
-  const hasSelection = () => selectedTextBlockId.value !== null || selectedStickerId.value !== null
+  const hasSelection = () => {
+    const id = selectedTextBlockId.value
+    const block = id ? textBlocks.value.find(b => b.id === id) : undefined
+    const hasUnlockedText = !!(block && !block.locked)
+    return hasUnlockedText || selectedStickerId.value !== null
+  }
 
   const clearCenterGuides = () => {
     if (showVerticalCenterGuide) showVerticalCenterGuide.value = false
@@ -151,7 +156,13 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   }
 
   const getPinchTarget = (): PinchTarget | null => {
-    if (selectedTextBlockId.value) return { textBlockId: selectedTextBlockId.value }
+    const textId = selectedTextBlockId.value
+    if (textId) {
+      const block = textBlocks.value.find(b => b.id === textId)
+      if (block && !block.locked) {
+        return { textBlockId: textId }
+      }
+    }
     const id = selectedStickerId.value
     return id ? { stickerId: id } : null
   }
@@ -381,7 +392,8 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
 
     if (selectedTextBlockId.value) {
       const block = getSelectedBlock()
-      if (!block) return
+      // 鎖定的文字區塊不可被拖曳
+      if (!block || block.locked) return
       const frameEl = el.querySelector(
         `.p-editor__edit-frame--text[data-text-block-id="${block.id}"]`
       ) as HTMLElement | null
