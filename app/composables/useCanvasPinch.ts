@@ -27,6 +27,14 @@ export interface UseCanvasPinchOptions {
   onTextTap?: (blockId: string, clientX: number, clientY: number) => void
   /** 在文字區塊上開始拖曳前呼叫（選取文字區塊，不聚焦） */
   onTextDragStart?: (blockId: string) => void
+  /** 顯示垂直中心參考線（可選） */
+  showVerticalCenterGuide?: Ref<boolean>
+  /** 顯示水平中心參考線（可選） */
+  showHorizontalCenterGuide?: Ref<boolean>
+  /** 中心對齊 snap 門檻（百分比，預設 2%） */
+  centerSnapThresholdPct?: number
+  /** 旋轉 snap 門檻（角度，預設 5°） */
+  rotationSnapThresholdDeg?: number
 }
 
 type PinchTarget = { textBlockId: string } | { stickerId: string }
@@ -91,7 +99,11 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     onTextDragEnd,
     onStickerDragEnd,
     onTextTap,
-    onTextDragStart
+    onTextDragStart,
+    showVerticalCenterGuide,
+    showHorizontalCenterGuide,
+    centerSnapThresholdPct = 2,
+    rotationSnapThresholdDeg = 5
   } = options
 
   let pinchState: PinchState | null = null
@@ -102,6 +114,11 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   const isTwoFingerGesture = ref(false)
 
   const hasSelection = () => selectedTextBlockId.value !== null || selectedStickerId.value !== null
+
+  const clearCenterGuides = () => {
+    if (showVerticalCenterGuide) showVerticalCenterGuide.value = false
+    if (showHorizontalCenterGuide) showHorizontalCenterGuide.value = false
+  }
 
   const isPointerOnEmptyArea = (target: EventTarget | null): boolean => {
     const el = target as HTMLElement
@@ -134,9 +151,26 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     return id ? { stickerId: id } : null
   }
 
+  const snapAngle = (angle: number): number => {
+    const threshold = rotationSnapThresholdDeg
+    if (threshold <= 0) return angle
+    // 將角度正規化到 0–360 再做比較，但回傳時保留原本的周次
+    let norm = angle % 360
+    if (norm < 0) norm += 360
+    const candidates = [0, 90, 180, 270, 360]
+    for (const base of candidates) {
+      const diff = Math.abs(norm - base)
+      if (diff <= threshold || Math.abs(diff - 360) <= threshold) {
+        const delta = base - norm
+        return angle + delta
+      }
+    }
+    return angle
+  }
+
   const applyPinch = (state: PinchState, scaleRatio: number, angleDelta: number) => {
     const scale = clamp(state.initScale * scaleRatio, SCALE_MIN, SCALE_MAX)
-    const rotation = state.initRotation + angleDelta
+    const rotation = snapAngle(state.initRotation + angleDelta)
     if ('textBlockId' in state.target) {
       const target = state.target as { textBlockId: string }
       const block = textBlocks.value.find(b => b.id === target.textBlockId)
@@ -326,6 +360,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
   const startCanvasDrag = (clientX: number, clientY: number, isTouch: boolean) => {
     const el = canvasRef.value
     if (!el) return
+    clearCenterGuides()
     // 在拖曳開始時讀取一次 rect（避免在每個 touchmove 都觸發 forced layout）
     const cachedRect = el.getBoundingClientRect()
     if (!cachedRect.width || !cachedRect.height) return
@@ -396,17 +431,62 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       requestAnimationFrame(() => {
         dragRafPending = false
         if (!canvasDragState) return
+
+        const center = 50
+        const threshold = centerSnapThresholdPct
+
+        const applyPosition = (pos: { x: number; y: number }, halfWidthPct: number, halfHeightPct: number) => {
+          let { x, y } = pos
+
+          // 垂直中心 snap
+          if (Math.abs(x - center) <= threshold) {
+            x = center
+            if (showVerticalCenterGuide) showVerticalCenterGuide.value = true
+          } else if (showVerticalCenterGuide) {
+            showVerticalCenterGuide.value = false
+          }
+
+          // 水平中心 snap
+          if (Math.abs(y - center) <= threshold) {
+            y = center
+            if (showHorizontalCenterGuide) showHorizontalCenterGuide.value = true
+          } else if (showHorizontalCenterGuide) {
+            showHorizontalCenterGuide.value = false
+          }
+
+          return {
+            x: clamp(x, halfWidthPct, 100 - halfWidthPct),
+            y: clamp(y, halfHeightPct, 100 - halfHeightPct)
+          }
+        }
+
         if (canvasDragState.type === 'text') {
           const block = textBlocks.value.find(b => b.id === (canvasDragState as any).textBlockId)
           if (block) {
-            block.x = clamp(canvasDragState.initX + deltaX, canvasDragState.halfWidthPct, 100 - canvasDragState.halfWidthPct)
-            block.y = clamp(canvasDragState.initY + deltaY, canvasDragState.halfHeightPct, 100 - canvasDragState.halfHeightPct)
+            const next = applyPosition(
+              {
+                x: canvasDragState.initX + deltaX,
+                y: canvasDragState.initY + deltaY
+              },
+              canvasDragState.halfWidthPct,
+              canvasDragState.halfHeightPct
+            )
+            block.x = next.x
+            block.y = next.y
           }
         } else if (canvasDragState.type === 'sticker') {
           const st = stickers.value.find(s => s.id === (canvasDragState as any).stickerId)
           if (st) {
-            st.x = clamp(canvasDragState.initX + deltaX, canvasDragState.halfWidthPct, 100 - canvasDragState.halfWidthPct)
-            st.y = clamp(canvasDragState.initY + deltaY, canvasDragState.halfHeightPct, 100 - canvasDragState.halfHeightPct)
+            const next = applyPosition(
+              {
+                x: canvasDragState.initX + deltaX,
+                y: canvasDragState.initY + deltaY
+              },
+              canvasDragState.halfWidthPct,
+              canvasDragState.halfHeightPct
+            )
+            st.x = next.x
+            st.y = next.y
           }
         }
       })
@@ -415,6 +495,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     const onEnd = () => {
       if (canvasDragState) {
         lastCanvasDragEndAt.value = Date.now()
+        clearCenterGuides()
         if (canvasDragState.type === 'text') {
           textBlockDragging.value = false
           onTextDragEnd()

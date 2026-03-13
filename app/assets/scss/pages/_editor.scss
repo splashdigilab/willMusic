@@ -234,6 +234,30 @@ body.is-editor-page #app {
     pointer-events: none;
   }
 
+  /* ========== 中心對齊參考線 ========== */
+  &__guide-line {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+
+    &--vertical {
+      left: 50%;
+      width: 0;
+      border-left: 1px dashed rgba(255, 255, 255, 0.7);
+      mix-blend-mode: screen;
+      transform: translateX(-0.5px);
+    }
+
+    &--horizontal {
+      top: 50%;
+      height: 0;
+      border-top: 1px dashed rgba(255, 255, 255, 0.7);
+      mix-blend-mode: screen;
+      transform: translateY(-0.5px);
+    }
+  }
+
   /* ========== 編輯框（文字／貼紙共用） ========== */
   &__edit-frame {
     position: absolute;

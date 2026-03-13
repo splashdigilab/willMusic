@@ -198,6 +198,17 @@
 
         <!-- UI 層：編輯框置頂，不被裁切（繪圖模式時隱藏以便手繪） -->
         <div class="p-editor__canvas-ui" :style="{ pointerEvents: drawMode ? 'none' : undefined }">
+          <!-- 中心對齊參考線 -->
+          <div
+            v-if="showVerticalCenterGuide"
+            class="p-editor__guide-line p-editor__guide-line--vertical"
+            aria-hidden="true"
+          />
+          <div
+            v-if="showHorizontalCenterGuide"
+            class="p-editor__guide-line p-editor__guide-line--horizontal"
+            aria-hidden="true"
+          />
           <!-- 文字區塊編輯框：僅在文字 tab 且該區塊被選取時顯示；按完成後消失 -->
           <div
             v-for="block in textBlocks"
@@ -693,6 +704,10 @@ const setContentEditableRef = (blockId: string, el: HTMLDivElement | null) => {
 const canvasRef = ref<HTMLElement | null>(null)
 const drawingLayerRef = ref<HTMLElement | null>(null)
 const drawingCanvasRef = ref<HTMLCanvasElement | null>(null)
+
+// IG 風格中心對齊參考線
+const showVerticalCenterGuide = ref(false)
+const showHorizontalCenterGuide = ref(false)
 
 // Tab: 便利貼 | 文字 | 繪圖 | 貼紙
 const activeTab = ref<'note' | 'text' | 'draw' | 'sticker' | null>(null)
@@ -1307,7 +1322,9 @@ const {
     }
     // 已選取的文字區塊：不做任何操作，瀏覽器已在 touchstart 自然定位游標
   },
-  onTextDragStart: (blockId: string) => selectTextBlock(blockId)
+  onTextDragStart: (blockId: string) => selectTextBlock(blockId),
+  showVerticalCenterGuide,
+  showHorizontalCenterGuide
 })
 
 const {
