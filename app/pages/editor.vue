@@ -1721,6 +1721,69 @@ const confirmSubmit = async () => {
 
 import { toPng } from 'html-to-image'
 
+// ── 字型嵌入輔助 ──────────────────────────────────────────────────────────────
+// html-to-image 若使用 skipFonts:true 不嵌入字型，輸出圖會掉回系統字體（手機最明顯）。
+// 透過 fontEmbedCSS 選項自行把字型轉成 base64 傳入，可同時解決：
+//   1. 自架字型（JasonHandwriting2）在 off-screen export node 可能載不到
+//   2. Google Fonts 跨網域 cssRules 讀取拋出 SecurityError
+const blobToDataURL = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+
+const buildFontEmbedCSS = async (): Promise<string> => {
+  const parts: string[] = []
+
+  // 1. 自架字型：JasonHandwriting2（同 origin，直接 fetch 沒有 CORS 問題）
+  try {
+    const res = await fetch('/JasonHandwriting2-SemiBold.woff2')
+    if (res.ok) {
+      const base64 = await blobToDataURL(await res.blob())
+      parts.push(`@font-face{font-family:'JasonHandwriting2';src:url('${base64}') format('woff2');font-weight:normal;font-style:normal;}`)
+    }
+  } catch (e) {
+    console.warn('[FontEmbed] JasonHandwriting2 失敗:', e)
+  }
+
+  // 2. Google Fonts：Nanum Pen Script
+  // fetch() 可以跨網域讀取回應內容（不同於 cssRules 的 CORS 限制），
+  // 取得 CSS text 後，再把 CSS 內每個 url() 字型檔也一一下載並轉 base64。
+  try {
+    const cssRes = await fetch(
+      'https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap',
+      { headers: { 'User-Agent': navigator.userAgent } }
+    )
+    if (cssRes.ok) {
+      let cssText = await cssRes.text()
+      const urlRegex = /url\(([^)]+)\)/g
+      const matches = [...cssText.matchAll(urlRegex)]
+      await Promise.all(
+        matches.map(async (m) => {
+          const rawUrl = (m[1] ?? '').replace(/['"]/g, '')
+          try {
+            const fontRes = await fetch(rawUrl)
+            if (fontRes.ok) {
+              const base64 = await blobToDataURL(await fontRes.blob())
+              cssText = cssText.replace(m[0], `url(${base64})`)
+            }
+          } catch (e2) {
+            console.warn('[FontEmbed] 字型檔下載失敗:', rawUrl, e2)
+          }
+        })
+      )
+      parts.push(cssText)
+    }
+  } catch (e) {
+    console.warn('[FontEmbed] Nanum Pen Script 失敗:', e)
+  }
+
+  return parts.join('\n')
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const handleShare = async () => {
   if (isSharing.value) return
   isSharing.value = true
@@ -1771,20 +1834,23 @@ const handleShare = async () => {
       })
     )
 
-    // 4. 針對 iOS 的預熱 Hack (Warm-up)
+    // 4. 預先嵌入字型（自架 + Google Fonts 一起轉 base64）
+    // 不依賴 html-to-image 自動讀取 cssRules（跨網域會 SecurityError），改由我們主動提供。
+    const fontEmbedCSS = await buildFontEmbedCSS()
+
+    // 5. 針對 iOS 的預熱 Hack (Warm-up)
     // 使用低解析度預熱，強迫 html-to-image 綁定資源，但節省記憶體（pixelRatio: 0.5）
-    await toPng(exportNodeRef.value, { cacheBust: true, skipFonts: true, pixelRatio: 0.5 }).catch(() => {})
+    await toPng(exportNodeRef.value, { cacheBust: true, fontEmbedCSS, pixelRatio: 0.5 }).catch(() => {})
 
     // 給予渲染緩衝時間
     await new Promise(resolve => setTimeout(resolve, 300))
     
-    // 5. 正式輸出（pixelRatio 1.5：相較 2x 節省約 44% 記憶體，畫質在手機上仍充足）
-    // skipFonts: true 避免 html-to-image 嘗試讀取跨網域 Google Fonts CSS 規則觸發 CORS SecurityError；
-    // 瀏覽器在截圖時仍會使用已載入的字型，輸出字體外觀不受影響。
+    // 6. 正式輸出（pixelRatio 1.5：相較 2x 節省約 44% 記憶體，畫質在手機上仍充足）
+    // fontEmbedCSS 已由 buildFontEmbedCSS() 建好，html-to-image 不需自行讀取跨網域 CSS。
     const dataUrl = await toPng(exportNodeRef.value, {
       pixelRatio: 1.5,
       cacheBust: true,
-      skipFonts: true
+      fontEmbedCSS
     })
 
     const blob = await (await fetch(dataUrl)).blob()
