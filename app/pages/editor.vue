@@ -1241,6 +1241,18 @@ const selectTextBlock = (blockId: string) => {
   })
 }
 
+const focusSelectedTextBlock = () => {
+  const id = selectedTextBlockId.value
+  if (!id) return
+  nextTick(() => {
+    const el = contentEditableRefs.get(id)
+    if (el) {
+      el.focus()
+      placeCaretAtEnd(el)
+    }
+  })
+}
+
 const deselectAll = () => {
   if (lastCanvasDragEndAt.value && Date.now() - lastCanvasDragEndAt.value < 400) return
   if (selectedTextBlockId.value) commitComposingContent()
@@ -1310,9 +1322,15 @@ const {
   textBlockTransforming,
   draggingStickerId,
   transformingStickerId,
-  onTextTransformEnd: saveDraftData,
+  onTextTransformEnd: () => {
+    focusSelectedTextBlock()
+    saveDraftData()
+  },
   onStickerTransformEnd: saveDraftData,
-  onTextDragEnd: saveDraftData,
+  onTextDragEnd: () => {
+    focusSelectedTextBlock()
+    saveDraftData()
+  },
   onStickerDragEnd: saveDraftData,
   onTextTap: (blockId: string, clientX: number, clientY: number) => {
     const alreadySelected = selectedTextBlockId.value === blockId
