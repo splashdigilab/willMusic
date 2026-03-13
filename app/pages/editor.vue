@@ -1838,6 +1838,26 @@ const handleShare = async () => {
     // 不依賴 html-to-image 自動讀取 cssRules（跨網域會 SecurityError），改由我們主動提供。
     const fontEmbedCSS = await buildFontEmbedCSS()
 
+    // 4b. 注入紙張材質 base64 style 到 export node
+    // ::after 偽元素的 background-image 若為相對 URL，html-to-image 在 off-screen 截圖時找不到；
+    // 改為先 fetch 成 base64，再用 <style> 標籤直接覆寫 CSS，確保紙紋被完整輸出。
+    let injectedTextureStyle: HTMLStyleElement | null = null
+    try {
+      const textureRes = await fetch('/paperTexture.webp')
+      if (textureRes.ok) {
+        const textureBase64 = await blobToDataURL(await textureRes.blob())
+        injectedTextureStyle = document.createElement('style')
+        injectedTextureStyle.textContent = `
+          .c-sticky-note__inner::after {
+            background-image: url('${textureBase64}') !important;
+          }
+        `
+        exportNodeRef.value.appendChild(injectedTextureStyle)
+      }
+    } catch (e) {
+      console.warn('[Export] 紙張材質嵌入失敗:', e)
+    }
+
     // 5. 針對 iOS 的預熱 Hack (Warm-up)
     // 使用低解析度預熱，強迫 html-to-image 綁定資源，但節省記憶體（pixelRatio: 0.5）
     await toPng(exportNodeRef.value, { cacheBust: true, fontEmbedCSS, pixelRatio: 0.5 }).catch(() => {})
@@ -1852,6 +1872,9 @@ const handleShare = async () => {
       cacheBust: true,
       fontEmbedCSS
     })
+
+    // 移除注入的 texture style（export node 即將卸載，這步可省略，但保持乾淨）
+    injectedTextureStyle?.remove()
 
     const blob = await (await fetch(dataUrl)).blob()
     const file = new File([blob], 'willmusic-note.png', { type: 'image/png' })
