@@ -461,13 +461,17 @@ onMounted(() => {
             // 起始 Y：display zone 底部再加上元素高度，確保完全在畫面外
             const entryBottomY = dRect.bottom
 
+            // 先同步讀取所有元素的 rect，避免在 gsap 函數參數中讀取
+            // getBoundingClientRect() 時瀏覽器 layout 尚未刷新導致的競態條件
+            const elementRects = elements.map(el => el.getBoundingClientRect())
+
             gsap.from(elements, {
-              x: (i, el) => {
-                const rect = el.getBoundingClientRect()
+              x: (i) => {
+                const rect = elementRects[i]!
                 return displayCenterX - (rect.left + rect.width / 2)
               },
-              y: (i, el) => {
-                const rect = el.getBoundingClientRect()
+              y: (i) => {
+                const rect = elementRects[i]!
                 return entryBottomY + rect.height - (rect.top + rect.height / 2)
               },
               duration: ANIM.moveDuration,
