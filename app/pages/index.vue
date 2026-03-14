@@ -15,7 +15,7 @@
           <img src="/postBoardLogoColumn.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
           <!-- <h1 class="p-index__intro-title">活動介紹</h1> -->
           <div class="p-index__intro-desc p-index__intro-rules">
-            <p style="text-align: center; margin-bottom: 2rem; color: #666; font-size: 0.9rem; line-height: 1.6;">歡迎來到 WILL MUSIC 數位應援便利貼！<br>在這裡，您可以創作專屬於您的應援內容，<br>與大家一起分享對音樂的熱愛。</p>
+            <p style="text-align: center">歡迎來到 WILL MUSIC 數位應援便利貼！<br>在這裡，您可以創作專屬於您的應援內容，<br>與大家一起分享對音樂的熱愛。</p>
           </div>
           <button
             type="button"

@@ -14,11 +14,12 @@
     touch-action: manipulation;
 }
 
-/* 活動介紹滿版 overlay */
+/* 活動介紹滿版 overlay：不超過螢幕高度，窄螢幕時卡片內容可捲動；overflow: visible 讓卡邊貼紙可超出 */
 .p-index__intro-overlay {
     position: fixed;
     inset: 0;
     z-index: 500;
+    max-height: 100dvh;
     background-color: #f5f5f5;
     background-image: url('/paperBg.webp');
     background-size: cover;
@@ -27,8 +28,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2rem;
-    overflow: hidden;
+    padding: 1rem 1rem;
+    overflow: visible;
+    box-sizing: border-box;
 }
 
 .p-index__intro-card {
@@ -36,13 +38,17 @@
     z-index: 10;
     max-width: 400px;
     width: 100%;
+    max-height: calc(100dvh - 2rem);
+    display: flex;
+    flex-direction: column;
     text-align: center;
     background: rgba(255, 255, 255, 0.9);
-    padding: 2rem;
+    padding: 2rem 1rem;
     border-radius: 20px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(10px);
     overflow: visible;
+    box-sizing: border-box;
 }
 
 .p-index__card-sticker {
@@ -68,11 +74,12 @@
 
 .p-index__intro-logo {
     display: block;
-    width: 80%;
+    width: 70%;
     height: auto;
-    margin: 0 auto 2rem;
+    margin: 0 auto 1rem;
     object-fit: contain;
     filter: drop-shadow(1px 1px 0px rgba(0, 0, 0, 0.15));
+    flex-shrink: 0;
 }
 
 .p-index__intro-title {
@@ -82,16 +89,22 @@
     margin-bottom: 1rem;
 }
 
+/* 說明區塊：寬度或高度較小時可捲動，不撐破 overlay */
+.p-index__intro-desc.p-index__intro-rules,
 .p-index__intro-rules {
     font-size: 0.95rem;
     color: var(--color-text-light, #555);
     line-height: 1.6;
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
     text-align: left;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 
     ol {
         padding-left: 1.25rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1rem;
 
         li {
             margin-bottom: 0.75rem;
@@ -148,6 +161,7 @@
     padding: 0.75rem 1.5rem;
     font-size: 1.1rem;
     margin: 0 auto;
+    flex-shrink: 0;
 
     &:disabled {
         opacity: 0.7;
