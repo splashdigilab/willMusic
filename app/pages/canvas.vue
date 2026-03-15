@@ -68,7 +68,7 @@ const route = useRoute()
 const maxNotes   = computed(() => Number(route.query.count) || 16)
 const displaySec = computed(() => Number(route.query.duration) || 15)
 const liveNoteScale = computed(() => Number(route.query.liveScale) || 0.95)
-const displayNoteScale = computed(() => Number(route.query.displayScale) || 1)
+const displayNoteScale = computed(() => Number(route.query.displayScale) || 0.9)
 
 /* ─── Conductor ─── */
 const { startConductor, stopConductor, displayState } = useConductor()
@@ -461,17 +461,13 @@ onMounted(() => {
             // 起始 Y：display zone 底部再加上元素高度，確保完全在畫面外
             const entryBottomY = dRect.bottom
 
-            // 先同步讀取所有元素的 rect，避免在 gsap 函數參數中讀取
-            // getBoundingClientRect() 時瀏覽器 layout 尚未刷新導致的競態條件
-            const elementRects = elements.map(el => el.getBoundingClientRect())
-
             gsap.from(elements, {
-              x: (i) => {
-                const rect = elementRects[i]!
+              x: (i, el) => {
+                const rect = el.getBoundingClientRect()
                 return displayCenterX - (rect.left + rect.width / 2)
               },
-              y: (i) => {
-                const rect = elementRects[i]!
+              y: (i, el) => {
+                const rect = el.getBoundingClientRect()
                 return entryBottomY + rect.height - (rect.top + rect.height / 2)
               },
               duration: ANIM.moveDuration,
@@ -525,6 +521,12 @@ onMounted(() => {
           }, `<${ANIM.moveDuration}`)
         }
 
+        // 僅 display 區：強制最終 translate 為 0 0，避免 FLIP 殘留導致跑到螢幕右下角
+        tl.call(() => {
+          document.querySelectorAll('.p-canvas__note-wrap--display').forEach(el => {
+            gsap.set(el, { x: 0, y: 0 })
+          })
+        })
       }
 
       flipSnapshot = null
