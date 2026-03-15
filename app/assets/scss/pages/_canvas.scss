@@ -90,11 +90,11 @@
     &::before {
         content: '';
         position: absolute;
-        top: 80px;
+        top: 8%;
         left: calc(50% - 27.5px);
         transform: translateX(-50%);
         width: 48%;
-        height: 20%;
+        height: 13%;
         background-image: url('/postBoardLogoColumn.svg');
         background-size: contain;
         background-position: center top;
@@ -107,7 +107,7 @@
     &::after {
         content: '';
         position: absolute;
-        bottom: 60px;
+        bottom: 6%;
         left: calc(50% - 27.5px);
         transform: translateX(-50%);
         width: 55%;
