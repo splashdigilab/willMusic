@@ -53,7 +53,13 @@
     </TransitionGroup>
 
     <!-- UI Controls -->
-    <div class="p-index__controls">
+    <div
+      class="p-index__controls"
+      @pointerdown.stop
+      @mousedown.stop
+      @touchstart.stop
+      @wheel.stop
+    >
       <div class="p-index__controls-top">
         <button class="c-btn c-btn--icon p-index__center-btn" @click="centerContent" title="置中">
           <!-- Center Icon -->
