@@ -88,7 +88,9 @@ const positionMap = reactive<Record<string, { left: number; top: number; rot: nu
 /** padding (px) 用於 live-zone 四邊內邊距 */
 const PADDING = 20
 /** live-zone 右側額外留白（px），便利貼不會出現在此區域 */
-const PADDING_RIGHT = 70
+const PADDING_RIGHT = 30
+/** live-zone 左側額外留白（px），便利貼不會出現在此區域 */
+const PADDING_LEFT = 50
 
 /** 虛擬座標系：便利貼邊長（用於 Fermat 螺旋 + 碰撞檢測，與 index 一致） */
 const VIRTUAL_ITEM_SIZE = 550
@@ -172,7 +174,7 @@ function calculatePositionsVirtual(itemCount: number): VirtualPosition[] {
 function recalcPositions() {
   const zone = liveZoneRef.value
   if (!zone) return
-  const zoneW = zone.clientWidth - PADDING - (PADDING + PADDING_RIGHT) // 右側扣掉額外留白
+  const zoneW = zone.clientWidth - (PADDING + PADDING_LEFT) - (PADDING + PADDING_RIGHT) // 左右扣掉額外留白
   const zoneH = zone.clientHeight - PADDING * 2
 
   const items = displayState.value.liveGrid.map((n: any) => getId(n))
@@ -256,7 +258,7 @@ function getScatterStyle(flipId: string) {
   if (!pos) return { width: `${size}px`, height: `${size}px` }
   return {
     position: 'absolute' as const,
-    left: `${PADDING + pos.left}px`,
+    left: `${PADDING + PADDING_LEFT + pos.left}px`,
     top: `${PADDING + pos.top}px`,
     width: `${pos.size}px`,
     height: `${pos.size}px`,
