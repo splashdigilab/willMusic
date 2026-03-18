@@ -48,6 +48,10 @@ interface ConductorState {
     isAnimating: boolean
     lastTickTime: number
     completedIds: Set<string>
+    /** idle 模式用的播放袋（A: shuffle bag） */
+    idleBag: string[]
+    /** 最近播放時間（用於冷卻避免短時間重複） */
+    lastPlayedAt: Map<string, number>
     // callbacks (stored so tick() can call them)
     onBefore: (() => void) | null
     onAfter: (() => void) | null
@@ -78,6 +82,8 @@ function getSingleton(): ConductorState {
             isAnimating: false,
             lastTickTime: 0,
             completedIds: new Set(),
+            idleBag: [],
+            lastPlayedAt: new Map(),
             onBefore: null,
             onAfter: null,
             loopMs: 15_000,
@@ -89,6 +95,101 @@ function getSingleton(): ConductorState {
 
 /* ─── Helper ─── */
 const noteId = (n: any): string => n?.id ?? n?.token ?? ''
+
+function clampInt(min: number, val: number, max: number): number {
+    return Math.max(min, Math.min(val, max))
+}
+
+/** Fisher–Yates shuffle（就地洗牌） */
+function shuffleInPlace<T>(arr: T[]): T[] {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[arr[i], arr[j]] = [arr[j]!, arr[i]!]
+    }
+    return arr
+}
+
+/** 移除 bag 中已不存在於 liveGrid 的 id，並去除重複 */
+function reconcileBagWithLiveGrid(bag: string[], liveIds: Set<string>): string[] {
+    const seen = new Set<string>()
+    const next: string[] = []
+    for (const id of bag) {
+        if (!liveIds.has(id)) continue
+        if (seen.has(id)) continue
+        seen.add(id)
+        next.push(id)
+    }
+    return next
+}
+
+/** 將新加入的 id 插入到 bag 的前段，提升「新貼」曝光速度 */
+function insertIdsNearFront(
+    bag: string[],
+    idsToInsert: string[],
+    {
+        frontWindow,
+        prevPlayingId
+    }: {
+        frontWindow: number
+        prevPlayingId: string | null
+    }
+): string[] {
+    const existing = new Set(bag)
+    const out = bag.slice()
+    const k = Math.max(1, Math.min(frontWindow, out.length + 1))
+
+    for (const id of idsToInsert) {
+        if (!id) continue
+        if (existing.has(id)) continue
+        existing.add(id)
+
+        // 插入位置：0 ~ k-1 隨機，但避免直接插成「下一張 == 上一張」
+        let idx = Math.floor(Math.random() * k)
+        if (idx === 0 && prevPlayingId && id === prevPlayingId) {
+            idx = Math.min(1, out.length)
+        }
+        out.splice(idx, 0, id)
+    }
+    return out
+}
+
+/**
+ * A + C：依 liveGrid 產生一輪播放袋（洗牌），並避免第一張剛好等於上一張（交界去重）。
+ * - excludeIds：這一輪不該出現的 id（例如剛推入的 justPushed 或上一張）
+ * - cooldownMs：冷卻時間內不選（若全被排除，會在選取時降級）
+ */
+function buildIdleBag(
+    liveIds: string[],
+    {
+        excludeIds,
+        prevPlayingId,
+        cooldownMs,
+        lastPlayedAt
+    }: {
+        excludeIds: Set<string>
+        prevPlayingId: string | null
+        cooldownMs: number
+        lastPlayedAt: Map<string, number>
+    }
+): string[] {
+    const now = Date.now()
+    const base = liveIds.filter(id => {
+        if (excludeIds.has(id)) return false
+        const t = lastPlayedAt.get(id)
+        if (!t) return true
+        return now - t >= cooldownMs
+    })
+
+    // 若冷卻把全部排掉，先退回到只排除 excludeIds（仍保留 C 的效果在後面做）
+    const pool = base.length > 0 ? base : liveIds.filter(id => !excludeIds.has(id))
+    const bag = shuffleInPlace(pool.slice())
+
+    // C：避免交界連續重複（上一張 == 下一輪第一張）
+    if (prevPlayingId && bag.length >= 2 && bag[0] === prevPlayingId) {
+        ;[bag[0], bag[1]] = [bag[1]!, bag[0]!]
+    }
+    return bag
+}
 
 /* ─── Composable ─── */
 
@@ -134,6 +235,16 @@ export function useConductor() {
                         s.liveGrid = snapshot.docs.map(
                             d => ({ id: d.id, ...d.data() } as QueueHistoryItem)
                         )
+                        // 初次載入後同步 idle bag（避免第一次 idle 隨機重複）
+                        const liveIds = s.liveGrid.map(n => noteId(n)).filter(Boolean)
+                        const cooldownTurns = clampInt(3, Math.floor(s.gridMax * 0.5), 8)
+                        const cooldownMs = cooldownTurns * s.loopMs
+                        s.idleBag = buildIdleBag(liveIds, {
+                            excludeIds: new Set(),
+                            prevPlayingId: null,
+                            cooldownMs,
+                            lastPlayedAt: s.lastPlayedAt
+                        })
                         resolve()
                         return
                     }
@@ -175,8 +286,15 @@ export function useConductor() {
                             s.nowPlaying = null
                             s.borrowedId = null
                             if (s.timer) clearTimeout(s.timer)
+                            // 先把 bag 同步到目前 liveGrid，避免抽到已被移除的 id
+                            const liveIdSet = new Set(s.liveGrid.map(n => noteId(n)))
+                            s.idleBag = reconcileBagWithLiveGrid(s.idleBag, liveIdSet)
                             tick(true)
                         }
+
+                        // 每次 history 有移除/補齊後都同步 bag（但不強制重洗，避免打斷節奏）
+                        const liveIdSet = new Set(s.liveGrid.map(n => noteId(n)))
+                        s.idleBag = reconcileBagWithLiveGrid(s.idleBag, liveIdSet)
 
                         // 觸發動畫 hook (執行 Flip 動畫)
                         s.onAfter?.()
@@ -249,6 +367,8 @@ export function useConductor() {
         s.isAnimating = false
         s.onBefore = null
         s.onAfter = null
+        s.idleBag = []
+        s.lastPlayedAt.clear()
     }
 
     /* ── tick：每 N 秒執行一次 ── */
@@ -267,6 +387,7 @@ export function useConductor() {
         // 記住上一回合，準備收尾
         const prevMode = s.mode
         const prevPlaying = s.nowPlaying ? { ...s.nowPlaying } : null
+        const prevPlayingId = prevPlaying ? noteId(prevPlaying) : null
 
         // 清空借用標記（若之前是 idle，佔位符會恢復為可見）
         s.borrowedId = null
@@ -279,6 +400,18 @@ export function useConductor() {
                 s.liveGrid.unshift(prevPlaying)
                 justPushedId = noteId(prevPlaying)
                 if (s.liveGrid.length > s.gridMax) s.liveGrid.pop()
+                // live push 播放過也要記錄，避免剛播完馬上又被 idle 借出
+                if (justPushedId) s.lastPlayedAt.set(justPushedId, Date.now())
+
+                // 新加入（剛推入 grid）的項目：插入 bag 前段，讓它在冷卻結束後能較快出現
+                if (justPushedId) {
+                    const liveIdSet = new Set(s.liveGrid.map(n => noteId(n)))
+                    s.idleBag = reconcileBagWithLiveGrid(s.idleBag, liveIdSet)
+                    s.idleBag = insertIdsNearFront(s.idleBag, [justPushedId], {
+                        frontWindow: 4,
+                        prevPlayingId
+                    })
+                }
                 // 寫入 Firestore
                 try {
                     moveToHistory(prevPlaying as QueuePendingItem)
@@ -298,21 +431,77 @@ export function useConductor() {
             s.mode = 'live'
             s.nowPlaying = { ...next }
             s.completedIds.add(noteId(next))
+            // 記錄播放時間（雖然 pending 理論上不會重複，但可以防止極端狀況）
+            const id = noteId(next)
+            if (id) s.lastPlayedAt.set(id, Date.now())
         } else if (s.liveGrid.length > 0) {
-            // ─ 狀態二：Idle Borrow（排除剛放入的那張與上一張，避免連續顯示） ─
+            // ─ 狀態二：Idle Borrow（A: shuffle bag + C: 交界去重 + 30s 冷卻） ─
             s.mode = 'idle'
-            const prevPlayingId = prevPlaying ? noteId(prevPlaying) : null
+            // 冷卻建議用「回合數」定義：避免 displaySec 改變時體感跑掉
+            // cooldownTurns: 至少 3 回合，目標約半輪，上限 8 回合
+            const cooldownTurns = clampInt(3, Math.floor(s.gridMax * 0.5), 8)
+            const COOLDOWN_MS = cooldownTurns * s.loopMs
 
-            const candidates = s.liveGrid.filter(n => {
-                const id = noteId(n)
-                return id !== justPushedId && id !== prevPlayingId
-            })
+            // 1) 先把 bag 同步到 liveGrid（處理新增/移除）
+            const liveIds = s.liveGrid.map(n => noteId(n)).filter(Boolean)
+            const liveIdSet = new Set(liveIds)
+            s.idleBag = reconcileBagWithLiveGrid(s.idleBag, liveIdSet)
 
-            const pool = candidates.length > 0 ? candidates : s.liveGrid
-            const idx = Math.floor(Math.random() * pool.length)
-            const borrowed = pool[idx]!
-            s.nowPlaying = { ...borrowed }
-            s.borrowedId = noteId(borrowed)
+            // 2) 本回合排除：剛推入（避免剛播完馬上借出）與上一張（避免連播）
+            const excludeIds = new Set<string>()
+            if (justPushedId) excludeIds.add(justPushedId)
+            if (prevPlayingId) excludeIds.add(prevPlayingId)
+
+            // 3) 若 bag 空了或下一個候選不合冷卻/排除條件 → 重建新一輪 bag
+            const shouldRebuild = () => {
+                if (s.idleBag.length === 0) return true
+                const nextId = s.idleBag[0]!
+                if (excludeIds.has(nextId)) return true
+                const t = s.lastPlayedAt.get(nextId)
+                if (t && Date.now() - t < COOLDOWN_MS) return true
+                return false
+            }
+
+            if (shouldRebuild()) {
+                // 新貼加入時：若不在 bag 裡，會在這次重建自然納入；若你想更快出現，可在後面加「插入前段」策略
+                s.idleBag = buildIdleBag(liveIds, {
+                    excludeIds,
+                    prevPlayingId,
+                    cooldownMs: COOLDOWN_MS,
+                    lastPlayedAt: s.lastPlayedAt
+                })
+            }
+
+            // 4) 從 bag 取下一張；如果因為冷卻導致 bag 內前幾張都不行，最多跳過幾張
+            let pickedId: string | null = null
+            const MAX_SKIPS = Math.min(8, s.idleBag.length)
+            for (let i = 0; i < MAX_SKIPS; i++) {
+                const id = s.idleBag.shift()
+                if (!id) break
+                if (excludeIds.has(id)) continue
+                const t = s.lastPlayedAt.get(id)
+                if (t && Date.now() - t < COOLDOWN_MS) continue
+                pickedId = id
+                break
+            }
+
+            // 5) 若仍挑不到（資料量太小/全在冷卻內），降級：只避免連播上一張
+            if (!pickedId) {
+                const fallback = liveIds.filter(id => id !== prevPlayingId)
+                pickedId = (fallback.length ? fallback : liveIds)[0] ?? null
+            }
+
+            const borrowed = pickedId ? s.liveGrid.find(n => noteId(n) === pickedId) : null
+            if (borrowed) {
+                s.nowPlaying = { ...borrowed }
+                s.borrowedId = noteId(borrowed)
+                const id = noteId(borrowed)
+                if (id) s.lastPlayedAt.set(id, Date.now())
+            } else {
+                // 理論上不該到這裡；保底
+                s.mode = 'waiting'
+                s.nowPlaying = null
+            }
         } else {
             s.mode = 'waiting'
             s.nowPlaying = null
