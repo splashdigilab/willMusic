@@ -3,7 +3,18 @@
     <div class="p-canvas-loading__spinner" aria-hidden="true"></div>
     <p class="p-canvas-loading__text">Loading...</p>
   </div>
-  <div v-show="isCanvasReady" class="p-canvas" ref="canvasRef" :style="{ '--display-scale': displayNoteScale }">
+  <div
+    v-else-if="!hasUserStarted"
+    class="p-canvas-start"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="p-canvas-start-title"
+  >
+    <h1 id="p-canvas-start-title" class="p-canvas-start__title">大螢幕展示</h1>
+    <p class="p-canvas-start__hint">請點擊「開始」以啟用播放（含插播影片聲音）。</p>
+    <button type="button" class="p-canvas-start__btn" @click="beginCanvasSession">開始</button>
+  </div>
+  <div v-show="isCanvasReady && hasUserStarted" class="p-canvas" ref="canvasRef" :style="{ '--display-scale': displayNoteScale }">
 
     <!-- ─── 左側容器 ─── -->
     <div class="p-canvas__half p-canvas__half--stack">
@@ -122,6 +133,9 @@ const showInterstitial = ref(false)
 const videoLeftRef = ref<HTMLVideoElement | null>(null)
 const videoRightRef = ref<HTMLVideoElement | null>(null)
 const isCanvasReady = ref(false)
+/** 使用者點「開始」後才啟動 Conductor／插播排程，以符合瀏覽器自動播放（有聲影片）政策 */
+const hasUserStarted = ref(false)
+let stopRecalcWatch: (() => void) | null = null
 const interstitialPreloadMap = new Map<string, Promise<void>>()
 
 const {
@@ -215,6 +229,9 @@ const applyCanvasVideoConfig = (data?: {
   if (!interstitialScheduleEnabled.value) clearInterstitialArmQueue()
 }
 
+const isAutoplayNotAllowedError = (e: unknown): boolean =>
+  e instanceof DOMException && e.name === 'NotAllowedError'
+
 const startInterstitialPlayback = async () => {
   if (interstitialSrc.value) {
     try {
@@ -231,12 +248,27 @@ const startInterstitialPlayback = async () => {
   right.pause()
   left.currentTime = 0
   right.currentTime = 0
+  left.muted = false
   try {
     await left.play()
     await right.play()
   } catch (e) {
-    console.error('[canvas] 插播影片播放失敗', e)
-    onInterstitialVideoEnded()
+    if (!isAutoplayNotAllowedError(e)) {
+      console.error('[canvas] 插播影片播放失敗', e)
+      onInterstitialVideoEnded()
+      return
+    }
+    try {
+      left.muted = true
+      await left.play()
+      await right.play()
+      console.warn(
+        '[canvas] 插播改為靜音播放（瀏覽器自動播放政策：需使用者互動後才能自動有聲播放）'
+      )
+    } catch (e2) {
+      console.error('[canvas] 插播影片播放失敗（靜音重試後仍失敗）', e2)
+      onInterstitialVideoEnded()
+    }
   }
 }
 
@@ -455,43 +487,10 @@ let capturedElements: {
   clone: HTMLElement 
 }[] = []
 
-onMounted(async () => {
-  document.body.style.margin = '0'
-  document.body.style.overflow = 'hidden'
-
-  try {
-    const initialSnap = await getDoc(doc(db, 'system', 'canvas_video'))
-    applyCanvasVideoConfig(initialSnap.exists() ? (initialSnap.data() as {
-      videoUrl?: string
-      interstitialIntervalMinutes?: number
-      interstitialScheduleEnabled?: boolean
-    }) : undefined)
-  } catch (e) {
-    console.warn('[canvas] 讀取初始插播設定失敗', e)
-  }
-
-  if (interstitialScheduleEnabled.value && interstitialSrc.value) {
-    try {
-      await preloadVideo(interstitialSrc.value)
-    } catch (e) {
-      console.warn('[canvas] 進入前預載插播影片失敗，略過等待', e)
-    }
-  }
-
-  unsubCanvasVideo = onSnapshot(doc(db, 'system', 'canvas_video'), (snap) => {
-    const data = snap.exists() ? (snap.data() as {
-      videoUrl?: string
-      interstitialIntervalMinutes?: number
-      interstitialScheduleEnabled?: boolean
-    }) : undefined
-    applyCanvasVideoConfig(data)
-
-    if (interstitialScheduleEnabled.value && interstitialSrc.value) {
-      void preloadVideo(interstitialSrc.value).catch((e) => {
-        console.warn('[canvas] 插播影片背景預載失敗', e)
-      })
-    }
-  })
+const beginCanvasSession = async () => {
+  if (hasUserStarted.value) return
+  hasUserStarted.value = true
+  await nextTick()
 
   interstitialArmTimer = setInterval(() => {
     if (!interstitialScheduleEnabled.value) return
@@ -503,7 +502,7 @@ onMounted(async () => {
     armInterstitialSlot(getInterstitialSlotKey(d, n))
   }, 1000)
 
-  startConductor({
+  await startConductor({
     loopIntervalMs: displaySec.value * 1000,
     historyLimit:   maxNotes.value,
     getInterstitialVideoUrl: () => interstitialSrc.value,
@@ -760,17 +759,58 @@ onMounted(async () => {
     }
   })
 
-  // 初始散落（Conductor 第一次 tick 後可能還沒有資料，監聽變化）
-  watch(
+  stopRecalcWatch?.()
+  stopRecalcWatch = watch(
     () => [displayState.value.liveGrid.length, liveNoteScale.value],
     () => { recalcPositions() },
     { immediate: true }
   )
+}
+
+onMounted(async () => {
+  document.body.style.margin = '0'
+  document.body.style.overflow = 'hidden'
+
+  try {
+    const initialSnap = await getDoc(doc(db, 'system', 'canvas_video'))
+    applyCanvasVideoConfig(initialSnap.exists() ? (initialSnap.data() as {
+      videoUrl?: string
+      interstitialIntervalMinutes?: number
+      interstitialScheduleEnabled?: boolean
+    }) : undefined)
+  } catch (e) {
+    console.warn('[canvas] 讀取初始插播設定失敗', e)
+  }
+
+  if (interstitialScheduleEnabled.value && interstitialSrc.value) {
+    try {
+      await preloadVideo(interstitialSrc.value)
+    } catch (e) {
+      console.warn('[canvas] 進入前預載插播影片失敗，略過等待', e)
+    }
+  }
+
+  unsubCanvasVideo = onSnapshot(doc(db, 'system', 'canvas_video'), (snap) => {
+    const data = snap.exists() ? (snap.data() as {
+      videoUrl?: string
+      interstitialIntervalMinutes?: number
+      interstitialScheduleEnabled?: boolean
+    }) : undefined
+    applyCanvasVideoConfig(data)
+
+    if (interstitialScheduleEnabled.value && interstitialSrc.value) {
+      void preloadVideo(interstitialSrc.value).catch((e) => {
+        console.warn('[canvas] 插播影片背景預載失敗', e)
+      })
+    }
+  })
 
   isCanvasReady.value = true
 })
 
 onUnmounted(() => {
+  stopRecalcWatch?.()
+  stopRecalcWatch = null
   unsubCanvasVideo?.()
   unsubCanvasVideo = null
   if (interstitialArmTimer) {
