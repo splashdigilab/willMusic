@@ -591,7 +591,7 @@ import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
 import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '#imports'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import StickyNote from '~/components/StickyNote.vue'
 import AppModal from '~/components/AppModal.vue'
 import EditorTutorialModal from '~/components/EditorTutorialModal.vue'
@@ -762,6 +762,8 @@ const TOKEN_ALERT_ICON = '🛍️'
 const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
 const GPS_DENIED_MESSAGE = '需要開啟定位權限才能上傳大螢幕，請允許瀏覽器使用您的位置後再試一次。'
 const GPS_OUTSIDE_MESSAGE = '您目前不在合法上傳區域內，請移動到店內指定範圍後再試。'
+const tokenRequiredForSubmit = ref(true)
+let unsubTokenRequirement: (() => void) | null = null
 
 const isSharing = ref(false)
 const showExportNode = ref(false)  // 控制 1080px export node 的掛載時機
@@ -1588,7 +1590,7 @@ const openSubmitModal = () => {
   }
   
   const token = loadToken()
-  if (!token) {
+  if (tokenRequiredForSubmit.value && !token) {
     showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
     return
   }
@@ -1691,8 +1693,8 @@ const validateGeoFenceBeforeSubmit = async (): Promise<boolean> => {
 const confirmSubmit = async () => {
   if (isSubmitting.value) return
 
-  const token = loadToken()
-  if (!token) {
+  const tokenForSubmit = tokenRequiredForSubmit.value ? (loadToken() || undefined) : undefined
+  if (tokenRequiredForSubmit.value && !tokenForSubmit) {
     showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
     return
   }
@@ -1727,8 +1729,10 @@ const confirmSubmit = async () => {
       return
     }
 
-    // 1. 先透過 checkTokenStatus 取得詳細錯誤原因
-    const status = await checkTokenStatus(token).catch(() => 'unknown')
+    // 1. 若啟用 token 驗證，先透過 checkTokenStatus 取得詳細錯誤原因
+    const status = tokenRequiredForSubmit.value
+      ? await checkTokenStatus(tokenForSubmit as string).catch(() => 'unknown')
+      : 'valid'
     
     // 中介檢查：OpenAI Moderation API 擋下不好的文字
     const allText = previewNoteData.value.content;
@@ -1784,15 +1788,20 @@ const confirmSubmit = async () => {
     }
 
     // 2. 狀態正確(valid)或無法判別時，嘗試正式送出
-    await createNote({ content: previewNoteData.value.content, style: previewNoteData.value.style }, token)
+    await createNote(
+      { content: previewNoteData.value.content, style: previewNoteData.value.style },
+      tokenForSubmit
+    )
 
     // 上傳成功：清除草稿與快取的 Token
     clearDraft()
-    clearToken() // 將 SessionStorage 中的 Token 刪除
+    if (tokenRequiredForSubmit.value && tokenForSubmit) {
+      clearToken() // 將 SessionStorage 中的 Token 刪除
+    }
     
     // 如果網址上有 Token，把網址也清乾淨，避免重新整理再次讀取
     const query = { ...route.query }
-    if (query.token) {
+    if (tokenRequiredForSubmit.value && query.token) {
       delete query.token
       // 使用 replace 避免在歷史紀錄中留存帶有 token 的網址
       await router.replace({ query })
@@ -2130,6 +2139,15 @@ onMounted(async () => {
     saveToken(tokenFromQuery)
   }
 
+  unsubTokenRequirement = onSnapshot(doc(db, 'system', 'editor_token_requirement'), (snap) => {
+    if (!snap.exists()) {
+      tokenRequiredForSubmit.value = true
+      return
+    }
+    const data = snap.data() as { enabled?: boolean }
+    tokenRequiredForSubmit.value = data.enabled !== false
+  })
+
   // Scale observer（加防抖：即使 interactive-widget=overlays-content 未生效的舊 iOS，
   // 也能限制鍵盤動畫期間最多每 150ms 觸發一次 Vue re-render，避免記憶體暴衝）
   if (canvasRef.value) {
@@ -2155,6 +2173,8 @@ onUnmounted(() => {
   if (resizeObserver) resizeObserver.disconnect()
   if (_clampRafId !== null) { cancelAnimationFrame(_clampRafId); _clampRafId = null }
   if (drawSaveTimer) { clearTimeout(drawSaveTimer); drawSaveTimer = null; saveDraftData() }
+  unsubTokenRequirement?.()
+  unsubTokenRequirement = null
   fabricBrush.dispose()
 })
 

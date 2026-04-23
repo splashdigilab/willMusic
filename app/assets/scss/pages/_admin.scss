@@ -569,6 +569,15 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
 
+    &--top {
+      grid-template-columns: 1fr;
+      margin-bottom: 1rem;
+    }
+
+    &--bottom {
+      grid-template-columns: 1fr;
+    }
+
     @media (max-width: 600px) {
       grid-template-columns: 1fr;
     }
@@ -596,6 +605,11 @@
       border-color: #fde68a;
       background: #fffbeb;
     }
+
+    &--full {
+      width: 100%;
+      padding: 1.35rem 1rem;
+    }
   }
 
   &__stat-value {
@@ -610,6 +624,40 @@
     font-size: 0.875rem;
     color: #666;
     font-weight: 500;
+  }
+
+  &__hourly-chart {
+    margin-top: 1.25rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1rem;
+    background: #fff;
+  }
+
+  &__hourly-chart-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  &__hourly-chart-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #111;
+  }
+
+  &__hourly-chart-subtitle {
+    font-size: 0.8rem;
+    color: #777;
+  }
+
+  &__hourly-echart {
+    width: 100%;
+    height: 220px;
+    display: block;
   }
 
   &__video-hint {

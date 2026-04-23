@@ -47,41 +47,53 @@ export const useFirestore = () => {
 
   /**
    * 建立新的便利貼並加入待處理佇列
-   * - 使用 token 作為 queue_pending 的 doc ID（保證唯一）
-   * - Token 狀態與有效期限交由 Firestore Rules 驗證
+   * - 有 token：使用 token 作為 queue_pending 的 doc ID，並在 transaction 內將 token 標記為 used
+   * - 無 token：直接建立 queue_pending 文件（給後台關閉 token 驗證時使用）
    */
-  const createNote = async (form: CreateNoteForm, token: string): Promise<string> => {
+  const createNote = async (form: CreateNoteForm, token?: string): Promise<string> => {
     try {
       const sanitizedStyle = removeUndefined(form.style)
-      const noteData = {
-        content: form.content,
-        style: sanitizedStyle,
-        token,
-        timestamp: serverTimestamp(),
-        status: 'waiting'
+      if (token) {
+        const noteData = {
+          content: form.content,
+          style: sanitizedStyle,
+          token,
+          timestamp: serverTimestamp(),
+          status: 'waiting'
+        }
+
+        const pendingRef = doc(db, 'queue_pending', token)
+        const tokenRef = doc(db, 'tokens', token)
+
+        await runTransaction(db, async (transaction) => {
+          // 先讀取 token 確保狀態
+          const tokenSnap = await transaction.get(tokenRef)
+          if (!tokenSnap.exists()) {
+            throw new Error('Token does not exist')
+          }
+
+          const tokenData = tokenSnap.data()
+          if (tokenData.status !== 'unused') {
+            throw new Error('Token already used')
+          }
+
+          // 寫入 pending queue 並將 token 標記為 used
+          transaction.set(pendingRef, noteData)
+          transaction.update(tokenRef, { status: 'used' })
+        })
+
+        return token
       }
 
-      const pendingRef = doc(db, 'queue_pending', token)
-      const tokenRef = doc(db, 'tokens', token)
-
-      await runTransaction(db, async (transaction) => {
-        // 先讀取 token 確保狀態
-        const tokenSnap = await transaction.get(tokenRef)
-        if (!tokenSnap.exists()) {
-          throw new Error('Token does not exist')
-        }
-
-        const tokenData = tokenSnap.data()
-        if (tokenData.status !== 'unused') {
-          throw new Error('Token already used')
-        }
-
-        // 寫入 pending queue 並將 token 標記為 used
-        transaction.set(pendingRef, noteData)
-        transaction.update(tokenRef, { status: 'used' })
+      const pendingRef = doc(collection(db, 'queue_pending'))
+      await setDoc(pendingRef, {
+        content: form.content,
+        style: sanitizedStyle,
+        token: pendingRef.id,
+        timestamp: serverTimestamp(),
+        status: 'waiting'
       })
-
-      return token
+      return pendingRef.id
     } catch (error) {
       console.error('Error creating note:', error)
       throw error

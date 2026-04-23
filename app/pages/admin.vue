@@ -36,7 +36,21 @@
         <!-- Token 生成器 -->
         <section v-show="activeAdminTab === 'overview'" class="p-admin__card">
           <h2 class="p-admin__card-title">生成新 Token</h2>
-          <div class="p-admin__token-generator">
+          <label class="p-admin__switch-label p-admin__switch-label--block">
+            <input
+              v-model="tokenRequiredForSubmit"
+              type="checkbox"
+              class="p-admin__switch-input"
+              :disabled="isSavingTokenRequirement"
+              @change="onTokenRequirementToggle"
+            />
+            <span class="p-admin__switch-ui" aria-hidden="true" />
+            <span class="p-admin__switch-text">上傳便利貼需要 Token</span>
+          </label>
+          <p class="p-admin__video-hint p-admin__video-hint--compact">
+            關閉時，使用者可直接送出便利貼；開啟時，使用者必須帶 Token 才能上傳。
+          </p>
+          <div v-if="tokenRequiredForSubmit" class="p-admin__token-generator">
             <button
               @click="generateToken"
               class="p-admin__btn p-admin__btn--primary"
@@ -71,43 +85,50 @@
               </div>
             </div>
           </div>
+          <div v-else class="p-admin__empty-state p-admin__empty-state--compact">
+            目前為免 Token 模式，使用者可直接上傳便利貼。
+          </div>
         </section>
 
-        <!-- Token 統計 -->
+        <!-- 上傳營運統計 -->
         <section v-show="activeAdminTab === 'overview'" class="p-admin__card">
-          <h2 class="p-admin__card-title">Token 使用統計</h2>
+          <h2 class="p-admin__card-title">上傳營運統計</h2>
           <div class="p-admin__stats-filter">
-            <button
-              class="p-admin__filter-btn"
-              :class="{ 'p-admin__filter-btn--active': statsFilter === 'all' }"
-              @click="setStatsFilter('all')"
-            >全部</button>
-            <button
-              class="p-admin__filter-btn"
-              :class="{ 'p-admin__filter-btn--active': statsFilter === 'date' }"
-              @click="setStatsFilter('date')"
-            >日期</button>
+            <label class="p-admin__form-label" for="stats-date-input">統計日期</label>
             <input
-              v-if="statsFilter === 'date'"
+              id="stats-date-input"
+              v-model="statsDate"
               type="date"
               class="p-admin__date-input"
-              v-model="customDate"
-              :max="todayStr"
+              :max="statsMaxDate"
             />
           </div>
           <div v-if="statsLoading" class="p-admin__stats-loading">載入中…</div>
-          <div v-else class="p-admin__stats-grid">
-            <div class="p-admin__stat-card">
-              <div class="p-admin__stat-value">{{ statsIssued }}</div>
-              <div class="p-admin__stat-label">發出 Token 數</div>
+          <div v-else>
+            <div class="p-admin__hourly-chart">
+              <div class="p-admin__hourly-chart-head">
+                <h3 class="p-admin__hourly-chart-title">每小時上傳趨勢</h3>
+                <span class="p-admin__hourly-chart-subtitle">{{ statsDate }}</span>
+              </div>
+              <ClientOnly>
+                <VChart
+                  class="p-admin__hourly-echart"
+                  :option="hourlyChartOption"
+                  autoresize
+                />
+              </ClientOnly>
             </div>
-            <div class="p-admin__stat-card p-admin__stat-card--used">
-              <div class="p-admin__stat-value">{{ statsUsed }}</div>
-              <div class="p-admin__stat-label">已使用 Token 數</div>
+            <div class="p-admin__stats-grid p-admin__stats-grid--top">
+              <div class="p-admin__stat-card">
+                <div class="p-admin__stat-value">{{ statsDailyUploads }}</div>
+                <div class="p-admin__stat-label">當日上傳總數</div>
+              </div>
             </div>
-            <div class="p-admin__stat-card p-admin__stat-card--unused">
-              <div class="p-admin__stat-value">{{ statsIssued - statsUsed }}</div>
-              <div class="p-admin__stat-label">未使用 Token 數</div>
+            <div class="p-admin__stats-grid p-admin__stats-grid--bottom">
+              <div class="p-admin__stat-card p-admin__stat-card--full">
+                <div class="p-admin__stat-value">{{ statsLastHourUploads }}</div>
+                <div class="p-admin__stat-label">近 1 小時上傳數</div>
+              </div>
             </div>
           </div>
         </section>
@@ -444,6 +465,11 @@ import {
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import QRCode from 'qrcode'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import VChart from 'vue-echarts'
 import AppModal from '~/components/AppModal.vue'
 import {
   clampInterstitialIntervalMinutes,
@@ -457,6 +483,7 @@ definePageMeta({
 
 const { $firestore, $storage } = useNuxtApp()
 const { createToken } = useFirestore()
+use([CanvasRenderer, LineChart, GridComponent, TooltipComponent])
 
 const db = $firestore as any
 const storage = $storage as any
@@ -501,6 +528,9 @@ const currentToken = ref<string | null>(null)
 const qrCanvas = ref<HTMLCanvasElement | null>(null)
 const qrTimeLeft = ref(60)
 let qrTimer: ReturnType<typeof setInterval> | null = null
+const tokenRequiredForSubmit = ref(true)
+const isSavingTokenRequirement = ref(false)
+let unsubTokenRequirement: (() => void) | null = null
 
 const clearQrCode = () => {
   if (qrTimer) {
@@ -576,54 +606,204 @@ const copyToken = async (token: string) => {
   }
 }
 
-// ── Token 統計 ────────────────────────────────────────────
-const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD
-const statsFilter = ref<'date' | 'all'>('date')
-const customDate = ref(todayStr)
-const statsLoading = ref(false)
-const statsIssued = ref(0)
-const statsUsed = ref(0)
-let statsUnsubscribe: (() => void) | null = null
-
-const setStatsFilter = (filter: 'date' | 'all') => {
-  statsFilter.value = filter
-  loadStats()
-}
-
-const loadStats = () => {
-  if (statsUnsubscribe) {
-    statsUnsubscribe()
-    statsUnsubscribe = null
-  }
-  statsLoading.value = true
-
-  let q: any
-  if (statsFilter.value === 'all') {
-    q = query(collection(db, 'tokens'), orderBy('createdAt', 'asc'))
-  } else {
-    const parts = customDate.value.split('-')
-    const start = new Date(parseInt(parts[0] || '0'), parseInt(parts[1] || '1') - 1, parseInt(parts[2] || '1'), 0, 0, 0, 0)
-    const end   = new Date(parseInt(parts[0] || '0'), parseInt(parts[1] || '1') - 1, parseInt(parts[2] || '1'), 23, 59, 59, 999)
-    q = query(
-      collection(db, 'tokens'),
-      where('createdAt', '>=', Timestamp.fromDate(start)),
-      where('createdAt', '<=', Timestamp.fromDate(end)),
-      orderBy('createdAt', 'asc')
-    )
-  }
-
-  statsUnsubscribe = onSnapshot(q, (snapshot: any) => {
-    statsIssued.value = snapshot.size
-    statsUsed.value = snapshot.docs.filter((d: any) => d.data().status === 'used').length
-    statsLoading.value = false
-  }, () => {
-    statsLoading.value = false
+const startTokenRequirementListener = () => {
+  unsubTokenRequirement = onSnapshot(doc(db, 'system', 'editor_token_requirement'), (snap) => {
+    if (!snap.exists()) {
+      tokenRequiredForSubmit.value = true
+      return
+    }
+    const data = snap.data() as { enabled?: boolean }
+    tokenRequiredForSubmit.value = data.enabled !== false
   })
 }
 
-// Re-fetch when date changes
-watch(customDate, () => {
-  if (statsFilter.value === 'date') loadStats()
+const onTokenRequirementToggle = async () => {
+  isSavingTokenRequirement.value = true
+  try {
+    await setDoc(
+      doc(db, 'system', 'editor_token_requirement'),
+      {
+        enabled: tokenRequiredForSubmit.value,
+        updatedAt: Timestamp.now()
+      },
+      { merge: true }
+    )
+    if (!tokenRequiredForSubmit.value) {
+      clearQrCode()
+    }
+    loadStats()
+    showAdminToast(
+      'success',
+      tokenRequiredForSubmit.value ? '已開啟：上傳需要 Token' : '已關閉：上傳不需要 Token'
+    )
+  } catch (err) {
+    console.error('[admin] 儲存 Token 驗證開關失敗', err)
+    showAdminToast('error', '儲存開關失敗，請稍後再試')
+    tokenRequiredForSubmit.value = !tokenRequiredForSubmit.value
+  } finally {
+    isSavingTokenRequirement.value = false
+  }
+}
+
+// ── 上傳營運統計 ──────────────────────────────────────────
+const statsLoading = ref(false)
+const statsDate = ref(new Date().toLocaleDateString('en-CA'))
+const statsMaxDate = computed(() => new Date().toLocaleDateString('en-CA'))
+const statsDailyUploads = ref(0)
+const statsLastHourUploads = ref(0)
+const statsHourlyUploads = ref<number[]>(Array.from({ length: 24 }, () => 0))
+let statsRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+const getDateRangeFromInput = (dateStr: string) => {
+  const parts = dateStr.split('-')
+  const year = Number(parts[0])
+  const month = Number(parts[1])
+  const day = Number(parts[2])
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    const now = new Date()
+    const fallbackStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+    const fallbackEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+    return { start: fallbackStart, end: fallbackEnd }
+  }
+  const start = new Date(year, month - 1, day, 0, 0, 0, 0)
+  const end = new Date(year, month - 1, day, 23, 59, 59, 999)
+  return { start, end }
+}
+
+const normalizeTimestampToDate = (raw: any): Date | null => {
+  if (!raw) return null
+  if (typeof raw?.toDate === 'function') return raw.toDate()
+  if (raw instanceof Date) return raw
+  if (typeof raw === 'number') return new Date(raw)
+  return null
+}
+
+const buildHourlyUploads = (pendingDocs: any[], historyDocs: any[]) => {
+  const buckets = Array.from({ length: 24 }, () => 0)
+  for (const d of pendingDocs) {
+    const date = normalizeTimestampToDate(d?.data?.()?.timestamp)
+    if (!date) continue
+    const hour = date.getHours()
+    if (hour >= 0 && hour <= 23) buckets[hour] += 1
+  }
+  for (const d of historyDocs) {
+    const date = normalizeTimestampToDate(d?.data?.()?.timestamp)
+    if (!date) continue
+    const hour = date.getHours()
+    if (hour >= 0 && hour <= 23) buckets[hour] += 1
+  }
+  return buckets
+}
+
+const hourlyChartOption = computed(() => {
+  const hourLabels = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+  return {
+    grid: {
+      left: 34,
+      right: 18,
+      top: 16,
+      bottom: 28
+    },
+    tooltip: {
+      trigger: 'axis',
+      valueFormatter: (value: number) => `${value} 筆`
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: hourLabels,
+      axisLabel: {
+        interval: 3,
+        color: '#6b7280',
+        fontSize: 11
+      },
+      axisLine: {
+        lineStyle: { color: '#cbd5e1' }
+      }
+    },
+    yAxis: {
+      type: 'value',
+      minInterval: 1,
+      axisLabel: {
+        color: '#6b7280',
+        fontSize: 11
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#e5e7eb'
+        }
+      }
+    },
+    series: [
+      {
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        data: statsHourlyUploads.value,
+        lineStyle: {
+          width: 2,
+          color: '#111'
+        },
+        itemStyle: {
+          color: '#111'
+        },
+        areaStyle: {
+          color: 'rgba(17, 17, 17, 0.08)'
+        }
+      }
+    ]
+  }
+})
+
+const loadStats = () => {
+  statsLoading.value = true
+  const now = new Date()
+  const { start, end } = getDateRangeFromInput(statsDate.value)
+  const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000))
+  const dayStartTs = Timestamp.fromDate(start)
+  const dayEndTs = Timestamp.fromDate(end)
+  const oneHourAgoTs = Timestamp.fromDate(oneHourAgo)
+
+  Promise.all([
+    getDocs(
+      query(
+        collection(db, 'queue_pending'),
+        where('timestamp', '>=', dayStartTs),
+        where('timestamp', '<=', dayEndTs)
+      )
+    ),
+    getDocs(
+      query(
+        collection(db, 'queue_history'),
+        where('timestamp', '>=', dayStartTs),
+        where('timestamp', '<=', dayEndTs)
+      )
+    ),
+    getCountFromServer(
+      query(collection(db, 'queue_pending'), where('timestamp', '>=', oneHourAgoTs))
+    ),
+    getCountFromServer(
+      query(collection(db, 'queue_history'), where('timestamp', '>=', oneHourAgoTs))
+    )
+  ]).then(([
+    pendingDailyDocsSnap,
+    historyDailyByTimestampDocsSnap,
+    pendingLastHourSnap,
+    historyLastHourSnap
+  ]) => {
+    statsHourlyUploads.value = buildHourlyUploads(pendingDailyDocsSnap.docs, historyDailyByTimestampDocsSnap.docs)
+    statsDailyUploads.value = pendingDailyDocsSnap.size + historyDailyByTimestampDocsSnap.size
+    statsLastHourUploads.value = pendingLastHourSnap.data().count + historyLastHourSnap.data().count
+    statsLoading.value = false
+  }).catch((err) => {
+    console.error('[admin] 載入營運統計失敗', err)
+    showAdminToast('error', '載入統計失敗，請稍後再試')
+    statsLoading.value = false
+  })
+}
+watch(statsDate, () => {
+  loadStats()
 })
 
 // 便利貼清單
@@ -1127,6 +1307,10 @@ const clearCanvasVideo = async () => {
 onMounted(() => {
   startNotesListeners()
   loadStats()
+  statsRefreshTimer = setInterval(() => {
+    loadStats()
+  }, 30000)
+  startTokenRequirementListener()
   startGpsFenceListener()
   startCanvasVideoListener()
 })
@@ -1136,7 +1320,12 @@ onUnmounted(() => {
     clearTimeout(adminToastTimer)
     adminToastTimer = null
   }
-  if (statsUnsubscribe) statsUnsubscribe()
+  if (statsRefreshTimer) {
+    clearInterval(statsRefreshTimer)
+    statsRefreshTimer = null
+  }
+  unsubTokenRequirement?.()
+  unsubTokenRequirement = null
   unsubCanvasVideo?.()
   unsubCanvasVideo = null
   unsubGpsFence?.()
