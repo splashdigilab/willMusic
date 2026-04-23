@@ -651,8 +651,9 @@ const onTokenRequirementToggle = async () => {
 
 // ── 上傳營運統計 ──────────────────────────────────────────
 const statsLoading = ref(false)
-const statsDate = ref(new Date().toLocaleDateString('en-CA'))
-const statsMaxDate = computed(() => new Date().toLocaleDateString('en-CA'))
+// 預設「今天」必須在掛載後用瀏覽器時區設定；若在 setup 用 new Date()，SSR（多為 UTC）與客戶端本地日曆日可能不同，會造成 hydration mismatch。
+const statsDate = ref('')
+const statsMaxDate = ref('')
 const statsDailyUploads = ref(0)
 const statsLastHourUploads = ref(0)
 const statsHourlyUploads = ref<number[]>(Array.from({ length: 24 }, () => 0))
@@ -1374,8 +1375,12 @@ const clearCanvasVideo = async () => {
 }
 
 onMounted(() => {
+  const today = new Date().toLocaleDateString('en-CA')
+  statsMaxDate.value = today
+  if (!statsDate.value) {
+    statsDate.value = today
+  }
   startNotesListeners()
-  loadStats()
   statsRefreshTimer = setInterval(() => {
     loadStats()
   }, 30000)
