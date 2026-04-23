@@ -1088,16 +1088,17 @@ const gpsRadiusMetersInput = ref(String(DEFAULT_GPS_RADIUS_METERS))
 const isSavingGpsFence = ref(false)
 let unsubGpsFence: (() => void) | null = null
 
-const parseGpsNumber = (raw: string): number | null => {
-  if (!raw.trim()) return null
-  const n = Number(raw)
+const parseGpsNumber = (raw: unknown): number | null => {
+  const normalized = String(raw ?? '').trim()
+  if (!normalized) return null
+  const n = Number(normalized)
   return Number.isFinite(n) ? n : null
 }
 
 const areGpsFieldsFilled = () =>
-  gpsLatitudeInput.value.trim() !== '' &&
-  gpsLongitudeInput.value.trim() !== '' &&
-  gpsRadiusMetersInput.value.trim() !== ''
+  String(gpsLatitudeInput.value ?? '').trim() !== '' &&
+  String(gpsLongitudeInput.value ?? '').trim() !== '' &&
+  String(gpsRadiusMetersInput.value ?? '').trim() !== ''
 
 /** 寫入 editor_geo_fence（merge）；關閉時只更新 enabled，保留既有座標欄位 */
 const writeEditorGeoFenceDoc = async (payload: {
