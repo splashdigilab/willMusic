@@ -466,7 +466,7 @@ import {
   where,
   Timestamp
 } from 'firebase/firestore'
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import QRCode from 'qrcode'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -1325,6 +1325,13 @@ const saveInterstitialInterval = async () => {
   }
 }
 
+/** 依下載網址刪除 Storage 物件（舊版 SDK 亦支援將完整 HTTPS URL 傳入 ref） */
+const deleteCanvasInterstitialVideoFromStorage = async (downloadUrl: string | null | undefined) => {
+  if (!downloadUrl) return
+  const r = storageRef(storage, downloadUrl)
+  await deleteObject(r)
+}
+
 const onVideoFileSelected = async (e: Event) => {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
@@ -1334,6 +1341,7 @@ const onVideoFileSelected = async (e: Event) => {
     input.value = ''
     return
   }
+  const previousUrl = canvasVideoUrl.value
   isUploadingVideo.value = true
   try {
     const safeName = file.name.replace(/[^\w.-]+/g, '_')
@@ -1346,6 +1354,16 @@ const onVideoFileSelected = async (e: Event) => {
       { videoUrl: url, updatedAt: Timestamp.now() },
       { merge: true }
     )
+    if (previousUrl && previousUrl !== url) {
+      try {
+        await deleteCanvasInterstitialVideoFromStorage(previousUrl)
+      } catch (delErr: unknown) {
+        const code = typeof delErr === 'object' && delErr !== null && 'code' in delErr ? (delErr as { code?: string }).code : ''
+        if (code !== 'storage/object-not-found') {
+          console.warn('[admin] 已套用新影片，但刪除舊檔失敗', delErr)
+        }
+      }
+    }
     showAdminToast('success', '影片已上傳並套用')
   } catch (err) {
     console.error('[admin] 影片上傳失敗', err)
@@ -1358,8 +1376,23 @@ const onVideoFileSelected = async (e: Event) => {
 
 const clearCanvasVideo = async () => {
   if (!confirm('確定要移除插播影片？')) return
+  const urlToDelete = canvasVideoUrl.value
   isClearingVideo.value = true
   try {
+    if (urlToDelete) {
+      try {
+        await deleteCanvasInterstitialVideoFromStorage(urlToDelete)
+      } catch (delErr: unknown) {
+        const code = typeof delErr === 'object' && delErr !== null && 'code' in delErr ? (delErr as { code?: string }).code : ''
+        if (code === 'storage/object-not-found') {
+          // 檔案已不存在，仍繼續清除 Firestore 設定
+        } else {
+          console.error('[admin] 刪除 Storage 影片失敗', delErr)
+          showAdminToast('error', '刪除雲端影片失敗，請稍後再試')
+          return
+        }
+      }
+    }
     await setDoc(
       doc(db, 'system', 'canvas_video'),
       { videoUrl: null, updatedAt: Timestamp.now() },
