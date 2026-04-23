@@ -33,8 +33,8 @@
           </button>
         </div>
 
-        <!-- Token 生成器 -->
-        <section v-show="activeAdminTab === 'overview'" class="p-admin__card">
+        <!-- Token 生成器（與 GPS 同列「上傳控管」分頁） -->
+        <section v-show="activeAdminTab === 'uploadGate'" class="p-admin__card">
           <h2 class="p-admin__card-title">生成新 Token</h2>
           <label class="p-admin__switch-label p-admin__switch-label--block">
             <input
@@ -134,10 +134,13 @@
         </section>
 
         <!-- Editor GPS 合法區域 -->
-        <section v-show="activeAdminTab === 'display'" class="p-admin__card">
+        <section v-show="activeAdminTab === 'uploadGate'" class="p-admin__card">
           <h2 class="p-admin__card-title">Editor GPS 合法區域</h2>
           <p class="p-admin__video-hint">
             開啟後，使用者在「上傳大螢幕」前，必須位於指定經緯度的半徑範圍內才可送出。
+          </p>
+          <p class="p-admin__video-hint p-admin__video-hint--compact">
+            「啟用 GPS 區域限制」開關會立即寫入後台；緯度、經度、半徑變更後請按下方「儲存 GPS 設定」。
           </p>
 
           <label class="p-admin__switch-label p-admin__switch-label--block">
@@ -510,10 +513,11 @@ const showAdminToast = (type: 'success' | 'error', message: string) => {
   }, 4200)
 }
 
-type AdminTabKey = 'overview' | 'display' | 'notes'
+type AdminTabKey = 'overview' | 'uploadGate' | 'display' | 'notes'
 
 const adminTabs: Array<{ key: AdminTabKey; label: string }> = [
   { key: 'overview', label: '營運總覽' },
+  { key: 'uploadGate', label: '上傳控管' },
   { key: 'display', label: '播放設定' },
   { key: 'notes', label: '便利貼管理' }
 ]
@@ -1095,11 +1099,80 @@ const areGpsFieldsFilled = () =>
   gpsLongitudeInput.value.trim() !== '' &&
   gpsRadiusMetersInput.value.trim() !== ''
 
-const onGpsFenceToggle = () => {
-  if (!gpsFenceEnabled.value) return
+/** 寫入 editor_geo_fence（merge）；關閉時只更新 enabled，保留既有座標欄位 */
+const writeEditorGeoFenceDoc = async (payload: {
+  enabled: boolean
+  latitude?: number
+  longitude?: number
+  radiusMeters?: number
+}) => {
+  await setDoc(
+    doc(db, 'system', 'editor_geo_fence'),
+    {
+      ...payload,
+      updatedAt: Timestamp.now()
+    },
+    { merge: true }
+  )
+}
+
+const onGpsFenceToggle = async () => {
+  if (!gpsFenceEnabled.value) {
+    isSavingGpsFence.value = true
+    try {
+      await writeEditorGeoFenceDoc({ enabled: false })
+      showAdminToast('success', '已關閉並儲存 GPS 區域限制')
+    } catch (err) {
+      console.error('[admin] 關閉 GPS 失敗', err)
+      gpsFenceEnabled.value = true
+      showAdminToast('error', '儲存失敗，請稍後再試')
+    } finally {
+      isSavingGpsFence.value = false
+    }
+    return
+  }
+
   if (!areGpsFieldsFilled()) {
     gpsFenceEnabled.value = false
     showAdminToast('error', '啟用 GPS 區域限制前，請先填寫緯度、經度與合法半徑')
+    return
+  }
+
+  const latitude = parseGpsNumber(gpsLatitudeInput.value)
+  const longitude = parseGpsNumber(gpsLongitudeInput.value)
+  const radiusMeters = parseGpsNumber(gpsRadiusMetersInput.value)
+
+  if (latitude === null || latitude < -90 || latitude > 90) {
+    gpsFenceEnabled.value = false
+    showAdminToast('error', '緯度格式錯誤，請輸入 -90 ~ 90 之間的數值')
+    return
+  }
+  if (longitude === null || longitude < -180 || longitude > 180) {
+    gpsFenceEnabled.value = false
+    showAdminToast('error', '經度格式錯誤，請輸入 -180 ~ 180 之間的數值')
+    return
+  }
+  if (radiusMeters === null || radiusMeters <= 0) {
+    gpsFenceEnabled.value = false
+    showAdminToast('error', '合法半徑需為大於 0 的數值（公尺）')
+    return
+  }
+
+  isSavingGpsFence.value = true
+  try {
+    await writeEditorGeoFenceDoc({
+      enabled: true,
+      latitude,
+      longitude,
+      radiusMeters
+    })
+    showAdminToast('success', '已啟用並儲存 GPS 區域限制')
+  } catch (err) {
+    console.error('[admin] 啟用 GPS 失敗', err)
+    gpsFenceEnabled.value = false
+    showAdminToast('error', '儲存失敗，請稍後再試')
+  } finally {
+    isSavingGpsFence.value = false
   }
 }
 
@@ -1159,17 +1232,12 @@ const saveGpsFenceSettings = async () => {
 
   isSavingGpsFence.value = true
   try {
-    await setDoc(
-      doc(db, 'system', 'editor_geo_fence'),
-      {
-        enabled: gpsFenceEnabled.value,
-        latitude: latitude,
-        longitude: longitude,
-        radiusMeters: radiusMeters,
-        updatedAt: Timestamp.now()
-      },
-      { merge: true }
-    )
+    await writeEditorGeoFenceDoc({
+      enabled: gpsFenceEnabled.value,
+      latitude,
+      longitude,
+      radiusMeters
+    })
     showAdminToast('success', 'GPS 區域設定已儲存')
   } catch (err) {
     console.error('[admin] 儲存 GPS 設定失敗', err)

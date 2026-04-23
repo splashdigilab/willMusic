@@ -1626,7 +1626,7 @@ const openSubmitModal = () => {
     const remainingCooldownMs = getTokenDisabledRemainingCooldownMs()
     if (remainingCooldownMs > 0) {
       showAlert(
-        `目前為免 Token 上傳模式，每次上傳後需等待 3 分鐘。請於 ${formatCooldownRemaining(remainingCooldownMs)} 後再試。`,
+        `每次上傳後需等待 3 分鐘。請於 ${formatCooldownRemaining(remainingCooldownMs)} 後再試。`,
         '上傳冷卻中',
         '⏱️'
       )
@@ -1743,7 +1743,7 @@ const confirmSubmit = async () => {
     if (remainingCooldownMs > 0) {
       showSubmitModal.value = false
       showAlert(
-        `目前為免 Token 上傳模式，每次上傳後需等待 3 分鐘。請於 ${formatCooldownRemaining(remainingCooldownMs)} 後再試。`,
+        `每次上傳後需等待 3 分鐘。請於 ${formatCooldownRemaining(remainingCooldownMs)} 後再試。`,
         '上傳冷卻中',
         '⏱️'
       )
