@@ -2,7 +2,7 @@
   <div class="p-canvas" ref="canvasRef" :style="{ '--display-scale': displayNoteScale }">
 
     <!-- ─── 左側容器 ─── -->
-    <div class="p-canvas__half">
+    <div class="p-canvas__half p-canvas__half--stack">
       <!-- ─── 左半：隨機散落區 ─── -->
       <div class="p-canvas__live-zone" ref="liveZoneRef">
         <div
@@ -20,10 +20,24 @@
           </div>
         </div>
       </div>
+      <div
+        v-show="showInterstitial && interstitialSrc"
+        class="p-canvas__interstitial"
+        aria-hidden="true"
+      >
+        <video
+          ref="videoLeftRef"
+          class="p-canvas__interstitial__video"
+          :src="interstitialSrc || undefined"
+          playsinline
+          @timeupdate="onInterstitialPrimaryTimeUpdate"
+          @ended="onInterstitialVideoEnded"
+        />
+      </div>
     </div>
 
     <!-- ─── 右側容器 ─── -->
-    <div class="p-canvas__half">
+    <div class="p-canvas__half p-canvas__half--stack">
       <!-- ─── 右半：單張展示區 ─── -->
       <div class="p-canvas__display-zone">
         <div
@@ -34,9 +48,19 @@
         >
           <StickyNote :note="displayState.nowPlaying" />
         </div>
-        <div v-else class="p-canvas__empty-state">
-          <h2>等待便利貼中...</h2>
-        </div>
+      </div>
+      <div
+        v-show="showInterstitial && interstitialSrc"
+        class="p-canvas__interstitial"
+        aria-hidden="true"
+      >
+        <video
+          ref="videoRightRef"
+          class="p-canvas__interstitial__video"
+          :src="interstitialSrc || undefined"
+          playsinline
+          muted
+        />
       </div>
     </div>
   </div>
@@ -47,8 +71,14 @@ import { ref, onMounted, onUnmounted, nextTick, computed, watch, reactive } from
 import { gsap } from 'gsap'
 import { Flip } from 'gsap/Flip'
 import { useRoute } from 'vue-router'
+import { doc, onSnapshot } from 'firebase/firestore'
 import StickyNote from '~/components/StickyNote.vue'
-import { useConductor } from '~/composables/useConductor'
+import {
+  useConductor,
+  getInterstitialSlotKey,
+  clampInterstitialIntervalMinutes,
+  parseInterstitialScheduleEnabled
+} from '~/composables/useConductor'
 
 definePageMeta({ layout: false })
 gsap.registerPlugin(Flip)
@@ -70,8 +100,66 @@ const displaySec = computed(() => Number(route.query.duration) || 15)
 const liveNoteScale = computed(() => Number(route.query.liveScale) || 0.95)
 const displayNoteScale = computed(() => Number(route.query.displayScale) || 0.9)
 
-/* ─── Conductor ─── */
-const { startConductor, stopConductor, displayState } = useConductor()
+/* ─── Conductor + 插播影片 ─── */
+const { $firestore } = useNuxtApp()
+const db = $firestore as any
+
+const interstitialSrc = ref<string | null>(null)
+/** 插播排程間隔（分鐘），與 Firestore system/canvas_video.interstitialIntervalMinutes 同步 */
+const interstitialIntervalMinutes = ref(clampInterstitialIntervalMinutes(undefined))
+/** 與 Firestore interstitialScheduleEnabled 同步；為 false 時不依時間 arm */
+const interstitialScheduleEnabled = ref(false)
+let unsubCanvasVideo: (() => void) | null = null
+let interstitialArmTimer: ReturnType<typeof setInterval> | null = null
+
+const showInterstitial = ref(false)
+const videoLeftRef = ref<HTMLVideoElement | null>(null)
+const videoRightRef = ref<HTMLVideoElement | null>(null)
+
+const {
+  startConductor,
+  stopConductor,
+  displayState,
+  armInterstitialSlot,
+  finishInterstitial,
+  clearInterstitialArmQueue
+} = useConductor()
+
+/** 右側影片無音訊，依左側時間軸對齊 */
+const onInterstitialPrimaryTimeUpdate = () => {
+  const primary = videoLeftRef.value
+  const secondary = videoRightRef.value
+  if (!primary || !secondary) return
+  if (Math.abs(secondary.currentTime - primary.currentTime) > 0.12) {
+    secondary.currentTime = primary.currentTime
+  }
+}
+
+const startInterstitialPlayback = async () => {
+  await nextTick()
+  const left = videoLeftRef.value
+  const right = videoRightRef.value
+  if (!left || !right || !interstitialSrc.value) return
+  left.pause()
+  right.pause()
+  left.currentTime = 0
+  right.currentTime = 0
+  try {
+    await left.play()
+    await right.play()
+  } catch (e) {
+    console.error('[canvas] 插播影片播放失敗', e)
+    onInterstitialVideoEnded()
+  }
+}
+
+const onInterstitialVideoEnded = () => {
+  videoLeftRef.value?.pause()
+  videoRightRef.value?.pause()
+  showInterstitial.value = false
+  finishInterstitial()
+}
+
 const canvasRef   = ref<HTMLElement | null>(null)
 const liveZoneRef = ref<HTMLElement | null>(null)
 
@@ -284,9 +372,48 @@ onMounted(() => {
   document.body.style.margin = '0'
   document.body.style.overflow = 'hidden'
 
+  unsubCanvasVideo = onSnapshot(doc(db, 'system', 'canvas_video'), (snap) => {
+    if (!snap.exists()) {
+      interstitialSrc.value = null
+      interstitialIntervalMinutes.value = clampInterstitialIntervalMinutes(undefined)
+      interstitialScheduleEnabled.value = false
+      clearInterstitialArmQueue()
+      return
+    }
+    const data = snap.data() as {
+      videoUrl?: string
+      interstitialIntervalMinutes?: number
+      interstitialScheduleEnabled?: boolean
+    }
+    const u = data.videoUrl
+    interstitialSrc.value = typeof u === 'string' && u.length > 0 ? u : null
+    interstitialIntervalMinutes.value = clampInterstitialIntervalMinutes(
+      data.interstitialIntervalMinutes
+    )
+    interstitialScheduleEnabled.value = parseInterstitialScheduleEnabled(
+      data.interstitialScheduleEnabled
+    )
+    if (!interstitialScheduleEnabled.value) clearInterstitialArmQueue()
+  })
+
+  interstitialArmTimer = setInterval(() => {
+    if (!interstitialScheduleEnabled.value) return
+    const d = new Date()
+    if (d.getSeconds() !== 0) return
+    const n = interstitialIntervalMinutes.value
+    const totalM = d.getHours() * 60 + d.getMinutes()
+    if (totalM % n !== 0) return
+    armInterstitialSlot(getInterstitialSlotKey(d, n))
+  }, 1000)
+
   startConductor({
     loopIntervalMs: displaySec.value * 1000,
     historyLimit:   maxNotes.value,
+    getInterstitialVideoUrl: () => interstitialSrc.value,
+    onInterstitialStart: () => {
+      showInterstitial.value = true
+      void startInterstitialPlayback()
+    },
 
     /* ── BEFORE：拍快照 ── */
     onBeforeStateChange() {
@@ -545,6 +672,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  unsubCanvasVideo?.()
+  unsubCanvasVideo = null
+  if (interstitialArmTimer) {
+    clearInterval(interstitialArmTimer)
+    interstitialArmTimer = null
+  }
   stopConductor()
   document.body.style.margin = ''
   document.body.style.overflow = ''

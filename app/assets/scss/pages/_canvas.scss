@@ -49,6 +49,29 @@
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
+
+    &--stack {
+        position: relative;
+    }
+}
+
+/* 定時插播影片：左右各一層，蓋在該半邊內容之上 */
+.p-canvas__interstitial {
+    position: absolute;
+    inset: 0;
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    box-sizing: border-box;
+}
+
+.p-canvas__interstitial__video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
 }
 
 /* ─── 左半：隨機散落區 ─── */
@@ -131,11 +154,4 @@
 .p-canvas__note-wrap--display {
     width: calc(min(60vh, 40vw) * var(--display-scale, 1));
     height: calc(min(60vh, 40vw) * var(--display-scale, 1));
-}
-
-/* 等待提示 */
-.p-canvas__empty-state {
-    opacity: 0.5;
-    font-size: 2rem;
-    letter-spacing: 0.2em;
 }
