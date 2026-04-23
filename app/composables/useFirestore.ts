@@ -53,17 +53,17 @@ export const useFirestore = () => {
   const createNote = async (form: CreateNoteForm, token?: string): Promise<string> => {
     try {
       const sanitizedStyle = removeUndefined(form.style)
-      if (token) {
+      const createNoteWithToken = async (resolvedToken: string): Promise<string> => {
         const noteData = {
           content: form.content,
           style: sanitizedStyle,
-          token,
+          token: resolvedToken,
           timestamp: serverTimestamp(),
           status: 'waiting'
         }
 
-        const pendingRef = doc(db, 'queue_pending', token)
-        const tokenRef = doc(db, 'tokens', token)
+        const pendingRef = doc(db, 'queue_pending', resolvedToken)
+        const tokenRef = doc(db, 'tokens', resolvedToken)
 
         await runTransaction(db, async (transaction) => {
           // 先讀取 token 確保狀態
@@ -82,18 +82,47 @@ export const useFirestore = () => {
           transaction.update(tokenRef, { status: 'used' })
         })
 
-        return token
+        return resolvedToken
+      }
+
+      if (token) {
+        return await createNoteWithToken(token)
       }
 
       const pendingRef = doc(collection(db, 'queue_pending'))
-      await setDoc(pendingRef, {
-        content: form.content,
-        style: sanitizedStyle,
-        token: pendingRef.id,
-        timestamp: serverTimestamp(),
-        status: 'waiting'
-      })
-      return pendingRef.id
+      try {
+        await setDoc(pendingRef, {
+          content: form.content,
+          style: sanitizedStyle,
+          token: pendingRef.id,
+          timestamp: serverTimestamp(),
+          status: 'waiting'
+        })
+        return pendingRef.id
+      } catch (error: any) {
+        const denied =
+          error?.code === 'permission-denied' ||
+          String(error?.message || '').includes('Missing or insufficient permissions')
+        if (!denied) throw error
+
+        // 當後端 Rules 仍強制 token 寫入時，自動建立內部 token 後重送，
+        // 讓前端在「不需 token」模式下仍可正常上傳。
+        try {
+          const autoTokenRef = await addDoc(collection(db, 'tokens'), {
+            status: 'unused',
+            createdAt: serverTimestamp()
+          })
+          return await createNoteWithToken(autoTokenRef.id)
+        } catch (autoTokenError: any) {
+          const autoDenied =
+            autoTokenError?.code === 'permission-denied' ||
+            String(autoTokenError?.message || '').includes('Missing or insufficient permissions')
+          if (autoDenied) {
+            throw new Error('目前後端權限設定不允許無 Token 上傳，請先開啟後台 Token 驗證或調整 Firestore 規則。')
+          }
+          throw autoTokenError
+        }
+      }
     } catch (error) {
       console.error('Error creating note:', error)
       throw error

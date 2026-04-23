@@ -591,7 +591,7 @@ import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
 import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '#imports'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import StickyNote from '~/components/StickyNote.vue'
 import AppModal from '~/components/AppModal.vue'
 import EditorTutorialModal from '~/components/EditorTutorialModal.vue'
@@ -762,8 +762,41 @@ const TOKEN_ALERT_ICON = '🛍️'
 const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
 const GPS_DENIED_MESSAGE = '需要開啟定位權限才能上傳大螢幕，請允許瀏覽器使用您的位置後再試一次。'
 const GPS_OUTSIDE_MESSAGE = '您目前不在合法上傳區域內，請移動到店內指定範圍後再試。'
+const TOKEN_DISABLED_SUBMIT_COOLDOWN_MS = 3 * 60 * 1000
+const TOKEN_DISABLED_LAST_SUBMIT_AT_KEY = 'willmusic_token_disabled_last_submit_at'
 const tokenRequiredForSubmit = ref(false)
 let unsubTokenRequirement: (() => void) | null = null
+
+const getTokenDisabledRemainingCooldownMs = (): number => {
+  if (typeof window === 'undefined') return 0
+  try {
+    const raw = localStorage.getItem(TOKEN_DISABLED_LAST_SUBMIT_AT_KEY)
+    const lastSubmitAt = Number(raw)
+    if (!Number.isFinite(lastSubmitAt) || lastSubmitAt <= 0) return 0
+    const elapsed = Date.now() - lastSubmitAt
+    return Math.max(0, TOKEN_DISABLED_SUBMIT_COOLDOWN_MS - elapsed)
+  } catch {
+    return 0
+  }
+}
+
+const formatCooldownRemaining = (remainingMs: number): string => {
+  const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes <= 0) return `${seconds} 秒`
+  if (seconds <= 0) return `${minutes} 分鐘`
+  return `${minutes} 分 ${seconds} 秒`
+}
+
+const saveTokenDisabledSubmitTimestamp = () => {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(TOKEN_DISABLED_LAST_SUBMIT_AT_KEY, String(Date.now()))
+  } catch {
+    // ignore storage write errors
+  }
+}
 
 const isSharing = ref(false)
 const showExportNode = ref(false)  // 控制 1080px export node 的掛載時機
@@ -1588,6 +1621,18 @@ const openSubmitModal = () => {
     showAlert('請輸入文字內容')
     return
   }
+
+  if (!tokenRequiredForSubmit.value) {
+    const remainingCooldownMs = getTokenDisabledRemainingCooldownMs()
+    if (remainingCooldownMs > 0) {
+      showAlert(
+        `目前為免 Token 上傳模式，每次上傳後需等待 3 分鐘。請於 ${formatCooldownRemaining(remainingCooldownMs)} 後再試。`,
+        '上傳冷卻中',
+        '⏱️'
+      )
+      return
+    }
+  }
   
   const token = loadToken()
   if (tokenRequiredForSubmit.value && !token) {
@@ -1693,6 +1738,19 @@ const validateGeoFenceBeforeSubmit = async (): Promise<boolean> => {
 const confirmSubmit = async () => {
   if (isSubmitting.value) return
 
+  if (!tokenRequiredForSubmit.value) {
+    const remainingCooldownMs = getTokenDisabledRemainingCooldownMs()
+    if (remainingCooldownMs > 0) {
+      showSubmitModal.value = false
+      showAlert(
+        `目前為免 Token 上傳模式，每次上傳後需等待 3 分鐘。請於 ${formatCooldownRemaining(remainingCooldownMs)} 後再試。`,
+        '上傳冷卻中',
+        '⏱️'
+      )
+      return
+    }
+  }
+
   const tokenForSubmit = tokenRequiredForSubmit.value ? (loadToken() || undefined) : undefined
   if (tokenRequiredForSubmit.value && !tokenForSubmit) {
     showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
@@ -1795,6 +1853,9 @@ const confirmSubmit = async () => {
 
     // 上傳成功：清除草稿與快取的 Token
     clearDraft()
+    if (!tokenRequiredForSubmit.value) {
+      saveTokenDisabledSubmitTimestamp()
+    }
     if (tokenRequiredForSubmit.value && tokenForSubmit) {
       clearToken() // 將 SessionStorage 中的 Token 刪除
     }
@@ -2142,8 +2203,15 @@ onMounted(async () => {
     saveToken(tokenFromQuery)
   }
 
-  // 目前先固定關閉上傳 token 驗證，避免前端被遠端設定切回需要 token。
-  tokenRequiredForSubmit.value = false
+  // Token 驗證預設關閉；若後台有設定，則即時跟隨後台開關。
+  unsubTokenRequirement = onSnapshot(doc(db, 'system', 'editor_token_requirement'), (snap) => {
+    if (!snap.exists()) {
+      tokenRequiredForSubmit.value = false
+      return
+    }
+    const data = snap.data() as { enabled?: boolean }
+    tokenRequiredForSubmit.value = data.enabled === true
+  })
 
   // Scale observer（加防抖：即使 interactive-widget=overlays-content 未生效的舊 iOS，
   // 也能限制鍵盤動畫期間最多每 150ms 觸發一次 Vue re-render，避免記憶體暴衝）
