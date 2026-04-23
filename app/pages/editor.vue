@@ -590,7 +590,8 @@ import { useStorage } from '~/composables/useStorage'
 import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
 import { useRoute, useRouter } from 'vue-router'
-import { useHead } from '@unhead/vue'
+import { useHead } from '#imports'
+import { doc, getDoc } from 'firebase/firestore'
 import StickyNote from '~/components/StickyNote.vue'
 import AppModal from '~/components/AppModal.vue'
 import EditorTutorialModal from '~/components/EditorTutorialModal.vue'
@@ -610,6 +611,8 @@ useHead({
 
 const route = useRoute()
 const router = useRouter()
+const { $firestore } = useNuxtApp()
+const db = $firestore as any
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
 
 const MAX_TEXT_BLOCKS = 3
@@ -757,6 +760,8 @@ const showAlert = (msg: string, title = '提示', icon = '⚠️') => {
 const TOKEN_ALERT_TITLE = '只差最後一步！'
 const TOKEN_ALERT_ICON = '🛍️'
 const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
+const GPS_DENIED_MESSAGE = '需要開啟定位權限才能上傳大螢幕，請允許瀏覽器使用您的位置後再試一次。'
+const GPS_OUTSIDE_MESSAGE = '您目前不在合法上傳區域內，請移動到店內指定範圍後再試。'
 
 const isSharing = ref(false)
 const showExportNode = ref(false)  // 控制 1080px export node 的掛載時機
@@ -1613,6 +1618,76 @@ const previewNoteData = computed(() => {
   } as any
 })
 
+const toRadians = (deg: number) => deg * (Math.PI / 180)
+
+const calculateDistanceMeters = (
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number
+) => {
+  const earthRadiusMeters = 6371000
+  const dLat = toRadians(toLat - fromLat)
+  const dLng = toRadians(toLng - fromLng)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(fromLat)) * Math.cos(toRadians(toLat)) * Math.sin(dLng / 2) ** 2
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return earthRadiusMeters * c
+}
+
+const getCurrentPosition = (): Promise<GeolocationPosition> =>
+  new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      reject(new Error('Geolocation API not available'))
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      position => resolve(position),
+      error => reject(error),
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    )
+  })
+
+const validateGeoFenceBeforeSubmit = async (): Promise<boolean> => {
+  const geoFenceSnap = await getDoc(doc(db, 'system', 'editor_geo_fence'))
+  if (!geoFenceSnap.exists()) return true
+
+  const data = geoFenceSnap.data() as {
+    enabled?: boolean
+    latitude?: number
+    longitude?: number
+    radiusMeters?: number
+  }
+
+  if (!data.enabled) return true
+
+  const centerLat = Number(data.latitude)
+  const centerLng = Number(data.longitude)
+  const radiusMeters = Number(data.radiusMeters)
+  const configValid =
+    Number.isFinite(centerLat) &&
+    Number.isFinite(centerLng) &&
+    Number.isFinite(radiusMeters) &&
+    radiusMeters > 0
+
+  if (!configValid) {
+    throw new Error('GPS fence config invalid')
+  }
+
+  const position = await getCurrentPosition()
+  const userLat = position.coords.latitude
+  const userLng = position.coords.longitude
+  const distance = calculateDistanceMeters(userLat, userLng, centerLat, centerLng)
+
+  return distance <= radiusMeters
+}
+
 const confirmSubmit = async () => {
   if (isSubmitting.value) return
 
@@ -1626,6 +1701,31 @@ const confirmSubmit = async () => {
 
   try {
     const { createNote, checkTokenStatus } = useFirestore()
+
+    // GPS 合法區域檢查：若後台開啟限制，必須位於指定半徑內才能送出
+    let isWithinAllowedArea = false
+    try {
+      isWithinAllowedArea = await validateGeoFenceBeforeSubmit()
+    } catch (geoError: any) {
+      const code = geoError?.code
+      showSubmitModal.value = false
+      if (code === 1) {
+        showAlert(GPS_DENIED_MESSAGE, '需要定位權限', '📍')
+      } else if (code === 2 || code === 3) {
+        showAlert('無法取得目前位置，請確認定位服務已開啟並稍後再試。', '定位失敗', '📍')
+      } else {
+        showAlert('定位驗證失敗，請稍後再試。', '定位失敗', '📍')
+      }
+      isSubmitting.value = false
+      return
+    }
+
+    if (!isWithinAllowedArea) {
+      showSubmitModal.value = false
+      showAlert(GPS_OUTSIDE_MESSAGE, '不在合法區域', '📍')
+      isSubmitting.value = false
+      return
+    }
 
     // 1. 先透過 checkTokenStatus 取得詳細錯誤原因
     const status = await checkTokenStatus(token).catch(() => 'unknown')
