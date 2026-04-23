@@ -591,7 +591,7 @@ import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
 import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '#imports'
-import { doc, getDoc, onSnapshot } from 'firebase/firestore'
+import { doc, getDoc } from 'firebase/firestore'
 import StickyNote from '~/components/StickyNote.vue'
 import AppModal from '~/components/AppModal.vue'
 import EditorTutorialModal from '~/components/EditorTutorialModal.vue'
@@ -762,7 +762,7 @@ const TOKEN_ALERT_ICON = '🛍️'
 const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
 const GPS_DENIED_MESSAGE = '需要開啟定位權限才能上傳大螢幕，請允許瀏覽器使用您的位置後再試一次。'
 const GPS_OUTSIDE_MESSAGE = '您目前不在合法上傳區域內，請移動到店內指定範圍後再試。'
-const tokenRequiredForSubmit = ref(true)
+const tokenRequiredForSubmit = ref(false)
 let unsubTokenRequirement: (() => void) | null = null
 
 const isSharing = ref(false)
@@ -1814,7 +1814,10 @@ const confirmSubmit = async () => {
     console.error('提交失敗:', e)
     
     // 如果因為 Firebase Rules 阻擋讀取 token 而拋錯，退回到這裡用泛用的錯誤提示
-    if (e?.code === 'permission-denied' || e?.message?.includes('Missing or insufficient permissions')) {
+    if (
+      tokenRequiredForSubmit.value &&
+      (e?.code === 'permission-denied' || e?.message?.includes('Missing or insufficient permissions'))
+    ) {
       showAlert(
         '您的專屬 QR Code 可能已失效 (超過限時 30 分鐘) 或已經被使用過。請向店員重新索取新的 QR Code！', 
         '上傳授權失效', 
@@ -2139,14 +2142,8 @@ onMounted(async () => {
     saveToken(tokenFromQuery)
   }
 
-  unsubTokenRequirement = onSnapshot(doc(db, 'system', 'editor_token_requirement'), (snap) => {
-    if (!snap.exists()) {
-      tokenRequiredForSubmit.value = true
-      return
-    }
-    const data = snap.data() as { enabled?: boolean }
-    tokenRequiredForSubmit.value = data.enabled !== false
-  })
+  // 目前先固定關閉上傳 token 驗證，避免前端被遠端設定切回需要 token。
+  tokenRequiredForSubmit.value = false
 
   // Scale observer（加防抖：即使 interactive-widget=overlays-content 未生效的舊 iOS，
   // 也能限制鍵盤動畫期間最多每 150ms 觸發一次 Vue re-render，避免記憶體暴衝）
