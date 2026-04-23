@@ -1332,12 +1332,19 @@ const deleteCanvasInterstitialVideoFromStorage = async (downloadUrl: string | nu
   await deleteObject(r)
 }
 
+const MAX_VIDEO_FILE_SIZE_BYTES = 50 * 1024 * 1024
+
 const onVideoFileSelected = async (e: Event) => {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
   if (!file.type.startsWith('video/')) {
     showAdminToast('error', '請選擇影片檔（MP4 / WebM / MOV 等）')
+    input.value = ''
+    return
+  }
+  if (file.size > MAX_VIDEO_FILE_SIZE_BYTES) {
+    showAdminToast('error', '影片大小不得超過 50MB')
     input.value = ''
     return
   }

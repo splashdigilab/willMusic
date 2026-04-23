@@ -1,4 +1,8 @@
 <template>
+  <div v-if="!isCanvasReady" class="p-canvas-loading" role="status" aria-live="polite">
+    <div class="p-canvas-loading__spinner" aria-hidden="true"></div>
+    <p class="p-canvas-loading__text">Loading...</p>
+  </div>
   <div v-show="isCanvasReady" class="p-canvas" ref="canvasRef" :style="{ '--display-scale': displayNoteScale }">
 
     <!-- ─── 左側容器 ─── -->

@@ -31,6 +31,41 @@
     }
 }
 
+@keyframes canvas-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.p-canvas-loading {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: #0e1116;
+    color: #fff;
+}
+
+.p-canvas-loading__spinner {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 5px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #fff;
+    animation: canvas-loading-spin 0.9s linear infinite;
+}
+
+.p-canvas-loading__text {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
 .p-canvas {
     width: 100vw;
     height: 100vh;
