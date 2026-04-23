@@ -1,5 +1,5 @@
 <template>
-  <div class="p-canvas" ref="canvasRef" :style="{ '--display-scale': displayNoteScale }">
+  <div v-show="isCanvasReady" class="p-canvas" ref="canvasRef" :style="{ '--display-scale': displayNoteScale }">
 
     <!-- ─── 左側容器 ─── -->
     <div class="p-canvas__half p-canvas__half--stack">
@@ -29,6 +29,7 @@
           ref="videoLeftRef"
           class="p-canvas__interstitial__video"
           :src="interstitialSrc || undefined"
+          preload="auto"
           playsinline
           @timeupdate="onInterstitialPrimaryTimeUpdate"
           @ended="onInterstitialVideoEnded"
@@ -58,6 +59,7 @@
           ref="videoRightRef"
           class="p-canvas__interstitial__video"
           :src="interstitialSrc || undefined"
+          preload="auto"
           playsinline
           muted
         />
@@ -71,7 +73,7 @@ import { ref, onMounted, onUnmounted, nextTick, computed, watch, reactive } from
 import { gsap } from 'gsap'
 import { Flip } from 'gsap/Flip'
 import { useRoute } from 'vue-router'
-import { doc, onSnapshot } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import StickyNote from '~/components/StickyNote.vue'
 import {
   useConductor,
@@ -115,6 +117,8 @@ let interstitialArmTimer: ReturnType<typeof setInterval> | null = null
 const showInterstitial = ref(false)
 const videoLeftRef = ref<HTMLVideoElement | null>(null)
 const videoRightRef = ref<HTMLVideoElement | null>(null)
+const isCanvasReady = ref(false)
+const interstitialPreloadMap = new Map<string, Promise<void>>()
 
 const {
   startConductor,
@@ -135,7 +139,86 @@ const onInterstitialPrimaryTimeUpdate = () => {
   }
 }
 
+const preloadVideo = (url: string): Promise<void> => {
+  if (interstitialPreloadMap.has(url)) return interstitialPreloadMap.get(url)!
+
+  const preloadPromise = new Promise<void>((resolve, reject) => {
+    const video = document.createElement('video')
+    let done = false
+    const timeout = window.setTimeout(() => {
+      cleanup()
+      reject(new Error('timeout'))
+    }, 12000)
+
+    const cleanup = () => {
+      if (done) return
+      done = true
+      window.clearTimeout(timeout)
+      video.removeEventListener('canplaythrough', onReady)
+      video.removeEventListener('loadeddata', onReady)
+      video.removeEventListener('error', onError)
+      video.src = ''
+      video.load()
+    }
+
+    const onReady = () => {
+      cleanup()
+      resolve()
+    }
+    const onError = () => {
+      cleanup()
+      reject(new Error('error'))
+    }
+
+    video.preload = 'auto'
+    video.muted = true
+    video.playsInline = true
+    video.addEventListener('canplaythrough', onReady, { once: true })
+    video.addEventListener('loadeddata', onReady, { once: true })
+    video.addEventListener('error', onError, { once: true })
+    video.src = url
+    video.load()
+  }).catch((e) => {
+    interstitialPreloadMap.delete(url)
+    throw e
+  })
+
+  interstitialPreloadMap.set(url, preloadPromise)
+  return preloadPromise
+}
+
+const applyCanvasVideoConfig = (data?: {
+  videoUrl?: string
+  interstitialIntervalMinutes?: number
+  interstitialScheduleEnabled?: boolean
+}) => {
+  if (!data) {
+    interstitialSrc.value = null
+    interstitialIntervalMinutes.value = clampInterstitialIntervalMinutes(undefined)
+    interstitialScheduleEnabled.value = false
+    clearInterstitialArmQueue()
+    return
+  }
+
+  const u = data.videoUrl
+  interstitialSrc.value = typeof u === 'string' && u.length > 0 ? u : null
+  interstitialIntervalMinutes.value = clampInterstitialIntervalMinutes(
+    data.interstitialIntervalMinutes
+  )
+  interstitialScheduleEnabled.value = parseInterstitialScheduleEnabled(
+    data.interstitialScheduleEnabled
+  )
+  if (!interstitialScheduleEnabled.value) clearInterstitialArmQueue()
+}
+
 const startInterstitialPlayback = async () => {
+  if (interstitialSrc.value) {
+    try {
+      await preloadVideo(interstitialSrc.value)
+    } catch (e) {
+      console.warn('[canvas] 插播影片預載失敗，改為直接嘗試播放', e)
+    }
+  }
   await nextTick()
   const left = videoLeftRef.value
   const right = videoRightRef.value
@@ -368,32 +451,42 @@ let capturedElements: {
   clone: HTMLElement 
 }[] = []
 
-onMounted(() => {
+onMounted(async () => {
   document.body.style.margin = '0'
   document.body.style.overflow = 'hidden'
 
-  unsubCanvasVideo = onSnapshot(doc(db, 'system', 'canvas_video'), (snap) => {
-    if (!snap.exists()) {
-      interstitialSrc.value = null
-      interstitialIntervalMinutes.value = clampInterstitialIntervalMinutes(undefined)
-      interstitialScheduleEnabled.value = false
-      clearInterstitialArmQueue()
-      return
-    }
-    const data = snap.data() as {
+  try {
+    const initialSnap = await getDoc(doc(db, 'system', 'canvas_video'))
+    applyCanvasVideoConfig(initialSnap.exists() ? (initialSnap.data() as {
       videoUrl?: string
       interstitialIntervalMinutes?: number
       interstitialScheduleEnabled?: boolean
+    }) : undefined)
+  } catch (e) {
+    console.warn('[canvas] 讀取初始插播設定失敗', e)
+  }
+
+  if (interstitialScheduleEnabled.value && interstitialSrc.value) {
+    try {
+      await preloadVideo(interstitialSrc.value)
+    } catch (e) {
+      console.warn('[canvas] 進入前預載插播影片失敗，略過等待', e)
     }
-    const u = data.videoUrl
-    interstitialSrc.value = typeof u === 'string' && u.length > 0 ? u : null
-    interstitialIntervalMinutes.value = clampInterstitialIntervalMinutes(
-      data.interstitialIntervalMinutes
-    )
-    interstitialScheduleEnabled.value = parseInterstitialScheduleEnabled(
-      data.interstitialScheduleEnabled
-    )
-    if (!interstitialScheduleEnabled.value) clearInterstitialArmQueue()
+  }
+
+  unsubCanvasVideo = onSnapshot(doc(db, 'system', 'canvas_video'), (snap) => {
+    const data = snap.exists() ? (snap.data() as {
+      videoUrl?: string
+      interstitialIntervalMinutes?: number
+      interstitialScheduleEnabled?: boolean
+    }) : undefined
+    applyCanvasVideoConfig(data)
+
+    if (interstitialScheduleEnabled.value && interstitialSrc.value) {
+      void preloadVideo(interstitialSrc.value).catch((e) => {
+        console.warn('[canvas] 插播影片背景預載失敗', e)
+      })
+    }
   })
 
   interstitialArmTimer = setInterval(() => {
@@ -669,6 +762,8 @@ onMounted(() => {
     () => { recalcPositions() },
     { immediate: true }
   )
+
+  isCanvasReady.value = true
 })
 
 onUnmounted(() => {
