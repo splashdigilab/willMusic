@@ -157,6 +157,14 @@
     box-sizing: border-box;
 }
 
+.p-canvas__interstitial--left {
+    padding-right: 30px;
+}
+
+.p-canvas__interstitial--right {
+    padding-left: 30px;
+}
+
 .p-canvas__interstitial__video {
     width: 100%;
     height: 100%;
@@ -202,14 +210,14 @@
     background-position: center;
     background-repeat: no-repeat;
     /* 右側留白：flex 置中會將便利貼往左推，不會進入右側空白區 */
-    padding-right: 20px;
+    padding-left: 30px;
 
     /* 畫面中間上方 logo 柱 */
     &::before {
         content: '';
         position: absolute;
         top: 8%;
-        left: calc(50% - 10px);
+        left: calc(50% + 15px);
         transform: translateX(-50%);
         width: 48%;
         height: 13%;
@@ -226,7 +234,7 @@
         content: '';
         position: absolute;
         bottom: 6%;
-        left: calc(50% - 10px);
+        left: calc(50% + 15px);
         transform: translateX(-50%);
         width: 55%;
         height: 15%;

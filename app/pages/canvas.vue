@@ -37,7 +37,7 @@
       </div>
       <div
         v-show="showInterstitial && interstitialSrc"
-        class="p-canvas__interstitial"
+        class="p-canvas__interstitial p-canvas__interstitial--left"
         aria-hidden="true"
       >
         <video
@@ -67,7 +67,7 @@
       </div>
       <div
         v-show="showInterstitial && interstitialSrc"
-        class="p-canvas__interstitial"
+        class="p-canvas__interstitial p-canvas__interstitial--right"
         aria-hidden="true"
       >
         <video
@@ -295,9 +295,9 @@ const positionMap = reactive<Record<string, { left: number; top: number; rot: nu
 /** padding (px) 用於 live-zone 四邊內邊距 */
 const PADDING = 20
 /** live-zone 右側額外留白（px），便利貼不會出現在此區域 */
-const PADDING_RIGHT = 30
+const PADDING_RIGHT = 40
 /** live-zone 左側額外留白（px），便利貼不會出現在此區域 */
-const PADDING_LEFT = 50
+const PADDING_LEFT = 10
 
 /** 虛擬座標系：便利貼邊長（用於 Fermat 螺旋 + 碰撞檢測，與 index 一致） */
 const VIRTUAL_ITEM_SIZE = 550

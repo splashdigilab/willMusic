@@ -78,9 +78,9 @@
       :icon="alertIcon"
       :title="alertTitle"
       :message="alertMessage"
-      confirmText="關閉"
+      :confirmText="alertConfirmText"
       :cancelText="''"
-      @confirm="showAlertModal = false"
+      @confirm="handleAlertConfirm"
     />
 
     <!-- Submit Confirmation Modal -->
@@ -748,11 +748,32 @@ const showAlertModal = ref(false)
 const alertIcon = ref('⚠️')
 const alertTitle = ref('提示')
 const alertMessage = ref('')
+const alertConfirmText = ref('關閉')
+const alertConfirmHandler = ref<(() => void | Promise<void>) | null>(null)
 
-const showAlert = (msg: string, title = '提示', icon = '⚠️') => {
+const handleAlertConfirm = async () => {
+  const handler = alertConfirmHandler.value
+  if (handler) {
+    await handler()
+    return
+  }
+  showAlertModal.value = false
+}
+
+const showAlert = (
+  msg: string,
+  title = '提示',
+  icon = '⚠️',
+  options?: {
+    confirmText?: string
+    onConfirm?: () => void | Promise<void>
+  }
+) => {
   alertIcon.value = icon
   alertTitle.value = title
   alertMessage.value = msg
+  alertConfirmText.value = options?.confirmText || '關閉'
+  alertConfirmHandler.value = options?.onConfirm || null
   showAlertModal.value = true
 }
 
@@ -1701,6 +1722,33 @@ const getCurrentPosition = (): Promise<GeolocationPosition> =>
     )
   })
 
+const requestGpsPermissionAgain = async () => {
+  try {
+    await getCurrentPosition()
+    showAlertModal.value = false
+    openSubmitModal()
+  } catch (error: any) {
+    const code = error?.code
+    if (code === 1) {
+      showAlert(
+        GPS_DENIED_MESSAGE,
+        '需要定位權限',
+        '📍',
+        {
+          confirmText: '重新詢問定位',
+          onConfirm: requestGpsPermissionAgain
+        }
+      )
+      return
+    }
+    if (code === 2 || code === 3) {
+      showAlert('無法取得目前位置，請確認定位服務已開啟並稍後再試。', '定位失敗', '📍')
+      return
+    }
+    showAlert('定位驗證失敗，請稍後再試。', '定位失敗', '📍')
+  }
+}
+
 const validateGeoFenceBeforeSubmit = async (): Promise<boolean> => {
   const geoFenceSnap = await getDoc(doc(db, 'system', 'editor_geo_fence'))
   if (!geoFenceSnap.exists()) return true
@@ -1770,7 +1818,15 @@ const confirmSubmit = async () => {
       const code = geoError?.code
       showSubmitModal.value = false
       if (code === 1) {
-        showAlert(GPS_DENIED_MESSAGE, '需要定位權限', '📍')
+        showAlert(
+          GPS_DENIED_MESSAGE,
+          '需要定位權限',
+          '📍',
+          {
+            confirmText: '重新詢問定位',
+            onConfirm: requestGpsPermissionAgain
+          }
+        )
       } else if (code === 2 || code === 3) {
         showAlert('無法取得目前位置，請確認定位服務已開啟並稍後再試。', '定位失敗', '📍')
       } else {
