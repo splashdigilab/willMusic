@@ -781,7 +781,7 @@ const showAlert = (
 const TOKEN_ALERT_TITLE = '只差最後一步！'
 const TOKEN_ALERT_ICON = '🛍️'
 const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
-const GPS_DENIED_MESSAGE = '需要開啟定位權限才能上傳大螢幕，請允許瀏覽器使用您的位置後再試一次。'
+const GPS_DENIED_MESSAGE = '需要開啟定位權限才能上傳大螢幕。<br><br>iPhone（Safari）：到「設定 > Safari > 定位」改為「允許」。<br>Android（Chrome）：到「瀏覽器網址列左側鎖頭/網站設定 > 位置」改為「允許」。<br><br>完成後回到此頁，點擊「重新詢問定位」再試一次。'
 const GPS_OUTSIDE_MESSAGE = '您目前不在合法上傳區域內，請移動到店內指定範圍後再試。'
 const TOKEN_DISABLED_SUBMIT_COOLDOWN_MS = 3 * 60 * 1000
 const TOKEN_DISABLED_LAST_SUBMIT_AT_KEY = 'willmusic_token_disabled_last_submit_at'
@@ -1704,22 +1704,65 @@ const calculateDistanceMeters = (
   return earthRadiusMeters * c
 }
 
-const getCurrentPosition = (): Promise<GeolocationPosition> =>
+type GeoErrorKind =
+  | 'permission-denied'
+  | 'position-unavailable'
+  | 'timeout'
+  | 'geolocation-unavailable'
+  | 'geo-fence-fetch-failed'
+  | 'geo-fence-config-invalid'
+  | 'unknown'
+
+type GeoError = Error & { kind?: GeoErrorKind; code?: number; cause?: unknown }
+
+const createGeoError = (kind: GeoErrorKind, message: string, cause?: unknown): GeoError => {
+  const error = new Error(message) as GeoError
+  error.kind = kind
+  error.cause = cause
+  return error
+}
+
+const mapGeoErrorFromAny = (error: any): GeoError => {
+  if (!error) return createGeoError('unknown', 'Unknown geolocation error')
+  if (error.kind) return error as GeoError
+
+  const code = Number(error?.code)
+  if (code === 1) return createGeoError('permission-denied', 'Geolocation permission denied', error)
+  if (code === 2) return createGeoError('position-unavailable', 'Geolocation position unavailable', error)
+  if (code === 3) return createGeoError('timeout', 'Geolocation timeout', error)
+  return createGeoError('unknown', error?.message || 'Unknown geolocation error', error)
+}
+
+const getCurrentPositionWithOptions = (options: PositionOptions): Promise<GeolocationPosition> =>
   new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
-      reject(new Error('Geolocation API not available'))
+      reject(createGeoError('geolocation-unavailable', 'Geolocation API not available'))
       return
     }
 
     navigator.geolocation.getCurrentPosition(
       position => resolve(position),
-      error => reject(error),
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      }
+      error => reject(mapGeoErrorFromAny(error)),
+      options
     )
+  })
+
+const getCurrentPosition = (): Promise<GeolocationPosition> =>
+  getCurrentPositionWithOptions({
+    enableHighAccuracy: true,
+    timeout: 12000,
+    maximumAge: 0
+  }).catch(async (error: any) => {
+    const normalized = mapGeoErrorFromAny(error)
+    // 手機在室內或節電模式下容易 high accuracy timeout；改用低精度 + 允許快取位置再嘗試一次。
+    if (normalized.kind === 'position-unavailable' || normalized.kind === 'timeout') {
+      return await getCurrentPositionWithOptions({
+        enableHighAccuracy: false,
+        timeout: 15000,
+        maximumAge: 120000
+      })
+    }
+    throw normalized
   })
 
 const requestGpsPermissionAgain = async () => {
@@ -1728,8 +1771,8 @@ const requestGpsPermissionAgain = async () => {
     showAlertModal.value = false
     openSubmitModal()
   } catch (error: any) {
-    const code = error?.code
-    if (code === 1) {
+    const geoError = mapGeoErrorFromAny(error)
+    if (geoError.kind === 'permission-denied') {
       showAlert(
         GPS_DENIED_MESSAGE,
         '需要定位權限',
@@ -1741,7 +1784,11 @@ const requestGpsPermissionAgain = async () => {
       )
       return
     }
-    if (code === 2 || code === 3) {
+    if (
+      geoError.kind === 'position-unavailable' ||
+      geoError.kind === 'timeout' ||
+      geoError.kind === 'geolocation-unavailable'
+    ) {
       showAlert('無法取得目前位置，請確認定位服務已開啟並稍後再試。', '定位失敗', '📍')
       return
     }
@@ -1750,7 +1797,12 @@ const requestGpsPermissionAgain = async () => {
 }
 
 const validateGeoFenceBeforeSubmit = async (): Promise<boolean> => {
-  const geoFenceSnap = await getDoc(doc(db, 'system', 'editor_geo_fence'))
+  let geoFenceSnap
+  try {
+    geoFenceSnap = await getDoc(doc(db, 'system', 'editor_geo_fence'))
+  } catch (error: any) {
+    throw createGeoError('geo-fence-fetch-failed', error?.message || 'Failed to load geo fence config', error)
+  }
   if (!geoFenceSnap.exists()) return true
 
   const data = geoFenceSnap.data() as {
@@ -1771,9 +1823,8 @@ const validateGeoFenceBeforeSubmit = async (): Promise<boolean> => {
     Number.isFinite(radiusMeters) &&
     radiusMeters > 0
 
-  if (!configValid) {
-    throw new Error('GPS fence config invalid')
-  }
+  // 後台配置不完整時不擋使用者，避免手機端誤判為「定位驗證失敗」。
+  if (!configValid) return true
 
   const position = await getCurrentPosition()
   const userLat = position.coords.latitude
@@ -1815,9 +1866,9 @@ const confirmSubmit = async () => {
     try {
       isWithinAllowedArea = await validateGeoFenceBeforeSubmit()
     } catch (geoError: any) {
-      const code = geoError?.code
+      const normalizedGeoError = mapGeoErrorFromAny(geoError)
       showSubmitModal.value = false
-      if (code === 1) {
+      if (normalizedGeoError.kind === 'permission-denied') {
         showAlert(
           GPS_DENIED_MESSAGE,
           '需要定位權限',
@@ -1827,8 +1878,14 @@ const confirmSubmit = async () => {
             onConfirm: requestGpsPermissionAgain
           }
         )
-      } else if (code === 2 || code === 3) {
+      } else if (
+        normalizedGeoError.kind === 'position-unavailable' ||
+        normalizedGeoError.kind === 'timeout' ||
+        normalizedGeoError.kind === 'geolocation-unavailable'
+      ) {
         showAlert('無法取得目前位置，請確認定位服務已開啟並稍後再試。', '定位失敗', '📍')
+      } else if (normalizedGeoError.kind === 'geo-fence-fetch-failed') {
+        showAlert('目前無法驗證定位（網路或服務暫時異常），請稍後再試。', '定位失敗', '📍')
       } else {
         showAlert('定位驗證失敗，請稍後再試。', '定位失敗', '📍')
       }
