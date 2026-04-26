@@ -783,6 +783,8 @@ const TOKEN_ALERT_ICON = '🛍️'
 const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
 const GPS_DENIED_MESSAGE = '需要開啟定位權限才能上傳大螢幕。<br><br>iPhone（Safari）：到「設定 > Safari > 定位」改為「允許」。<br>Android（Chrome）：到「瀏覽器網址列左側鎖頭/網站設定 > 位置」改為「允許」。<br><br>完成後回到此頁，點擊「重新詢問定位」再試一次。'
 const GPS_OUTSIDE_MESSAGE = '您目前不在合法上傳區域內，請移動到店內指定範圍後再試。'
+/** 設為 false 時略過上傳前 GPS／地理柵欄驗證 */
+const ENABLE_GPS_VALIDATION = false
 const TOKEN_DISABLED_SUBMIT_COOLDOWN_MS = 3 * 60 * 1000
 const TOKEN_DISABLED_LAST_SUBMIT_AT_KEY = 'willmusic_token_disabled_last_submit_at'
 const tokenRequiredForSubmit = ref(false)
@@ -1797,6 +1799,8 @@ const requestGpsPermissionAgain = async () => {
 }
 
 const validateGeoFenceBeforeSubmit = async (): Promise<boolean> => {
+  if (!ENABLE_GPS_VALIDATION) return true
+
   let geoFenceSnap
   try {
     geoFenceSnap = await getDoc(doc(db, 'system', 'editor_geo_fence'))
