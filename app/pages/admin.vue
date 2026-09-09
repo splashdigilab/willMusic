@@ -94,43 +94,111 @@
         <section v-show="activeAdminTab === 'overview'" class="p-admin__card">
           <h2 class="p-admin__card-title">上傳營運統計</h2>
           <div class="p-admin__stats-filter">
-            <label class="p-admin__form-label" for="stats-date-input">統計日期</label>
+            <button
+              v-for="preset in statsPresets"
+              :key="preset.key"
+              type="button"
+              class="p-admin__filter-btn"
+              :class="{ 'p-admin__filter-btn--active': activeStatsPreset === preset.key }"
+              @click="applyStatsPreset(preset.key)"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+          <div class="p-admin__stats-filter">
+            <label class="p-admin__form-label" for="stats-start-date-input">統計區間</label>
             <input
-              id="stats-date-input"
-              v-model="statsDate"
+              id="stats-start-date-input"
+              v-model="statsStartDate"
               type="date"
               class="p-admin__date-input"
               :max="statsMaxDate"
             />
+            <span class="p-admin__stats-range-sep">至</span>
+            <input
+              id="stats-end-date-input"
+              v-model="statsEndDate"
+              type="date"
+              class="p-admin__date-input"
+              :max="statsMaxDate"
+            />
+            <span class="p-admin__stats-range-hint">
+              共 {{ statsRangeDays }} 天（上限 {{ STATS_MAX_RANGE_DAYS }} 天）
+            </span>
           </div>
-          <div v-if="statsLoading" class="p-admin__stats-loading">載入中…</div>
-          <div v-else>
-            <div class="p-admin__hourly-chart">
-              <div class="p-admin__hourly-chart-head">
-                <h3 class="p-admin__hourly-chart-title">每小時上傳趨勢</h3>
-                <span class="p-admin__hourly-chart-subtitle">{{ statsDate }}</span>
+          <p v-if="statsPermissionDenied" class="p-admin__stats-empty">
+            讀取 <code>stats_daily</code> 被 Firestore 規則拒絕。請在 Firebase Console 的
+            Firestore Rules 加上這個集合：後台需要 read（已登入），上傳端需要 create／update
+            （未登入，因為送出便利貼時不會登入）。規則生效後重新整理即可。
+          </p>
+          <template v-else>
+            <div v-show="statsLoading" class="p-admin__stats-loading">載入中…</div>
+            <!--
+              這裡刻意用 v-show 而不是 v-if：改用 v-if 的話每次切換區間都會卸載 VChart，
+              ECharts 實例要重新建立，區間一長（熱力圖上千格）就會明顯卡頓。
+            -->
+            <div
+              v-show="!statsLoading"
+              class="p-admin__stats-body"
+            >
+              <div class="p-admin__hourly-chart">
+                <div class="p-admin__hourly-chart-head">
+                  <h3 class="p-admin__hourly-chart-title">{{ statsTrendTitle }}</h3>
+                  <span class="p-admin__hourly-chart-subtitle">{{ statsRangeLabel }}</span>
+                </div>
+                <ClientOnly>
+                  <VChart
+                    class="p-admin__hourly-echart"
+                    :option="trendChartOption"
+                    autoresize
+                  />
+                </ClientOnly>
               </div>
-              <ClientOnly>
-                <VChart
-                  class="p-admin__hourly-echart"
-                  :option="hourlyChartOption"
-                  autoresize
-                />
-              </ClientOnly>
-            </div>
-            <div class="p-admin__stats-grid p-admin__stats-grid--top">
-              <div class="p-admin__stat-card">
-                <div class="p-admin__stat-value">{{ statsDailyUploads }}</div>
-                <div class="p-admin__stat-label">當日上傳總數</div>
+
+              <!-- 區間 ≥ 2 天才有意義：主圖看「哪天多」，這張看「幾點多」 -->
+              <div v-if="statsShowHourBreakdown" class="p-admin__hourly-chart">
+                <div class="p-admin__hourly-chart-head">
+                  <h3 class="p-admin__hourly-chart-title">{{ statsBreakdownTitle }}</h3>
+                  <span class="p-admin__hourly-chart-subtitle">{{ statsBreakdownSubtitle }}</span>
+                </div>
+                <ClientOnly>
+                  <VChart
+                    class="p-admin__hourly-echart"
+                    :class="{ 'p-admin__hourly-echart--tall': statsUseHeatmap }"
+                    :option="statsUseHeatmap ? heatmapChartOption : hourProfileChartOption"
+                    autoresize
+                  />
+                </ClientOnly>
               </div>
-            </div>
-            <div class="p-admin__stats-grid p-admin__stats-grid--bottom">
-              <div class="p-admin__stat-card p-admin__stat-card--full">
-                <div class="p-admin__stat-value">{{ statsLastHourUploads }}</div>
-                <div class="p-admin__stat-label">近 1 小時上傳數</div>
+
+              <div class="p-admin__stats-grid p-admin__stats-grid--top">
+                <div class="p-admin__stat-card">
+                  <div class="p-admin__stat-value">{{ statsRangeUploads }}</div>
+                  <div class="p-admin__stat-label">區間上傳總數</div>
+                </div>
+                <div class="p-admin__stat-card">
+                  <div class="p-admin__stat-value">{{ statsAvgPerDay }}</div>
+                  <div class="p-admin__stat-label">日均上傳數</div>
+                </div>
+                <div class="p-admin__stat-card">
+                  <div class="p-admin__stat-value">{{ statsPeakDay?.total ?? 0 }}</div>
+                  <div class="p-admin__stat-label">
+                    最高單日<span v-if="statsPeakDay && statsPeakDay.total > 0">（{{ statsPeakDay.date }}）</span>
+                  </div>
+                </div>
               </div>
+              <div v-if="statsRangeIncludesToday" class="p-admin__stats-grid p-admin__stats-grid--bottom">
+                <div class="p-admin__stat-card p-admin__stat-card--full">
+                  <div class="p-admin__stat-value">{{ statsLastHourUploads }}</div>
+                  <div class="p-admin__stat-label">近 1 小時上傳數（即時）</div>
+                </div>
+              </div>
+
+              <p v-if="statsHasNoData" class="p-admin__stats-empty">
+                這個區間沒有上傳紀錄。
+              </p>
             </div>
-          </div>
+          </template>
         </section>
 
         <!-- Editor GPS 合法區域 -->
@@ -470,8 +538,8 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'fi
 import QRCode from 'qrcode'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent } from 'echarts/components'
+import { BarChart, HeatmapChart, LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import AppModal from '~/components/AppModal.vue'
 import {
@@ -479,6 +547,16 @@ import {
   CANVAS_INTERSTITIAL_DIVISORS_OF_60,
   parseInterstitialScheduleEnabled
 } from '~/composables/useConductor'
+import {
+  countDaysInclusive,
+  fetchDailyUploadStats,
+  fetchDayUploadStat,
+  isValidDateKey,
+  shiftDateKey,
+  STATS_MAX_RANGE_DAYS,
+  toDateKey,
+  type DailyUploadStat
+} from '~/composables/useUploadStats'
 
 definePageMeta({
   layout: false
@@ -486,7 +564,15 @@ definePageMeta({
 
 const { $firestore, $storage } = useNuxtApp()
 const { createToken } = useFirestore()
-use([CanvasRenderer, LineChart, GridComponent, TooltipComponent])
+use([
+  CanvasRenderer,
+  LineChart,
+  BarChart,
+  HeatmapChart,
+  GridComponent,
+  TooltipComponent,
+  VisualMapComponent
+])
 
 const db = $firestore as any
 const storage = $storage as any
@@ -650,94 +736,176 @@ const onTokenRequirementToggle = async () => {
 }
 
 // ── 上傳營運統計 ──────────────────────────────────────────
+// 資料來源是 stats_daily 預聚合集合（見 useUploadStats），
+// 所以任何區間的成本都是「1 天 1 read」，不再逐筆掃便利貼。
 const statsLoading = ref(false)
 // 預設「今天」必須在掛載後用瀏覽器時區設定；若在 setup 用 new Date()，SSR（多為 UTC）與客戶端本地日曆日可能不同，會造成 hydration mismatch。
-const statsDate = ref('')
+const statsStartDate = ref('')
+const statsEndDate = ref('')
 const statsMaxDate = ref('')
-const statsDailyUploads = ref(0)
+const statsDailyRows = ref<DailyUploadStat[]>([])
 const statsLastHourUploads = ref(0)
-const statsHourlyUploads = ref<number[]>(Array.from({ length: 24 }, () => 0))
+const statsPermissionDenied = ref(false)
 let statsRefreshTimer: ReturnType<typeof setInterval> | null = null
+let statsRequestId = 0
 
-const getDateRangeFromInput = (dateStr: string) => {
-  const parts = dateStr.split('-')
-  const year = Number(parts[0])
-  const month = Number(parts[1])
-  const day = Number(parts[2])
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
-    const now = new Date()
-    const fallbackStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-    const fallbackEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-    return { start: fallbackStart, end: fallbackEnd }
-  }
-  const start = new Date(year, month - 1, day, 0, 0, 0, 0)
-  const end = new Date(year, month - 1, day, 23, 59, 59, 999)
-  return { start, end }
+const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+const AXIS_LABEL_STYLE = { color: '#6b7280', fontSize: 11 }
+const AXIS_LINE_STYLE = { lineStyle: { color: '#cbd5e1' } }
+const SPLIT_LINE_STYLE = { lineStyle: { color: '#e5e7eb' } }
+
+type StatsPresetKey = 'today' | 'last7' | 'last30' | 'thisMonth'
+
+const statsPresets: Array<{ key: StatsPresetKey; label: string }> = [
+  { key: 'today', label: '今天' },
+  { key: 'last7', label: '近 7 天' },
+  { key: 'last30', label: '近 30 天' },
+  { key: 'thisMonth', label: '本月' }
+]
+
+const statsPresetRange = (key: StatsPresetKey): { start: string; end: string } => {
+  const now = new Date()
+  const today = toDateKey(now)
+  if (key === 'today') return { start: today, end: today }
+  if (key === 'last7') return { start: shiftDateKey(today, -6), end: today }
+  if (key === 'last30') return { start: shiftDateKey(today, -29), end: today }
+  return { start: toDateKey(new Date(now.getFullYear(), now.getMonth(), 1)), end: today }
 }
 
-const normalizeTimestampToDate = (raw: any): Date | null => {
-  if (!raw) return null
-  if (typeof raw?.toDate === 'function') return raw.toDate()
-  if (raw instanceof Date) return raw
-  if (typeof raw === 'number') return new Date(raw)
+const activeStatsPreset = computed<StatsPresetKey | null>(() => {
+  for (const preset of statsPresets) {
+    const range = statsPresetRange(preset.key)
+    if (range.start === statsStartDate.value && range.end === statsEndDate.value) return preset.key
+  }
   return null
+})
+
+const applyStatsPreset = (key: StatsPresetKey) => {
+  const range = statsPresetRange(key)
+  statsStartDate.value = range.start
+  statsEndDate.value = range.end
 }
 
-const buildHourlyUploads = (pendingDocs: any[], historyDocs: any[]) => {
-  const buckets = Array.from({ length: 24 }, () => 0)
-  for (const d of pendingDocs) {
-    const date = normalizeTimestampToDate(d?.data?.()?.timestamp)
-    if (!date) continue
-    const hour = date.getHours()
-    if (hour >= 0 && hour <= 23) buckets[hour] += 1
+/** 來自選取的區間而非已載入資料，避免載入期間閃「共 0 天」 */
+const statsRangeDays = computed(() => {
+  if (!isValidDateKey(statsStartDate.value) || !isValidDateKey(statsEndDate.value)) return 0
+  return Math.max(0, countDaysInclusive(statsStartDate.value, statsEndDate.value))
+})
+const statsRangeLabel = computed(() =>
+  statsStartDate.value === statsEndDate.value
+    ? statsStartDate.value
+    : `${statsStartDate.value} ~ ${statsEndDate.value}`
+)
+const statsRangeIncludesToday = computed(() => {
+  const today = toDateKey(new Date())
+  return statsStartDate.value <= today && today <= statsEndDate.value
+})
+
+/** 區間越長，主趨勢圖的粒度就越粗；攤成連續小時軸超過 3 天就完全讀不出東西 */
+const statsGranularity = computed<'hour' | 'day' | 'week'>(() => {
+  const days = statsRangeDays.value
+  if (days <= 1) return 'hour'
+  if (days <= 31) return 'day'
+  return 'week'
+})
+
+/** 超過這個天數，熱力圖的欄位會擠成一團而且格數暴增，改用 24 格平均長條 */
+const STATS_HEATMAP_MAX_DAYS = 120
+
+const statsShowHourBreakdown = computed(() => statsRangeDays.value >= 2)
+const statsUseHeatmap = computed(
+  () => statsRangeDays.value >= 7 && statsRangeDays.value <= STATS_HEATMAP_MAX_DAYS
+)
+
+const statsTrendTitle = computed(() => {
+  if (statsGranularity.value === 'hour') return '每小時上傳趨勢'
+  if (statsGranularity.value === 'week') return '每週上傳趨勢'
+  return '每日上傳趨勢'
+})
+const statsBreakdownTitle = computed(() => (statsUseHeatmap.value ? '上傳熱力圖' : '時段分佈'))
+const statsBreakdownSubtitle = computed(() =>
+  statsUseHeatmap.value ? '日期 × 時段' : '區間內每日平均'
+)
+
+const statsRangeUploads = computed(() =>
+  statsDailyRows.value.reduce((sum, row) => sum + row.total, 0)
+)
+const statsAvgPerDay = computed(() => {
+  const days = statsRangeDays.value
+  if (!days) return 0
+  return Math.round((statsRangeUploads.value / days) * 10) / 10
+})
+const statsPeakDay = computed<DailyUploadStat | null>(() => {
+  let peak: DailyUploadStat | null = null
+  for (const row of statsDailyRows.value) {
+    if (!peak || row.total > peak.total) peak = row
   }
-  for (const d of historyDocs) {
-    const date = normalizeTimestampToDate(d?.data?.()?.timestamp)
-    if (!date) continue
-    const hour = date.getHours()
-    if (hour >= 0 && hour <= 23) buckets[hour] += 1
+  return peak
+})
+const statsHasNoData = computed(
+  () => statsDailyRows.value.length > 0 && statsRangeUploads.value === 0
+)
+
+const formatMonthDay = (dateKey: string) => dateKey.slice(5).replace('-', '/')
+
+const statsTrendBuckets = computed<Array<{ label: string; value: number }>>(() => {
+  const rows = statsDailyRows.value
+
+  if (statsGranularity.value === 'hour') {
+    const hours = rows[0]?.hours ?? Array.from({ length: 24 }, () => 0)
+    return hours.map((value, hour) => ({ label: HOUR_LABELS[hour] ?? '', value }))
+  }
+
+  if (statsGranularity.value === 'day') {
+    return rows.map(row => ({ label: formatMonthDay(row.date), value: row.total }))
+  }
+
+  const buckets: Array<{ label: string; value: number }> = []
+  for (let offset = 0; offset < rows.length; offset += 7) {
+    const chunk = rows.slice(offset, offset + 7)
+    const first = chunk[0]
+    const last = chunk[chunk.length - 1]
+    if (!first || !last) continue
+    buckets.push({
+      label: `${formatMonthDay(first.date)}–${formatMonthDay(last.date)}`,
+      value: chunk.reduce((sum, row) => sum + row.total, 0)
+    })
   }
   return buckets
-}
+})
 
-const hourlyChartOption = computed(() => {
-  const hourLabels = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+/** 區間內各時段的每日平均，回答「幾點最多人上傳」 */
+const statsHourProfile = computed(() => {
+  const rows = statsDailyRows.value
+  const days = Math.max(1, rows.length)
+  return Array.from({ length: 24 }, (_, hour) => {
+    const sum = rows.reduce((acc, row) => acc + (row.hours[hour] ?? 0), 0)
+    return Math.round((sum / days) * 10) / 10
+  })
+})
+
+const trendChartOption = computed(() => {
+  const buckets = statsTrendBuckets.value
+  const granularity = statsGranularity.value
   return {
-    grid: {
-      left: 34,
-      right: 18,
-      top: 16,
-      bottom: 28
-    },
-    tooltip: {
-      trigger: 'axis',
-      valueFormatter: (value: number) => `${value} 筆`
-    },
+    grid: { left: 40, right: 18, top: 16, bottom: granularity === 'week' ? 58 : 28 },
+    tooltip: { trigger: 'axis', valueFormatter: (value: number) => `${value} 筆` },
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: hourLabels,
+      data: buckets.map(bucket => bucket.label),
       axisLabel: {
-        interval: 3,
-        color: '#6b7280',
-        fontSize: 11
+        ...AXIS_LABEL_STYLE,
+        interval: granularity === 'hour' ? 3 : 'auto',
+        rotate: granularity === 'week' ? 30 : 0
       },
-      axisLine: {
-        lineStyle: { color: '#cbd5e1' }
-      }
+      axisLine: AXIS_LINE_STYLE
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
-      axisLabel: {
-        color: '#6b7280',
-        fontSize: 11
-      },
-      splitLine: {
-        lineStyle: {
-          color: '#e5e7eb'
-        }
-      }
+      axisLabel: AXIS_LABEL_STYLE,
+      splitLine: SPLIT_LINE_STYLE
     },
     series: [
       {
@@ -745,70 +913,181 @@ const hourlyChartOption = computed(() => {
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
-        data: statsHourlyUploads.value,
-        lineStyle: {
-          width: 2,
-          color: '#111'
-        },
-        itemStyle: {
-          color: '#111'
-        },
-        areaStyle: {
-          color: 'rgba(17, 17, 17, 0.08)'
-        }
+        data: buckets.map(bucket => bucket.value),
+        lineStyle: { width: 2, color: '#111' },
+        itemStyle: { color: '#111' },
+        areaStyle: { color: 'rgba(17, 17, 17, 0.08)' }
       }
     ]
   }
 })
 
-const loadStats = () => {
-  statsLoading.value = true
-  const now = new Date()
-  const { start, end } = getDateRangeFromInput(statsDate.value)
-  const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000))
-  const dayStartTs = Timestamp.fromDate(start)
-  const dayEndTs = Timestamp.fromDate(end)
-  const oneHourAgoTs = Timestamp.fromDate(oneHourAgo)
+const hourProfileChartOption = computed(() => ({
+  grid: { left: 40, right: 18, top: 16, bottom: 28 },
+  tooltip: { trigger: 'axis', valueFormatter: (value: number) => `平均 ${value} 筆` },
+  xAxis: {
+    type: 'category',
+    data: HOUR_LABELS,
+    axisLabel: { ...AXIS_LABEL_STYLE, interval: 3 },
+    axisLine: AXIS_LINE_STYLE
+  },
+  yAxis: { type: 'value', axisLabel: AXIS_LABEL_STYLE, splitLine: SPLIT_LINE_STYLE },
+  series: [
+    {
+      type: 'bar',
+      data: statsHourProfile.value,
+      itemStyle: { color: '#111', borderRadius: [3, 3, 0, 0] }
+    }
+  ]
+}))
 
-  Promise.all([
-    getDocs(
-      query(
-        collection(db, 'queue_pending'),
-        where('timestamp', '>=', dayStartTs),
-        where('timestamp', '<=', dayEndTs)
-      )
-    ),
-    getDocs(
-      query(
-        collection(db, 'queue_history'),
-        where('timestamp', '>=', dayStartTs),
-        where('timestamp', '<=', dayEndTs)
-      )
-    ),
+const heatmapChartOption = computed(() => {
+  const rows = statsDailyRows.value
+  const data: Array<[number, number, number]> = []
+  let max = 0
+  rows.forEach((row, dayIndex) => {
+    row.hours.forEach((count, hour) => {
+      if (count > max) max = count
+      data.push([dayIndex, hour, count])
+    })
+  })
+
+  return {
+    // 逐格進場動畫在上千格時很有感，直接關掉
+    animation: false,
+    grid: { left: 48, right: 18, top: 12, bottom: 68 },
+    tooltip: {
+      position: 'top',
+      formatter: (params: any) => {
+        const [dayIndex, hour, count] = params.value as [number, number, number]
+        return `${rows[dayIndex]?.date ?? ''} ${HOUR_LABELS[hour] ?? ''}<br/>${count} 筆`
+      }
+    },
+    xAxis: {
+      type: 'category',
+      data: rows.map(row => formatMonthDay(row.date)),
+      splitArea: { show: true },
+      axisLabel: { ...AXIS_LABEL_STYLE, fontSize: 10, interval: 'auto', rotate: 45 }
+    },
+    yAxis: {
+      type: 'category',
+      data: HOUR_LABELS,
+      splitArea: { show: true },
+      axisLabel: { ...AXIS_LABEL_STYLE, fontSize: 10, interval: 2 }
+    },
+    visualMap: {
+      min: 0,
+      max: Math.max(1, max),
+      calculable: false,
+      orient: 'horizontal',
+      left: 'center',
+      bottom: 4,
+      itemWidth: 10,
+      itemHeight: 90,
+      text: ['多', '少'],
+      textStyle: { ...AXIS_LABEL_STYLE, fontSize: 10 },
+      inRange: { color: ['#f3f4f6', '#9ca3af', '#111'] }
+    },
+    series: [
+      {
+        type: 'heatmap',
+        data,
+        itemStyle: { borderColor: '#fff', borderWidth: 0.5 }
+      }
+    ]
+  }
+})
+
+/** 近 1 小時是即時指標，只有在區間包含今天時才有意義 */
+const fetchLastHourUploads = async (): Promise<number> => {
+  if (!statsRangeIncludesToday.value) return 0
+  const oneHourAgoTs = Timestamp.fromDate(new Date(Date.now() - 60 * 60 * 1000))
+  const [pendingSnapshot, historySnapshot] = await Promise.all([
     getCountFromServer(
       query(collection(db, 'queue_pending'), where('timestamp', '>=', oneHourAgoTs))
     ),
     getCountFromServer(
       query(collection(db, 'queue_history'), where('timestamp', '>=', oneHourAgoTs))
     )
-  ]).then(([
-    pendingDailyDocsSnap,
-    historyDailyByTimestampDocsSnap,
-    pendingLastHourSnap,
-    historyLastHourSnap
-  ]) => {
-    statsHourlyUploads.value = buildHourlyUploads(pendingDailyDocsSnap.docs, historyDailyByTimestampDocsSnap.docs)
-    statsDailyUploads.value = pendingDailyDocsSnap.size + historyDailyByTimestampDocsSnap.size
-    statsLastHourUploads.value = pendingLastHourSnap.data().count + historyLastHourSnap.data().count
-    statsLoading.value = false
-  }).catch((err) => {
-    console.error('[admin] 載入營運統計失敗', err)
-    showAdminToast('error', '載入統計失敗，請稍後再試')
-    statsLoading.value = false
-  })
+  ])
+  return pendingSnapshot.data().count + historySnapshot.data().count
 }
-watch(statsDate, () => {
-  loadStats()
+
+const isPermissionDenied = (err: any) =>
+  err?.code === 'permission-denied' ||
+  String(err?.message || '').includes('Missing or insufficient permissions')
+
+const loadStats = async () => {
+  if (!isValidDateKey(statsStartDate.value) || !isValidDateKey(statsEndDate.value)) return
+
+  const requestId = ++statsRequestId
+  statsLoading.value = true
+  try {
+    const [rows, lastHour] = await Promise.all([
+      fetchDailyUploadStats(db, statsStartDate.value, statsEndDate.value),
+      fetchLastHourUploads()
+    ])
+    if (requestId !== statsRequestId) return
+    statsDailyRows.value = rows
+    statsLastHourUploads.value = lastHour
+    statsPermissionDenied.value = false
+  } catch (err) {
+    console.error('[admin] 載入營運統計失敗', err)
+    if (requestId !== statsRequestId) return
+    // Rules 尚未開放 stats_daily 時，在卡片內說明修法，不用無意義的「請稍後再試」
+    if (isPermissionDenied(err)) {
+      statsPermissionDenied.value = true
+      statsDailyRows.value = []
+      statsLastHourUploads.value = 0
+    } else {
+      showAdminToast('error', '載入統計失敗，請稍後再試')
+    }
+  } finally {
+    if (requestId === statsRequestId) statsLoading.value = false
+  }
+}
+
+/** 自動刷新只補今天那一格 + 即時卡，成本固定 3 reads */
+const refreshTodayStats = async () => {
+  if (!statsRangeIncludesToday.value || statsLoading.value) return
+  // 權限未開放時不必每 30 秒重試一次刷 console
+  if (statsPermissionDenied.value) return
+  const todayKey = toDateKey(new Date())
+  try {
+    const [today, lastHour] = await Promise.all([
+      fetchDayUploadStat(db, todayKey),
+      fetchLastHourUploads()
+    ])
+    const index = statsDailyRows.value.findIndex(row => row.date === todayKey)
+    if (index >= 0) {
+      const next = statsDailyRows.value.slice()
+      next[index] = today
+      statsDailyRows.value = next
+    }
+    statsLastHourUploads.value = lastHour
+  } catch (err) {
+    console.warn('[admin] 更新今日統計失敗', err)
+  }
+}
+
+watch([statsStartDate, statsEndDate], () => {
+  if (!isValidDateKey(statsStartDate.value) || !isValidDateKey(statsEndDate.value)) return
+
+  let start = statsStartDate.value
+  let end = statsEndDate.value
+  // ISO 日期字串可直接字典序比較
+  if (start > end) [start, end] = [end, start]
+  if (countDaysInclusive(start, end) > STATS_MAX_RANGE_DAYS) {
+    start = shiftDateKey(end, -(STATS_MAX_RANGE_DAYS - 1))
+    showAdminToast('error', `統計區間最多 ${STATS_MAX_RANGE_DAYS} 天，已自動調整開始日期`)
+  }
+  if (start !== statsStartDate.value || end !== statsEndDate.value) {
+    statsStartDate.value = start
+    statsEndDate.value = end
+    return // 修正後的值會再次觸發本 watcher
+  }
+
+  void loadStats()
 })
 
 // 便利貼清單
@@ -1415,14 +1694,16 @@ const clearCanvasVideo = async () => {
 }
 
 onMounted(() => {
-  const today = new Date().toLocaleDateString('en-CA')
+  const today = toDateKey(new Date())
   statsMaxDate.value = today
-  if (!statsDate.value) {
-    statsDate.value = today
+  if (!statsStartDate.value || !statsEndDate.value) {
+    // 預設看今天，行為與改版前一致
+    statsStartDate.value = today
+    statsEndDate.value = today
   }
   startNotesListeners()
   statsRefreshTimer = setInterval(() => {
-    loadStats()
+    void refreshTodayStats()
   }, 30000)
   startTokenRequirementListener()
   startGpsFenceListener()

@@ -557,11 +557,40 @@
     }
   }
 
+  &__stats-range-sep {
+    font-size: 0.875rem;
+    color: #666;
+  }
+
+  &__stats-range-hint {
+    font-size: 0.8rem;
+    color: #999;
+  }
+
   &__stats-loading {
     text-align: center;
     padding: 2rem;
     color: #999;
     font-size: 0.9rem;
+  }
+
+  &__stats-empty {
+    margin: 1rem 0 0;
+    padding: 0.85rem 1rem;
+    border: 1px dashed #e5e7eb;
+    border-radius: 10px;
+    background: #fafafa;
+    color: #777;
+    font-size: 0.85rem;
+    line-height: 1.6;
+
+    code {
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      background: #eee;
+      color: #333;
+      font-size: 0.8rem;
+    }
   }
 
   &__stats-grid {
@@ -570,7 +599,6 @@
     gap: 1rem;
 
     &--top {
-      grid-template-columns: 1fr;
       margin-bottom: 1rem;
     }
 
@@ -658,6 +686,11 @@
     width: 100%;
     height: 220px;
     display: block;
+
+    // 熱力圖有 24 條時段列，需要更高的畫布
+    &--tall {
+      height: 420px;
+    }
   }
 
   &__video-hint {

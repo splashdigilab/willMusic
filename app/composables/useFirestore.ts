@@ -24,6 +24,7 @@ import type {
   TokenDocument,
   CreateNoteForm
 } from '~/types'
+import { recordUploadStat } from '~/composables/useUploadStats'
 
 export const useFirestore = () => {
   const { $firestore } = useNuxtApp()
@@ -50,7 +51,7 @@ export const useFirestore = () => {
    * - 有 token：使用 token 作為 queue_pending 的 doc ID，並在 transaction 內將 token 標記為 used
    * - 無 token：直接建立 queue_pending 文件（給後台關閉 token 驗證時使用）
    */
-  const createNote = async (form: CreateNoteForm, token?: string): Promise<string> => {
+  const createNoteInternal = async (form: CreateNoteForm, token?: string): Promise<string> => {
     try {
       const sanitizedStyle = removeUndefined(form.style)
       const createNoteWithToken = async (resolvedToken: string): Promise<string> => {
@@ -127,6 +128,18 @@ export const useFirestore = () => {
       console.error('Error creating note:', error)
       throw error
     }
+  }
+
+  /**
+   * 建立便利貼，並累加後台營運總覽用的每日／每小時計數。
+   * 統計是 fire-and-forget：寫入失敗（例如 Rules 未開放 stats_daily）不影響上傳結果。
+   */
+  const createNote = async (form: CreateNoteForm, token?: string): Promise<string> => {
+    const noteId = await createNoteInternal(form, token)
+    void recordUploadStat(db).catch((error) => {
+      console.warn('[stats] 累加每日上傳統計失敗', error)
+    })
+    return noteId
   }
 
   /**
