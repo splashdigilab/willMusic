@@ -35,7 +35,7 @@ body.is-editor-page #app {
   align-items: center;
   justify-content: center;
   color: #666;
-  font-weight: bold;
+  font-weight: 700;
 }
 
 .p-editor__loading-spinner {
@@ -496,7 +496,7 @@ body.is-editor-page #app {
 
       .p-editor__tab-label {
         color: var.$color-grey;
-        font-weight: bold;
+        font-weight: 700;
       }
     }
   }
@@ -512,7 +512,9 @@ body.is-editor-page #app {
     font-size: 0.75rem;
     color: var.$color-grey;
     white-space: nowrap;
-    transition: color ed.$editor-transition-duration ease-in-out, font-weight ed.$editor-transition-duration ease-in-out;
+    /* font-weight 不列入 transition：LINE Seed 只有 400 / 700 兩級，
+       非可變字型無法補間，本來就是瞬間切換。 */
+    transition: color ed.$editor-transition-duration ease-in-out;
   }
 
   &__tab-content {
@@ -603,7 +605,7 @@ body.is-editor-page #app {
 
   &__control-title {
     font-size: 0.75rem;
-    font-weight: bold;
+    font-weight: 700;
     color: var.$color-grey;
     margin-bottom: 0.5rem;
   }

@@ -36,7 +36,7 @@
 
   &-title {
     font-size: 1.5rem;
-    font-weight: bold;
+    font-weight: 700;
     text-align: center;
     color: #333;
     margin-bottom: 1rem;
@@ -51,7 +51,7 @@
 
     strong {
       color: #f43f5e;
-      font-weight: 600;
+      font-weight: 700;
     }
   }
 
@@ -63,7 +63,7 @@
     border-left: 4px solid #667eea;
 
     .instructions-title {
-      font-weight: 600;
+      font-weight: 700;
       color: #333;
       margin-bottom: 0.75rem;
       font-size: 0.875rem;
@@ -89,7 +89,7 @@
       line-height: 1.5;
 
       &:first-child {
-        font-weight: 600;
+        font-weight: 700;
         margin-bottom: 0.5rem;
       }
     }
@@ -103,7 +103,7 @@
     border: none;
     border-radius: 8px;
     font-size: 1rem;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
     transition: transform 0.2s ease;
 

@@ -128,7 +128,7 @@ onMounted(async () => {
 
 .p-login__label {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 700;
   color: #333333;
 }
 
@@ -162,7 +162,7 @@ onMounted(async () => {
   background: #000000;
   color: #fff;
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   box-shadow: 0 10px 18px rgba(0, 0, 0, 0.25);
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
