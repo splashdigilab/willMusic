@@ -8,7 +8,6 @@
   因此所有字級與間距都除以 764，不是除以 876。
 */
 @use '../base/variables' as var;
-@use '../components/button' as btn;
 
 .p-index {
     position: relative;
@@ -21,14 +20,22 @@
     touch-action: manipulation;
 }
 
-/* 便利貼牆底部的淡出。稿子裡是一張從 y=460 開始的漸層，
-   這裡直接用 CSS 畫，省掉一張 1080×1920 的點陣圖。 */
+/* 便利貼牆底部的淡出。稿子是一道「白色」漸層（不是加深），
+   量測稿子中線得到的混入比例：63% 起才開始滲白，之後加速，到畫面底端全白。
+   直接用 CSS 畫，省掉一張 1080×1920 的點陣圖。 */
 .p-index::after {
     content: '';
     position: absolute;
-    inset: auto 0 0 0;
-    height: 24%;
-    background: linear-gradient(to bottom, rgba(64, 64, 64, 0) 0%, rgba(64, 64, 64, 0.65) 55%, var.$will-dark 100%);
+    inset: 0;
+    background: linear-gradient(to bottom,
+        rgba(255, 255, 255, 0) 63%,
+        rgba(255, 255, 255, 0.05) 70%,
+        rgba(255, 255, 255, 0.13) 75%,
+        rgba(255, 255, 255, 0.24) 80%,
+        rgba(255, 255, 255, 0.38) 85%,
+        rgba(255, 255, 255, 0.55) 90%,
+        rgba(255, 255, 255, 0.76) 95%,
+        rgba(255, 255, 255, 1) 100%);
     pointer-events: none;
     z-index: 50;
 }
@@ -275,52 +282,91 @@
     }
 }
 
+/* 底部橫條。稿子畫板 02（1080×1920）實測：
+   橫條 x-15.5 寬 1111（左右各溢出 15.5）、y1681 起，可見高 239
+   字標 x98.7 寬 271.8、中心 y1801
+   按鈕 x502.7 寬 478.6 高 132.4、中心 y1800
+   → 兩者都在可見橫條區域垂直置中，左右內距各 98.7 (9.14vw) */
+.p-index__bottom-bar {
+    position: absolute;
+    left: -1.43vw;
+    right: -1.43vw;
+    bottom: 0;
+    z-index: 100;
+    height: calc(22.1vw + env(safe-area-inset-bottom, 0px));
+    min-height: 92px;
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+
+    display: flex;
+    align-items: center;
+
+    background: var.$will-blue;
+    border-radius: 3.7vw 3.7vw 0 0;
+}
+
+.p-index__bottom-logo {
+    /* 稿子左邊距 98.7/1080；橫條本身往左溢出 15.5，所以要補回來 */
+    margin-left: 10.57vw;
+    width: 25.17vw;
+    max-width: 200px;
+    height: auto;
+    flex-shrink: 0;
+}
+
+/* 「製作便利貼」按鈕。稿子畫板 02 逐像素量測：
+   - 底色是水平漸層，左 #FFEA59 → 右 #FADD05（不是純色，也沒有外框）
+   - 文字 #323232，字高約 75/1080 = 6.94vw，五字寬 373 佔按鈕寬 78%
+   - 下方有陰影：黑 28%、下偏約 6、模糊約 18（1080 基準） */
+.p-index__make-btn {
+    margin-left: auto;
+    margin-right: 10.57vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 44.31vw;
+    max-width: 330px;
+    height: 12.26vw;
+    max-height: 92px;
+    min-height: 44px;
+    background: linear-gradient(to right, #FFEA59 0%, #FADD05 100%);
+    color: #323232;
+    border-radius: 999px;
+    box-shadow: 0 0.56vw 1.67vw rgba(0, 0, 0, 0.28);
+    font-size: clamp(20px, 6.94vw, 52px);
+    font-weight: 800;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+/* 浮動圓鈕：貼在底部橫條上方右側 */
 .p-index__controls {
     position: absolute;
-    /*
-     * 多層防護確保 iOS Chrome/Safari 不被遮:
-     * 1. dvh 已讓容器跟著可視區縮放
-     * 2. env(safe-area-inset-bottom) 處理 home indicator / notch 留白
-     * 3. 底部再留 1rem 視覺間距
-     */
-    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
-    left: 1rem;
     right: 1rem;
+    bottom: calc(22.1vw + env(safe-area-inset-bottom, 0px) + 0.75rem);
     z-index: 100;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 1rem;
+    gap: 0.6rem;
 }
 
-.p-index__controls-top {
-    display: flex;
-    justify-content: flex-end;
-    width: 100%;
-}
-
-.p-index__fab {
-    width: 100%;
-}
-
-.c-btn--icon {
-    width: 48px;
-    height: 48px;
+/* 浮動圓鈕：稿子沒有這兩顆，但功能要保留。
+   它們落在白色漸層區上，所以用深底白圖示才看得見。 */
+.p-index__icon-btn {
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.92);
+    background: var.$will-dark;
     border: none;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    color: var.$will-dark;
-}
-
-.c-btn--fab {
-    @include btn.btn-action;
-    background: var.$will-yellow;
-    color: var.$will-dark;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+    color: #fff;
+    padding: 0;
 }
 
 /* 活動介紹 overlay 進出場 */

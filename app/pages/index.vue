@@ -1,8 +1,5 @@
 <template>
   <div class="p-index" ref="containerRef">
-    
-    <!-- Header -->
-    <AppHeader show-help @help="showIntroOverlay = true" />
 
     <!-- 活動介紹滿版 overlay：載入時顯示，loading 完後按「開始」關閉 -->
     <Transition name="intro-fade">
@@ -64,7 +61,7 @@
       </div>
     </TransitionGroup>
 
-    <!-- UI Controls -->
+    <!-- 浮動控制鈕：稿子沒有上方 header，說明入口改成貼在底部橫條上方 -->
     <div
       class="p-index__controls"
       @pointerdown.stop
@@ -72,21 +69,28 @@
       @touchstart.stop
       @wheel.stop
     >
-      <div class="p-index__controls-top">
-        <button class="c-btn c-btn--icon p-index__center-btn" @click="centerContent" title="置中">
-          <!-- Center Icon -->
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19 12h2"></path>
-            <path d="M3 12h2"></path>
-            <path d="M12 3v2"></path>
-            <path d="M12 19v2"></path>
-          </svg>
-        </button>
-      </div>
-      <NuxtLink to="/editor" class="c-btn c-btn--fab p-index__fab">
-        專屬便利貼
-      </NuxtLink>
+      <button class="p-index__icon-btn" @click="showIntroOverlay = true" aria-label="說明">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </button>
+      <button class="p-index__icon-btn" @click="centerContent" aria-label="置中">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19 12h2"></path>
+          <path d="M3 12h2"></path>
+          <path d="M12 3v2"></path>
+          <path d="M12 19v2"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- 底部橫條：稿子畫板 02，左為字標、右為主要行動按鈕 -->
+    <div class="p-index__bottom-bar">
+      <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__bottom-logo" />
+      <NuxtLink to="/editor" class="p-index__make-btn">製作便利貼</NuxtLink>
     </div>
   </div>
 </template>
