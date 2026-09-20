@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "目前所有查詢都只用到單一欄位的排序或範圍條件，Firestore 會自動建立單欄位索引，",
+    "所以這裡不需要任何複合索引。已確認的查詢：",
+    "  queue_history  orderBy(playedAt desc) / where(token ==)",
+    "  queue_pending  orderBy(timestamp asc) / where(timestamp >=)",
+    "  stats_daily    where(date >=) + where(date <=) + orderBy(date asc)（同一欄位）",
+    "若日後新增『同時用兩個不同欄位過濾或排序』的查詢，Firestore 會在 console 報錯",
+    "並附上建立索引的連結，把產生的定義補進下面的 indexes 陣列並 deploy。"
+  ],
+  "indexes": [],
+  "fieldOverrides": []
+}

@@ -986,11 +986,31 @@ const openDeleteModal = (id: string, isPending: boolean) => {
   deleteModalOpen.value = true
 }
 
+/**
+ * 刪除便利貼時一併清掉 Storage 上的手繪圖，否則圖片會無限累積。
+ * 舊便利貼的 drawing 是內嵌的 data URL，沒有檔案要刪；失敗也不影響刪除本身。
+ */
+const deleteNoteDrawing = async (noteId: string, isPending: boolean) => {
+  const list = isPending ? pendingNotes.value : historyNotes.value
+  const drawing = list.find(note => note.id === noteId)?.style?.drawing
+  if (typeof drawing !== 'string' || !drawing.startsWith('http')) return
+  try {
+    await deleteObject(storageRef(storage, drawing))
+  } catch (err: unknown) {
+    const code = typeof err === 'object' && err !== null && 'code' in err ? (err as { code?: string }).code : ''
+    if (code !== 'storage/object-not-found') {
+      console.warn('[admin] 便利貼已刪除，但手繪圖檔案清除失敗', err)
+    }
+  }
+}
+
 const confirmDelete = async () => {
   if (!deleteModalData.value) return
   isDeleting.value = true
   try {
     const colName = deleteModalData.value.isPending ? 'queue_pending' : 'queue_history'
+    // 先清圖再刪文件：文件刪掉之後就查不到圖片網址了
+    await deleteNoteDrawing(deleteModalData.value.id, deleteModalData.value.isPending)
     await deleteDoc(doc(db, colName, deleteModalData.value.id))
     if (deleteModalData.value.isPending) {
       await loadPendingNotesPage()

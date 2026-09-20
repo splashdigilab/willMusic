@@ -95,16 +95,19 @@ doc ID 即 `YYYY-MM-DD`（瀏覽器本地時區）：
 | `canvas_video` | admin | canvas | `{ videoUrl, interstitialIntervalMinutes, interstitialScheduleEnabled }` |
 | `active_token` | admin | qrcode | `{ token, expiresAt }` 廣播給店內掃碼頁 |
 
-> **注意：`editor_geo_fence` 目前沒有作用。** `editor.vue` 裡的
-> `ENABLE_GPS_VALIDATION` 寫死為 `false`，驗證函式第一行就 return，
-> 但後台仍有完整的 GPS 設定畫面而且會跳「已儲存」。要嘛把旗標接回這個開關，
-> 要嘛把後台那張卡片一起拿掉，現在的狀態會誤導操作的人。
+> **`editor_geo_fence` 的開關是真的會生效的**（這點在 2026-09 之前曾經失效，
+> 因為 `editor.vue` 寫死了旗標）。文件不存在、`enabled` 非 `true`、或經緯度與
+> 半徑沒填完整時一律放行，避免把使用者擋在門外。部署前請先確認這份文件的
+> 現況，見 `docs/firebase-rules.md`。
 
-### 必要的索引
+### 安全規則與索引
 
-- `queue_history`：`playedAt` DESC
-- `queue_pending`：`timestamp` ASC
-- `stats_daily`：`date` ASC
+規則已進版控：`firestore.rules`、`storage.rules`、`firestore.indexes.json`。
+**套用前請先讀 `docs/firebase-rules.md`**，裡面有用模擬器驗證的步驟與回滾方式。
+
+目前所有查詢都只用到單一欄位的排序或範圍條件，Firestore 會自動建立單欄位索引，
+**不需要任何複合索引**。日後若新增跨欄位的查詢，Firestore 會在 console 報錯並
+附上建立連結，把定義補進 `firestore.indexes.json` 即可。
 
 ## 開始開發
 
@@ -176,13 +179,14 @@ server/api/             # moderation.post.ts
 
 ## 已知問題
 
-- **手繪圖以 base64 存在 Firestore 文件裡。** 單筆文件上限 1 MB，
-  畫得太滿會上傳失敗且錯誤訊息不友善；首頁一次抓 100 筆也會因此很重。
-  應改存 Storage 只留 URL（`StickyNote` 是用 `<img src>` 渲染，
-  data URL 與 https URL 都吃，所以舊資料可以原樣保留）。
-- **內容審核是 fail-open**，而且只檢查文字，貼紙與手繪圖完全沒有審核路徑。
-- **Firestore 安全規則沒有進版控**，建議補上 `firestore.rules` 與
-  `firestore.indexes.json` 並用 `firebase deploy` 管理。
+- **內容審核是 fail-open，而且只檢查文字。** 沒設 API 金鑰、OpenAI 掛掉、
+  或重試用盡時一律放行；貼紙與手繪圖完全沒有審核路徑。目前的做法是靠後台
+  即時下架（便利貼管理可直接刪除，會連 Storage 上的手繪圖一起清掉）。
+- **首頁一次抓 100 筆便利貼。** 手繪圖改存 Storage 之後負擔已大幅降低，
+  但張數多時仍有不少請求量，之後可考慮改成分批載入。
+- **`useInAppBrowser` 與 `BrowserWarning.vue` 寫好了但沒有掛上去。**
+  這是偵測 LINE／IG 內建瀏覽器並提醒改用外部瀏覽器的功能，而內建瀏覽器
+  正是 localStorage 草稿最容易失效的地方。保留著等決定要不要啟用。
 
 ## 授權
 

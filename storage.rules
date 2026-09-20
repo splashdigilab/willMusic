@@ -1,0 +1,37 @@
+rules_version = '2';
+
+// WillMusic 數位應援便利貼 —— Cloud Storage 安全規則
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isStaff() {
+      return request.auth != null;
+    }
+
+    // ── 便利貼手繪圖 ──────────────────────────────────────
+    // 前台使用者未登入就要能上傳（便利貼本來就是公開投稿）。
+    // 檔名是便利貼的 doc ID，只允許 create 不允許 update：
+    // 這樣既擋掉覆寫別人圖片的可能，重試失敗時程式也會自動退回
+    // 把圖內嵌進文件的舊行為，不會讓使用者上傳失敗。
+    match /note_drawings/{fileName} {
+      allow read: if true;
+      allow create: if request.resource.size < 3 * 1024 * 1024
+                    && request.resource.contentType == 'image/png';
+      allow update: if false;
+      allow delete: if isStaff();
+    }
+
+    // ── 大螢幕插播影片 ────────────────────────────────────
+    // 只有後台會上傳與刪除；大螢幕要能讀取播放
+    match /canvas_interstitial/{fileName} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // 其餘一律拒絕
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

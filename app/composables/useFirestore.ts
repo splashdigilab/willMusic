@@ -22,11 +22,16 @@ import type {
   TokenDocument,
   CreateNoteForm
 } from '~/types'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { recordUploadStat } from '~/composables/useUploadStats'
 
+/** 手繪圖在 Storage 上的資料夾 */
+export const NOTE_DRAWING_PATH = 'note_drawings'
+
 export const useFirestore = () => {
-  const { $firestore } = useNuxtApp()
+  const { $firestore, $storage } = useNuxtApp()
   const db = $firestore as any
+  const storage = $storage as any
 
   /**
    * 移除物件中的 undefined 欄位（Firestore 不接受 undefined）
@@ -45,13 +50,47 @@ export const useFirestore = () => {
   }
 
   /**
+   * 手繪圖改存 Storage，文件只留網址。
+   *
+   * 原本是把 base64 data URL 直接塞進 Firestore 文件，但單筆文件上限 1MB，
+   * 使用者畫得太滿就會上傳失敗（而且錯誤訊息看不懂）；首頁一次抓 100 筆時
+   * 也等於把所有圖一起拖下來。
+   *
+   * 顯示端是 `<img :src>`，data URL 與 https URL 都能吃，所以**舊便利貼完全
+   * 不受影響**，也不需要搬移既有資料。
+   *
+   * 上傳失敗時沿用原本的 base64：這樣「程式碼先上線、Storage 規則後套用」
+   * 的順序也不會壞掉，只是暫時退回舊行為。
+   */
+  const persistDrawing = async (style: any, noteId: string): Promise<any> => {
+    const drawing = style?.drawing
+    if (typeof drawing !== 'string' || !drawing.startsWith('data:')) return style
+
+    try {
+      const blob = await (await fetch(drawing)).blob()
+      const fileRef = storageRef(storage, `${NOTE_DRAWING_PATH}/${noteId}.png`)
+      await uploadBytes(fileRef, blob, { contentType: 'image/png' })
+      return { ...style, drawing: await getDownloadURL(fileRef) }
+    } catch (error) {
+      console.error('[createNote] 手繪圖上傳 Storage 失敗，暫時沿用內嵌資料', error)
+      return style
+    }
+  }
+
+  /**
    * 建立新的便利貼並加入待處理佇列
    * - 有 token：使用 token 作為 queue_pending 的 doc ID，並在 transaction 內將 token 標記為 used
    * - 無 token：直接建立 queue_pending 文件（給後台關閉 token 驗證時使用）
    */
   const createNoteInternal = async (form: CreateNoteForm, token?: string): Promise<string> => {
     try {
-      const sanitizedStyle = removeUndefined(form.style)
+      // 先決定 doc ID，手繪圖才能用同一個 ID 當檔名。
+      // 上傳 Storage 必須在 transaction 之外完成（transaction 內不能做非 Firestore 的非同步工作）。
+      const pendingRef = token
+        ? doc(db, 'queue_pending', token)
+        : doc(collection(db, 'queue_pending'))
+      const sanitizedStyle = await persistDrawing(removeUndefined(form.style), pendingRef.id)
+
       const createNoteWithToken = async (resolvedToken: string): Promise<string> => {
         const noteData = {
           content: form.content,
@@ -61,7 +100,7 @@ export const useFirestore = () => {
           status: 'waiting'
         }
 
-        const pendingRef = doc(db, 'queue_pending', resolvedToken)
+        const tokenPendingRef = doc(db, 'queue_pending', resolvedToken)
         const tokenRef = doc(db, 'tokens', resolvedToken)
 
         await runTransaction(db, async (transaction) => {
@@ -77,7 +116,7 @@ export const useFirestore = () => {
           }
 
           // 寫入 pending queue 並將 token 標記為 used
-          transaction.set(pendingRef, noteData)
+          transaction.set(tokenPendingRef, noteData)
           transaction.update(tokenRef, { status: 'used' })
         })
 
@@ -88,7 +127,6 @@ export const useFirestore = () => {
         return await createNoteWithToken(token)
       }
 
-      const pendingRef = doc(collection(db, 'queue_pending'))
       try {
         await setDoc(pendingRef, {
           content: form.content,

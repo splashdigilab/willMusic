@@ -1,0 +1,99 @@
+rules_version = '2';
+
+// WillMusic 數位應援便利貼 —— Firestore 安全規則
+//
+// 設計原則：前台是「公開投稿箱」，任何人都能投、也都能看牆上的內容，
+// 但**不能修改或刪除別人的東西**。所有破壞性操作一律要求登入。
+//
+// 規則是依照程式碼裡實際存在的每一個查詢寫的。改動任何 Firestore 操作時，
+// 記得回來確認這裡也要跟著調整，否則會在前台看到 permission-denied。
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 後台、大螢幕（/canvas）、掃碼頁都走 Firebase Auth 登入
+    function isStaff() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // ── queue_pending：待播佇列，也是前台的投稿入口 ──────────────
+    match /queue_pending/{noteId} {
+      // 首頁、等待頁與大螢幕都要讀；內容本來就會公開展示
+      allow read: if true;
+
+      // 前台未登入即可投稿，但限制欄位與長度，避免被塞任意資料
+      allow create: if incoming().status == 'waiting'
+                    && incoming().content is string
+                    && incoming().content.size() <= 1000
+                    && incoming().style is map
+                    && incoming().token is string
+                    && incoming().keys().hasOnly(
+                         ['content', 'style', 'token', 'timestamp', 'status']
+                       );
+
+      // 送出後就不能再改；只有大螢幕播完或後台管理才會刪
+      allow update: if false;
+      allow delete: if isStaff();
+    }
+
+    // ── queue_history：已播放 ────────────────────────────────
+    match /queue_history/{noteId} {
+      allow read: if true;
+      // 只有大螢幕（moveToHistory）與後台會寫入或清理
+      allow create, update, delete: if isStaff();
+    }
+
+    // ── tokens：上傳憑證 ────────────────────────────────────
+    match /tokens/{tokenId} {
+      // checkTokenStatus 要讀單一文件。doc ID 是 Firestore 隨機 ID，
+      // 猜不到；list 不開放，所以也無法列舉。
+      allow get: if true;
+      allow list: if isStaff();
+
+      // 只有後台可以發憑證
+      allow create: if isStaff();
+
+      // 前台送出成功時要把 unused 改成 used —— 只允許這一種轉換，
+      // 而且只能動 status 這個欄位
+      allow update: if isStaff()
+                    || (
+                      resource.data.status == 'unused'
+                      && incoming().status == 'used'
+                      && incoming().diff(resource.data).affectedKeys().hasOnly(['status'])
+                    );
+
+      allow delete: if isStaff();
+    }
+
+    // ── stats_daily：每日上傳統計（預聚合）──────────────────────
+    match /stats_daily/{dateKey} {
+      // 只有後台會看統計
+      allow read: if isStaff();
+
+      // 前台上傳成功後要累加計數（未登入狀態），所以必須開放寫入。
+      // 限制欄位並要求 date 與 doc ID 一致，避免被塞入任意資料；
+      // 計數本身仍可能被灌水，但這只是營運數字，沒有安全影響。
+      allow create, update: if incoming().keys().hasOnly(
+                                 ['date', 'total', 'hours', 'updatedAt']
+                               )
+                            && incoming().date == dateKey;
+    }
+
+    // ── system/*：設定文件 ──────────────────────────────────
+    match /system/{docId} {
+      // 前台要讀 editor_token_requirement 與 editor_geo_fence，
+      // 大螢幕要讀 canvas_video，掃碼頁要讀 active_token
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // 其餘一律拒絕
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
