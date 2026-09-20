@@ -170,7 +170,7 @@ server/api/             # moderation.post.ts
 - **`app/composables/useFirestore.ts`** — 所有 Firestore 讀寫，
   包含 token 交易與 history 去重。
 - **`app/composables/useCanvasPinch.ts`** — 編輯器的單指拖曳與雙指縮放旋轉。
-- **`app/pages/editor.vue`** — 編輯器，目前偏大（約 2,350 行）。
+- **`app/pages/editor.vue`** — 編輯器，仍是最大的檔案（約 2,150 行）。
   裡面有不少針對 iOS Safari 記憶體壓力的處理（畫布最小化、草稿存檔防抖、
   匯出節點延後掛載），改動前先讀註解。
 
