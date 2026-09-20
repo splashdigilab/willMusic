@@ -19,8 +19,13 @@ export const TEXT_ALIGN_OPTIONS = [
   { value: 'right' as const, svg: '/align-right.svg' }
 ] as const
 
-/** 色相環順序：白/黑 → 紅 → 橙 → 黃 → 綠 → 青 → 藍 → 紫 → 粉 */
-export const TEXT_COLORS = [
+/**
+ * 編輯器調色盤。色相環順序：白/黑 → 紅 → 橙 → 黃 → 綠 → 青 → 藍 → 紫 → 粉
+ *
+ * 文字與筆刷刻意共用同一組顏色，使用者在兩個 tab 之間切換時看到的色票一致。
+ * 若日後真的需要讓兩者不同，把下面兩個常數各自展開成獨立陣列即可。
+ */
+export const EDITOR_PALETTE = [
   { value: '#ffffff' },
   { value: '#241F20' },
   { value: '#E6204D' },
@@ -45,27 +50,5 @@ export const TEXT_COLORS = [
   { value: '#fccdd9' },
 ] as const
 
-export const BRUSH_COLORS = [
-  { value: '#ffffff' },
-  { value: '#241F20' },
-  { value: '#E6204D' },
-  { value: '#FF99B2' },
-  { value: '#f7c9c9' },
-  { value: '#fcc2be' },
-  { value: '#f7c495' },
-  { value: '#f5e6a4' },
-  { value: '#f99d1c' },
-  { value: '#bad887' },
-  { value: '#a6e2de' },
-  { value: '#00A8C6' },
-  { value: '#66E5FF' },
-  { value: '#12205c' },
-  { value: '#bbdcef' },
-  { value: '#81a5f9' },
-  { value: '#91a9d0' },
-  { value: '#b95ee7' },
-  { value: '#e4c5ef' },
-  { value: '#fb5c9c' },
-  { value: '#ff99cb' },
-  { value: '#fccdd9' },
-] as const
+export const TEXT_COLORS = EDITOR_PALETTE
+export const BRUSH_COLORS = EDITOR_PALETTE

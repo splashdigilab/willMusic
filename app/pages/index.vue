@@ -85,6 +85,11 @@ import { gsap } from 'gsap'
 import type { QueueHistoryItem } from '~/types'
 import { useFirestore } from '~/composables/useFirestore'
 import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
+import {
+  calculateScatterPositions,
+  boundingBoxOf,
+  type ScatterPosition
+} from '~/utils/scatter-layout'
 import StickyNote from '~/components/StickyNote.vue'
 
 definePageMeta({ layout: false, ssr: false })
@@ -101,17 +106,13 @@ const showIntroOverlay = ref(true)
 const loading = ref(true)
 const HISTORY_FETCH_LIMIT = 100
 
-// ====== Layout Math: Fermat's Spiral with Collision Detection ======
-const ITEM_SIZE = 150 
-const MARGIN = -20 // Increase margin significantly
-// Ensure the collision radius accounts for the maximum possible bounding box of a rotated square
-// A 150x150 square rotated 45 degrees has a diagonal of 150 * sqrt(2) ≈ 212
-const MAX_BOUNDING_BOX = ITEM_SIZE * Math.SQRT2
-const COLLISION_RADIUS = (MAX_BOUNDING_BOX + MARGIN) / 2 
+// ====== 散落佈局 ======
+// 演算法與 /canvas 共用，見 ~/utils/scatter-layout
+const ITEM_SIZE = 150
+const MARGIN = -20
+const MAX_BOUNDING_BOX = boundingBoxOf(ITEM_SIZE)
 
-// Cache calculated positions
-interface Position { x: number; y: number }
-const layoutCache = ref<Position[]>([])
+const layoutCache = ref<ScatterPosition[]>([])
 
 // Compute bounding box based on layout cache
 const computedBounds = computed<PanZoomBounds | null>(() => {
@@ -159,87 +160,11 @@ const { centerContent } = usePanZoom(containerRef, canvasRef, {
   boundsPadding: 0.9 // allow 70% of the screen width/height empty space margin
 })
 
-// Helper to check if a new position collides with any existing positions
-// Optimize to O(1) by using Spatial Grid Partitioning
-const getGridKey = (x: number, y: number, cellSize: number) => {
-  return `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`
-}
-
-const isCollidingOptimized = (
-  pos: Position,
-  grid: Map<string, Position[]>,
-  cellSize: number
-): boolean => {
-  const cellX = Math.floor(pos.x / cellSize)
-  const cellY = Math.floor(pos.y / cellSize)
-  
-  // Check center cell and all 8 surrounding cells
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      const neighbors = grid.get(`${cellX + dx},${cellY + dy}`)
-      if (neighbors) {
-        for (const existing of neighbors) {
-          const distX = pos.x - existing.x
-          const distY = pos.y - existing.y
-          if (distX * distX + distY * distY < (COLLISION_RADIUS * 2) * (COLLISION_RADIUS * 2)) {
-            return true
-          }
-        }
-      }
-    }
-  }
-  return false
-}
-
-/**
- * Calculates non-overlapping positions using Fermat's Spiral
- * index 0 is always exactly at (0, 0)
- */
 const calculatePositions = (itemCount: number) => {
-  const positions: Position[] = []
-  const grid = new Map<string, Position[]>()
-  const cellSize = COLLISION_RADIUS * 2 // Define grid size as the maximum possible collision diameter
-  
-  // c is the step multiplier.
-  const c = 35 
-  let spiralIndex = 0
-
-  for (let i = 0; i < itemCount; i++) {
-    if (i === 0) {
-      const pos = { x: 0, y: 0 }
-      positions.push(pos)
-      const key = getGridKey(pos.x, pos.y, cellSize)
-      grid.set(key, [pos])
-      spiralIndex++
-      continue
-    }
-
-    let found = false
-    let currentPos: Position = { x: 0, y: 0 }
-    
-    // Keep traversing the spiral until we find a spot that doesn't collide
-    while (!found) {
-      const r = c * Math.sqrt(spiralIndex)
-      const theta = spiralIndex * 137.508 * (Math.PI / 180)
-      
-      currentPos = {
-        x: r * Math.cos(theta),
-        y: r * Math.sin(theta)
-      }
-
-      if (!isCollidingOptimized(currentPos, grid, cellSize)) {
-        found = true
-      }
-      spiralIndex++
-    }
-    
-    positions.push(currentPos)
-    const key = getGridKey(currentPos.x, currentPos.y, cellSize)
-    if (!grid.has(key)) grid.set(key, [])
-    grid.get(key)!.push(currentPos)
-  }
-
-  layoutCache.value = positions
+  layoutCache.value = calculateScatterPositions(itemCount, {
+    itemSize: ITEM_SIZE,
+    margin: MARGIN
+  })
 }
 
 const getStoredPosition = (index: number) => {

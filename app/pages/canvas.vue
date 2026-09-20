@@ -90,6 +90,7 @@ import { Flip } from 'gsap/Flip'
 import { useRoute } from 'vue-router'
 import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import StickyNote from '~/components/StickyNote.vue'
+import { calculateScatterPositions } from '~/utils/scatter-layout'
 import {
   useConductor,
   getInterstitialSlotKey,
@@ -299,84 +300,15 @@ const PADDING_RIGHT = 40
 /** live-zone 左側額外留白（px），便利貼不會出現在此區域 */
 const PADDING_LEFT = 10
 
-/** 虛擬座標系：便利貼邊長（用於 Fermat 螺旋 + 碰撞檢測，與 index 一致） */
+/** 虛擬座標系：便利貼邊長。先在此座標系排好，再整體縮放到 live-zone */
 const VIRTUAL_ITEM_SIZE = 550
-/** 便利貼間距：負值 = 更緊、正值 = 更鬆。半徑 = (對角線 + MARGIN) / 2，與 index MARGIN=-20 同概念 */
+/** 便利貼間距：負值 = 更緊、正值 = 更鬆 */
 const VIRTUAL_MARGIN = -50
-const VIRTUAL_COLLISION_RADIUS = (VIRTUAL_ITEM_SIZE * Math.SQRT2 + VIRTUAL_MARGIN) / 2
-const VIRTUAL_CELL_SIZE = VIRTUAL_COLLISION_RADIUS * 2
-const SPIRAL_C = 35
-
-interface VirtualPosition { x: number; y: number }
-
-function getGridKey(x: number, y: number, cellSize: number): string {
-  return `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`
-}
-
-function isColliding(
-  pos: VirtualPosition,
-  grid: Map<string, VirtualPosition[]>,
-  cellSize: number
-): boolean {
-  const cellX = Math.floor(pos.x / cellSize)
-  const cellY = Math.floor(pos.y / cellSize)
-  const diam = VIRTUAL_COLLISION_RADIUS * 2
-  const diamSq = diam * diam
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      const neighbors = grid.get(`${cellX + dx},${cellY + dy}`)
-      if (neighbors) {
-        for (const ex of neighbors) {
-          const dx2 = pos.x - ex.x
-          const dy2 = pos.y - ex.y
-          if (dx2 * dx2 + dy2 * dy2 < diamSq) return true
-        }
-      }
-    }
-  }
-  return false
-}
-
-/**
- * Fermat 螺旋 + 碰撞檢測：產生不重疊的虛擬座標（與 index.vue 相同邏輯）
- */
-function calculatePositionsVirtual(itemCount: number): VirtualPosition[] {
-  const positions: VirtualPosition[] = []
-  const grid = new Map<string, VirtualPosition[]>()
-  let spiralIndex = 0
-
-  for (let i = 0; i < itemCount; i++) {
-    if (i === 0) {
-      const pos = { x: 0, y: 0 }
-      positions.push(pos)
-      const key = getGridKey(pos.x, pos.y, VIRTUAL_CELL_SIZE)
-      grid.set(key, [pos])
-      spiralIndex++
-      continue
-    }
-    let found = false
-    let currentPos: VirtualPosition = { x: 0, y: 0 }
-    while (!found) {
-      const r = SPIRAL_C * Math.sqrt(spiralIndex)
-      const theta = spiralIndex * 137.508 * (Math.PI / 180)
-      currentPos = {
-        x: r * Math.cos(theta),
-        y: r * Math.sin(theta)
-      }
-      if (!isColliding(currentPos, grid, VIRTUAL_CELL_SIZE)) found = true
-      spiralIndex++
-    }
-    positions.push(currentPos)
-    const key = getGridKey(currentPos.x, currentPos.y, VIRTUAL_CELL_SIZE)
-    if (!grid.has(key)) grid.set(key, [])
-    grid.get(key)!.push(currentPos)
-  }
-  return positions
-}
 
 /**
  * 為所有 liveGrid 便利貼分配不重疊位置。
- * 演算法：Fermat 螺旋 + 碰撞檢測（與 index 一致），再依張數縮放到 live-zone 內，便利貼大小一併縮放。
+ * 先用共用的散落演算法（~/utils/scatter-layout，與首頁同一套）在虛擬座標系排好，
+ * 再依張數整體縮放到 live-zone 內，便利貼大小一併縮放。
  */
 function recalcPositions() {
   const zone = liveZoneRef.value
@@ -392,7 +324,10 @@ function recalcPositions() {
   const count = items.length
   if (!count) return
 
-  const positions = calculatePositionsVirtual(count)
+  const positions = calculateScatterPositions(count, {
+    itemSize: VIRTUAL_ITEM_SIZE,
+    margin: VIRTUAL_MARGIN
+  })
 
   let minX = positions[0]!.x - VIRTUAL_ITEM_SIZE / 2
   let maxX = positions[0]!.x + VIRTUAL_ITEM_SIZE / 2
