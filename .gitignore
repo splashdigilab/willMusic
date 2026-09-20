@@ -6,6 +6,9 @@
 .cache
 dist
 
+# `nuxt dev --host` 參數打錯時會在根目錄生出這個名稱的資料夾
+::mobile/
+
 # Node dependencies
 node_modules
 

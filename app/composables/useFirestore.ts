@@ -235,24 +235,18 @@ export const useFirestore = () => {
       const pendingRef = doc(db, 'queue_pending', item.id)
       const historyRef = doc(db, 'queue_history', token)
 
-      console.log(`[moveToHistory] START token=${token}, pendingId=${item.id}`)
-
       await runTransaction(db, async (transaction) => {
         const pendingSnap = await transaction.get(pendingRef)
         const historySnap = await transaction.get(historyRef)
-
-        console.log(`[moveToHistory] TX: pending=${pendingSnap.exists()}, history=${historySnap.exists()}`)
 
         if (historySnap.exists()) {
           if (pendingSnap.exists()) {
             transaction.delete(pendingRef)
           }
-          console.log(`[moveToHistory] TX: history already exists, skipping write`)
           return
         }
 
         if (!pendingSnap.exists()) {
-          console.log(`[moveToHistory] TX: pending not found, nothing to do`)
           return
         }
 
@@ -268,7 +262,6 @@ export const useFirestore = () => {
 
         transaction.set(historyRef, historyData)
         transaction.delete(pendingRef)
-        console.log(`[moveToHistory] TX: wrote history/${token}, deleted pending/${item.id}`)
       })
 
       // 僅在有重複時才清理（cleanupDuplicateHistory 內已判斷 dupSnap.docs.length > 1）

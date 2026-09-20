@@ -1148,10 +1148,6 @@ const addTextBlock = (): TextBlockInstance => {
 }
 
 const removeTextBlock = (blockId: string) => {
-  // Debug：確認事件有沒有進來、目前有幾個文字區塊
-  // eslint-disable-next-line no-console
-  console.log('[Editor] removeTextBlock clicked', { blockId, textBlocksCount: textBlocks.value.length })
-
   textBlocks.value = textBlocks.value.filter(b => b.id !== blockId)
   textBlockInitialContents.delete(blockId)
   newTextBlockIds.delete(blockId)
