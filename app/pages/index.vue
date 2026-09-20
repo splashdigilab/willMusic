@@ -8,18 +8,28 @@
     <Transition name="intro-fade">
       <div v-if="showIntroOverlay" class="p-index__intro-overlay">
         <div class="p-index__intro-card">
-          <!-- 邊緣裝飾貼紙 -->
-          <img src="/svg/stickers/sticker-35.webp" class="p-index__card-sticker p-index__card-sticker--tl" alt="" />
-          <img src="/svg/stickers/sticker-41.webp" class="p-index__card-sticker p-index__card-sticker--br" alt="" />
+          <!-- 四角裝飾方塊 -->
+          <div class="p-index__intro-marks p-index__intro-marks--tl">
+            <i class="p-index__intro-mark" /><i class="p-index__intro-mark" /><i class="p-index__intro-mark" />
+          </div>
+          <div class="p-index__intro-marks p-index__intro-marks--br">
+            <i class="p-index__intro-mark" /><i class="p-index__intro-mark" /><i class="p-index__intro-mark" />
+          </div>
 
-          <img src="/postBoardLogoColumn.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
-          <!-- <h1 class="p-index__intro-title">活動介紹</h1> -->
+          <!-- 卡片上下的英文小字 -->
+          <p class="p-index__intro-caption p-index__intro-caption--top">Create your customized message here<br>and share your passion for music with everyone.</p>
+          <p class="p-index__intro-caption p-index__intro-caption--bottom">Create your customized message here<br>and share your passion for music with everyone.</p>
+
+          <h1 class="p-index__intro-title">
+            <span>應援便利貼<i class="p-index__intro-bang">!</i></span>
+            <span>POST BOARD</span>
+          </h1>
           <div class="p-index__intro-desc p-index__intro-rules">
-            <p style="text-align: center">歡迎來到 WILL MUSIC 數位應援便利貼！<br>在這裡，您可以創作專屬於您的應援內容，<br>與大家一起分享對音樂的熱愛。</p>
+            <p>歡迎來到 WillMusic 數位應援便利貼<br>在這裡，您可以創作專屬於您的應援內容<br>與大家一起分享對音樂的熱愛。</p>
           </div>
           <button
             type="button"
-            class="p-index__intro-btn c-btn c-btn--primary"
+            class="p-index__intro-btn"
             :disabled="loading"
             @click="onStartClick"
           >
@@ -27,9 +37,11 @@
               <span class="p-index__intro-spinner" aria-hidden="true" />
               載入中...
             </span>
-            <span v-else>開始</span>
+            <span v-else>START</span>
           </button>
         </div>
+
+        <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__intro-logo" />
       </div>
     </Transition>
 

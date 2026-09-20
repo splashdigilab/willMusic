@@ -64,49 +64,30 @@
   z-index: 3;
 }
 
-/* 
-  擬真柔和陰影：直接在縮放層套 filter: drop-shadow()。
-  drop-shadow 會依照 mask-image 裁切後的實際形狀計算陰影輪廓，
-  blur-radius 設大讓陰影擴散柔和，模擬真實便利貼的漫射打光。
+/*
+  投影。稿子裡每張便利貼的陰影都是一張獨立的點陣圖（opacity 0.35），
+  網頁改用 drop-shadow 重現：drop-shadow 會依 mask-image 裁切後的實際輪廓
+  計算陰影，所以愛心、爆炸星這類造型也能正確跟著形狀。
+
+  數值取自稿子：427px 的便利貼配 5px 位移、9px 模糊，
+  換算到 600px 的虛擬畫布是 7px / 13px。
 */
 @mixin sticky-note-shadow {
-  filter: drop-shadow(2px 4px 3px rgba(0, 0, 0, 0.05))
-          drop-shadow(1px 2px 1.5px rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(7px 7px 13px rgba(0, 0, 0, 0.35));
 }
 
-/* 
-  擬真紙張光影疊加層（模擬背膠與紙張彎曲）：
-  真實的便利貼上方 15% 處有一條背膠的物理分界，
-  下方因為沒有黏性而稍微翹起迎光，底部邊緣再轉暗。
+/*
+  舊視覺的兩層擬真效果（紙張打光漸層 + 紙紋貼圖）已移除：
+  新視覺的便利貼是純色平面，沒有紙材質。
+  mixin 保留為空殼，避免其他頁面的 @include 直接壞掉；
+  等頁面全部改完再連同呼叫端一起刪。
 */
 @mixin sticky-note-lighting-overlay {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  /* 由上到下的物理打光：極度柔化的薄霧光效，模擬真實無亮面紙張 */
-  background: linear-gradient(to bottom,
-      rgba(0, 0, 0, 0.02) 0%,
-      rgba(0, 0, 0, 0.03) 15%,
-      rgba(255, 255, 255, 0.06) 25%,
-      rgba(255, 255, 255, 0) 60%,
-      rgba(0, 0, 0, 0.04) 100%);
-  mix-blend-mode: normal;
+  display: none;
 }
 
-/* 紙張材質疊加層：使用 mix-blend-mode 疊上真實紙紋理 */
 @mixin sticky-note-paper-texture-overlay {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background-image: url('/paperTexture.webp');
-  background-size: cover;
-  background-repeat: repeat;
-  opacity: 0.45;
-  mix-blend-mode: multiply;
+  display: none;
 }
 
 /* 
@@ -141,7 +122,8 @@
     @include sticky-note-shadow;
   }
 
-  /* 內層：形狀由外層 mask-image 控制、背景圖片 */
+  /* 內層：形狀由外層 mask-image 控制、背景圖片。
+     新視覺是純色平面，不再疊紙張打光與紙紋。 */
   &__inner {
     position: relative;
     width: 100%;
@@ -152,14 +134,6 @@
     // WebKit Mask 邊緣毛邊修復
     -webkit-mask-composite: source-in;
     mask-composite: intersect;
-
-    &::before {
-      @include sticky-note-lighting-overlay;
-    }
-
-    &::after {
-      @include sticky-note-paper-texture-overlay;
-    }
   }
 
   /* 內容文字外包裝 - 支援位置、縮放、旋轉 */

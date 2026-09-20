@@ -113,17 +113,7 @@ body.is-editor-page #app {
     inset: 0;
     overflow: hidden;
     cursor: default;
-
-    /*
-      模擬實體便利貼光影與紙張材質（與 StickyNote 共用物理打光邏輯）
-    */
-    &::before {
-      @include sn.sticky-note-lighting-overlay;
-    }
-
-    &::after {
-      @include sn.sticky-note-paper-texture-overlay;
-    }
+    /* 新視覺的便利貼是純色平面，原本的紙張打光與紙紋疊層已移除 */
   }
 
   /* UI 層：編輯框置頂，不被裁切（繪圖模式時全部不接收點擊） */

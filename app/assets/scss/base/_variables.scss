@@ -1,30 +1,57 @@
 /* Variables */
+
+// ==================== 品牌色（2026 新視覺）====================
+// 取自「(Final) Will Music - 應援便利貼.ai」。
+//
+// 稿子裡藍與桃紅是特別色（藍 R0 G167 B197、桃紅 R229 G31 B77），但畫面上實際
+// 塗的是套過網點的淡一階版本。網頁沿用「畫面上看到的」那組，特別色原值只留在
+// 註解供印刷品對照，不要拿來當螢幕色。
+$will-blue: #4CC1D6; // 特別色原值 #00A7C5
+$will-red: #EA4C71; // 特別色原值 #E51F4D
+$will-yellow: #FADC00;
+$will-yellow-deep: #E6C900; // 黃色在淺底上的描邊／深一階
+
+// 大螢幕便利貼牆與深色區塊的底
+$will-dark: #404040;
+$will-dark-soft: #4B4B4B;
+$will-dark-deep: #282828;
+
+// 文字灰（沿用舊值，全站字色與陰影都以此為基準）
 $color-grey: #241F20;
-$will-red: #E6204D;
-$will-blue: #00A8C6;
 
 /* Editor 選取狀態（編輯框 outline、拖曳條背景，與 tutorial 示意一致） */
-$editor-selection-outline: rgba(102, 126, 234, 0.8);
-$editor-selection-bar-bg: rgba(102, 126, 234, 0.9);
+$editor-selection-outline: rgba(76, 193, 214, 0.8);
+$editor-selection-bar-bg: rgba(76, 193, 214, 0.9);
 
 :root {
   // Colors
-  --color-primary: #667eea;
-  --color-secondary: #764ba2;
+  --color-primary: #{$will-blue};
+  --color-secondary: #{$will-red};
+  --color-accent: #{$will-yellow};
   --color-success: #4ade80;
-  --color-error: #f43f5e;
-  --color-warning: #fbbf24;
-  
+  --color-error: #{$will-red};
+  --color-warning: #{$will-yellow-deep};
+
+  // Brand
+  --will-blue: #{$will-blue};
+  --will-red: #{$will-red};
+  --will-yellow: #{$will-yellow};
+  --will-yellow-deep: #{$will-yellow-deep};
+  --will-dark: #{$will-dark};
+  --will-dark-soft: #{$will-dark-soft};
+  --will-dark-deep: #{$will-dark-deep};
+
   // Text
   --color-text: #333333;
   --color-text-light: #666666;
   --color-text-lighter: #999999;
-  
+  --color-text-on-dark: #ffffff;
+
   // Background
   --color-bg: #ffffff;
   --color-bg-light: #f5f5f5;
-  --color-bg-dark: #1a1a1a;
-  
+  --color-bg-dark: #{$will-dark};
+
   // Borders
   --color-border: #e0e0e0;
   --color-border-light: #f0f0f0;
@@ -38,7 +65,12 @@ $editor-selection-bar-bg: rgba(102, 126, 234, 0.9);
   --shadow-xl: 0 20px 40px #{rgba(0, 0, 0, 0.2)};
   --shadow-soft: 0 0px 2px #{rgba($color-grey, 0.15)};
   --shadow-default: 0 0px 4px #{rgba($color-grey, 0.3)};
-  
+
+  // 便利貼投影：新視覺的陰影在稿子裡是 opacity 0.35 的點陣圖，
+  // 網頁改用 drop-shadow 重現（見 _sticky-note.scss）。
+  --shadow-sticky: 0 12px 24px #{rgba(0, 0, 0, 0.35)};
+  --shadow-sticky-lifted: 0 20px 36px #{rgba(0, 0, 0, 0.45)};
+
   // Spacing
   --spacing-xs: 0.25rem;
   --spacing-sm: 0.5rem;
@@ -46,14 +78,14 @@ $editor-selection-bar-bg: rgba(102, 126, 234, 0.9);
   --spacing-lg: 1.5rem;
   --spacing-xl: 2rem;
   --spacing-2xl: 3rem;
-  
+
   // Border radius
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-full: 9999px;
-  
+
   // Transitions
   --transition-fast: 0.15s ease;
   --transition-base: 0.3s ease;

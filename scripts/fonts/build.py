@@ -6,7 +6,7 @@
 
   UI 層   介面文字是編譯時就固定的（約 1,300 字），裁成單一檔案直接 preload，
           介面永遠不會有 FOUT。便利貼內容沒有粗體選項（TextBlockInstance 只有
-          color / align），所以 700 只需要這一層。
+          color / align），所以 700 / 800 只需要這一層（800 是新視覺的大標字重）。
   TW 層   使用者輸入的中文，無法預先得知，依 unicode-range 分片讓瀏覽器只抓用到的字。
           已扣掉 UI 層的字，兩者 unicode-range 不重疊。
   KR 層   使用者輸入的韓文，同上。介面沒有韓文，所以只有 400。
@@ -52,6 +52,7 @@ DOWNLOADS = {
 MEMBERS = {
     "tw-400": ("LINE_Seed_TW.zip", "WOFF2/LINESeedTW_OTF_Rg.woff2"),
     "tw-700": ("LINE_Seed_TW.zip", "WOFF2/LINESeedTW_OTF_Bd.woff2"),
+    "tw-800": ("LINE_Seed_TW.zip", "WOFF2/LINESeedTW_OTF_Eb.woff2"),
     "kr-400": ("LINE_Seed_Sans_KR.zip", "Web/woff2/LINESeedKR-Rg.woff2"),
 }
 
@@ -222,10 +223,10 @@ def main() -> None:
     ui_chars = ui_charset()
     log(f"介面字集：{len(ui_chars)} 字")
 
-    # ── UI 層：400 / 700 各一個檔案，preload 用
+    # ── UI 層：400 / 700 / 800 各一個檔案，preload 用
     ui_ranges: dict[int, str] = {}
     ui_covered: set[int] = set()
-    for weight in (400, 700):
+    for weight in (400, 700, 800):
         dest = OUT_DIR / f"line-seed-ui-{weight}.woff2"
         subset(SRC_DIR / f"tw-{weight}.woff2", dest, text="".join(sorted(ui_chars)))
         # unicode-range 必須以「產出的字型實際有哪些字形」為準，不能用請求的字集。
@@ -273,7 +274,7 @@ def main() -> None:
         f'src:url("/fonts/line-seed-ui-{w}.woff2")format("woff2");'
         f"font-style:normal;font-display:swap;font-weight:{w};"
         f"unicode-range:{ui_ranges[w]};}}"
-        for w in (400, 700)
+        for w in (400, 700, 800)
     ]
     (OUT_DIR / "line-seed-ui.css").write_text(
         header + "\n".join(ui_faces) + "\n", encoding="utf-8"

@@ -62,8 +62,8 @@ export default defineNuxtConfig({
       ],
       link: [
         // 介面字與 HTML 平行下載（@font-face 已內嵌，preload 只是提前開始抓）。
-        // 400 與 700 都要 preload：全站的粗體都統一成 700，只預載 400 的話
-        // 所有粗體標題與按鈕都會先以後備字型渲染再換過來。
+        // 400 / 700 / 800 都要 preload：全站粗體是 700，新視覺的大標（應援便利貼!、
+        // POST BOARD、START）是 800，少預載任何一個，該字重都會先以後備字型渲染再換過來。
         {
           rel: 'preload',
           as: 'font',
@@ -76,6 +76,13 @@ export default defineNuxtConfig({
           as: 'font',
           type: 'font/woff2',
           href: '/fonts/line-seed-ui-700.woff2',
+          crossorigin: ''
+        },
+        {
+          rel: 'preload',
+          as: 'font',
+          type: 'font/woff2',
+          href: '/fonts/line-seed-ui-800.woff2',
           crossorigin: ''
         },
         // 內容字分片：一般樣式表，確保大螢幕不會先閃後備字型再換成 LINE Seed

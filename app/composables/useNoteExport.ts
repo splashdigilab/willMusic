@@ -198,25 +198,8 @@ export function useNoteExport(
       // 4. 預先嵌入字型：只挑這張便利貼用到的字所在的 LINE Seed 分片
       const fontEmbedCSS = await buildFontEmbedCSS(getText())
 
-      // 4b. 注入紙張材質 base64
-      // ::after 偽元素的 background-image 若為相對 URL，off-screen 截圖時找不到；
-      // 改為先 fetch 成 base64，再用 <style> 直接覆寫，確保紙紋被完整輸出。
-      let injectedTextureStyle: HTMLStyleElement | null = null
-      try {
-        const textureRes = await fetch('/paperTexture.webp')
-        if (textureRes.ok) {
-          const textureBase64 = await blobToDataURL(await textureRes.blob())
-          injectedTextureStyle = document.createElement('style')
-          injectedTextureStyle.textContent = `
-          .c-sticky-note__inner::after {
-            background-image: url('${textureBase64}') !important;
-          }
-        `
-          node.appendChild(injectedTextureStyle)
-        }
-      } catch (e) {
-        console.warn('[Export] 紙張材質嵌入失敗:', e)
-      }
+      // 4b. 新視覺的便利貼是純色平面，不再疊紙張材質，
+      // 因此原本「fetch paperTexture.webp 轉 base64 再覆寫 ::after」那段已移除。
 
       // 5. 針對 iOS 的預熱 Hack：低解析度先跑一次，逼 html-to-image 綁定資源
       await toPng(node, {
@@ -233,9 +216,6 @@ export function useNoteExport(
         cacheBust: true,
         fontEmbedCSS
       })
-
-      // export node 即將卸載，這步可省略，但保持乾淨
-      injectedTextureStyle?.remove()
 
       const blob = await (await fetch(dataUrl)).blob()
       const file = new File([blob], FILE_NAME, { type: 'image/png' })
