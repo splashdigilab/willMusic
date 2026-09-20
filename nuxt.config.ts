@@ -23,10 +23,6 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
 
-  modules: [
-    '@pinia/nuxt',
-  ],
-
   srcDir: 'app',
 
   css: [
@@ -45,7 +41,15 @@ export default defineNuxtConfig({
 
   typescript: {
     strict: true,
-    typeCheck: false
+    typeCheck: false,
+    tsConfig: {
+      compilerOptions: {
+        // gsap 自身打包不一致：JS 是 Flip.js（大寫），型別卻是 types/flip.d.ts（小寫），
+        // 在不分大小寫的檔案系統（macOS／Windows）上會讓 vue-tsc 報 TS1149。
+        // 'gsap/Flip' 這個 import 路徑對執行期是正確的（Linux 上必須大寫），不能改。
+        forceConsistentCasingInFileNames: false
+      }
+    }
   },
 
   app: {
