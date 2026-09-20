@@ -1,5 +1,23 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 const gtmId = process.env.NUXT_PUBLIC_GTM_ID || ''
+
+// LINE Seed 介面字的 @font-face（約 13KB）在建置時讀進來直接內嵌到 <head>，
+// 省掉一次樣式表往返，介面文字不會有 FOUT。內容字（使用者輸入的中／韓文）
+// 則是約 870 個 unicode-range 分片，放在獨立樣式表讓瀏覽器只抓用到的字。
+// 兩者都由 scripts/fonts/build.py 產生，產物已進版控。
+const lineSeedUiCss = (() => {
+  const path = fileURLToPath(new URL('./public/fonts/line-seed-ui.css', import.meta.url))
+  try {
+    return readFileSync(path, 'utf-8')
+  } catch {
+    throw new Error(
+      `找不到 ${path}。請先執行 python3 scripts/fonts/build.py 產生字型資產。`
+    )
+  }
+})()
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -39,9 +57,19 @@ export default defineNuxtConfig({
         { name: 'description', content: 'Interactive digital sticky notes for K-Pop record store' }
       ],
       link: [
-        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap' }
+        // 介面字與 HTML 平行下載（@font-face 已內嵌，preload 只是提前開始抓）
+        {
+          rel: 'preload',
+          as: 'font',
+          type: 'font/woff2',
+          href: '/fonts/line-seed-ui-400.woff2',
+          crossorigin: ''
+        },
+        // 內容字分片：一般樣式表，確保大螢幕不會先閃後備字型再換成 LINE Seed
+        { rel: 'stylesheet', href: '/fonts/line-seed.css' }
+      ],
+      style: [
+        { innerHTML: lineSeedUiCss, type: 'text/css' }
       ],
       ...(gtmId ? {
         script: [

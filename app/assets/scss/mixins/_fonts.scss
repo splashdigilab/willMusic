@@ -1,0 +1,26 @@
+// ==================== 字型 ====================
+// 全站統一使用 LINE Seed（LY Corporation，SIL Open Font License 1.1）。
+//
+// 中文與拉丁字母來自 LINE Seed TW，韓文來自 LINE Seed Sans KR，
+// 兩者以 unicode-range 分流成同一個 font-family，瀏覽器會逐字挑選來源。
+// 字型檔與 @font-face 由 scripts/fonts/build.py 產生到 public/fonts/，
+// 介面字內嵌在 <head>（見 nuxt.config.ts），內容字走 /fonts/line-seed.css。
+//
+// 後備字型只在 LINE Seed 載入失敗時才會生效，依 Mac/iOS → Windows → Android 排序。
+
+$font-sans:
+  'LINE Seed',
+  -apple-system,
+  BlinkMacSystemFont,
+  'Segoe UI',
+  Roboto,
+  'PingFang TC',
+  'Microsoft JhengHei',
+  '微軟正黑體',
+  'Heiti TC',
+  'Apple SD Gothic Neo',
+  'Malgun Gothic',
+  sans-serif;
+
+// Token、QR code 代碼這類需要等寬對齊的地方
+$font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace;

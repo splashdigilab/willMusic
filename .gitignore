@@ -18,6 +18,9 @@ logs
 .fleet
 .idea
 
+# 字型建置的來源檔（由 scripts/fonts/build.py 自動下載，產出才進版控）
+scripts/fonts/.src/
+
 # Local env files
 .env
 .env.*

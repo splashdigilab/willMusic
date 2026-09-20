@@ -1,4 +1,5 @@
 @use '../base/variables' as var;
+@use '../mixins/fonts' as *;
 
 .c-modal--tutorial {
   max-width: 360px;
@@ -32,7 +33,7 @@
   border-radius: 12px;
   position: relative;
   overflow: hidden;
-  font-family: 'JasonHandwriting2', sans-serif;
+  font-family: $font-sans;
 }
 
 /* 與 editor 一致的被選取物件：outline + 拖曳條 */

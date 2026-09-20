@@ -1,4 +1,6 @@
-/* 
+@use '../mixins/fonts' as *;
+
+/*
   Page: Admin
   管理後台頁面 - Token 生成與統計
 */
@@ -439,7 +441,7 @@
 
   &__token-text {
     flex: 1;
-    font-family: monospace;
+    font-family: $font-mono;
     font-size: 0.875rem;
     color: #333;
     word-break: break-all;

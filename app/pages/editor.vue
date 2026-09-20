@@ -2012,10 +2012,11 @@ const confirmSubmit = async () => {
 import { toPng } from 'html-to-image'
 
 // ── 字型嵌入輔助 ──────────────────────────────────────────────────────────────
-// html-to-image 若使用 skipFonts:true 不嵌入字型，輸出圖會掉回系統字體（手機最明顯）。
-// 透過 fontEmbedCSS 選項自行把字型轉成 base64 傳入，可同時解決：
-//   1. 自架字型（JasonHandwriting2）在 off-screen export node 可能載不到
-//   2. Google Fonts 跨網域 cssRules 讀取拋出 SecurityError
+// html-to-image 會把節點序列化成 SVG foreignObject，外部字型 URL 在那個情境載不到，
+// 所以字型必須轉成 base64 一起帶進去，否則輸出圖會掉回系統字體（手機最明顯）。
+//
+// LINE Seed 全站共有 870+ 個 unicode-range 分片（約 6.6MB），全部嵌入會讓手機直接 OOM。
+// 這裡只挑「這張便利貼實際用到的字」所在的分片，一般只有數十 KB。
 const blobToDataURL = (blob: Blob): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -2024,53 +2025,61 @@ const blobToDataURL = (blob: Blob): Promise<string> =>
     reader.readAsDataURL(blob)
   })
 
-const buildFontEmbedCSS = async (): Promise<string> => {
-  const parts: string[] = []
+/** 解析 @font-face 的 unicode-range，回傳 [起, 迄] 區間陣列 */
+const parseUnicodeRange = (value: string): Array<[number, number]> =>
+  value
+    .split(',')
+    .map(part => part.trim().replace(/^u\+/i, ''))
+    .filter(Boolean)
+    .map((part): [number, number] => {
+      const [lo, hi] = part.split('-')
+      const start = parseInt(lo ?? '', 16)
+      return [start, hi ? parseInt(hi, 16) : start]
+    })
+    .filter(([lo, hi]) => Number.isFinite(lo) && Number.isFinite(hi))
 
-  // 1. 自架字型：JasonHandwriting2（同 origin，直接 fetch 沒有 CORS 問題）
-  try {
-    const res = await fetch('/JasonHandwriting2-SemiBold.woff2')
-    if (res.ok) {
-      const base64 = await blobToDataURL(await res.blob())
-      parts.push(`@font-face{font-family:'JasonHandwriting2';src:url('${base64}') format('woff2');font-weight:normal;font-style:normal;}`)
-    }
-  } catch (e) {
-    console.warn('[FontEmbed] JasonHandwriting2 失敗:', e)
-  }
+const buildFontEmbedCSS = async (text: string): Promise<string> => {
+  const wanted = [...new Set([...text].map(c => c.codePointAt(0) ?? 0))].filter(Boolean)
+  if (wanted.length === 0) return ''
 
-  // 2. Google Fonts：Nanum Pen Script
-  // fetch() 可以跨網域讀取回應內容（不同於 cssRules 的 CORS 限制），
-  // 取得 CSS text 後，再把 CSS 內每個 url() 字型檔也一一下載並轉 base64。
-  try {
-    const cssRes = await fetch(
-      'https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap',
-      { headers: { 'User-Agent': navigator.userAgent } }
-    )
-    if (cssRes.ok) {
-      let cssText = await cssRes.text()
-      const urlRegex = /url\(([^)]+)\)/g
-      const matches = [...cssText.matchAll(urlRegex)]
-      await Promise.all(
-        matches.map(async (m) => {
-          const rawUrl = (m[1] ?? '').replace(/['"]/g, '')
-          try {
-            const fontRes = await fetch(rawUrl)
-            if (fontRes.ok) {
-              const base64 = await blobToDataURL(await fontRes.blob())
-              cssText = cssText.replace(m[0], `url(${base64})`)
-            }
-          } catch (e2) {
-            console.warn('[FontEmbed] 字型檔下載失敗:', rawUrl, e2)
-          }
-        })
-      )
-      parts.push(cssText)
-    }
-  } catch (e) {
-    console.warn('[FontEmbed] Nanum Pen Script 失敗:', e)
-  }
+  const sheets = await Promise.all(
+    ['/fonts/line-seed-ui.css', '/fonts/line-seed.css'].map(async (href) => {
+      try {
+        const res = await fetch(href)
+        return res.ok ? await res.text() : ''
+      } catch (e) {
+        console.warn('[FontEmbed] 讀取字型 CSS 失敗:', href, e)
+        return ''
+      }
+    })
+  )
 
-  return parts.join('\n')
+  const blocks = sheets.join('\n').match(/@font-face\s*\{[^}]*\}/g) ?? []
+  const needed = blocks.filter((block) => {
+    const declared = /unicode-range:\s*([^;}]+)/i.exec(block)
+    // 沒宣告 unicode-range 代表涵蓋全部字元，保守起見留著
+    if (!declared) return true
+    const ranges = parseUnicodeRange(declared[1] ?? '')
+    return wanted.some(cp => ranges.some(([lo, hi]) => cp >= lo && cp <= hi))
+  })
+
+  const embedded = await Promise.all(
+    needed.map(async (block) => {
+      const url = /url\(["']?([^"')]+)["']?\)/.exec(block)?.[1]
+      if (!url) return null
+      try {
+        const res = await fetch(url)
+        if (!res.ok) return null
+        const base64 = await blobToDataURL(await res.blob())
+        return block.replace(url, base64)
+      } catch (e) {
+        console.warn('[FontEmbed] 字型分片下載失敗:', url, e)
+        return null
+      }
+    })
+  )
+
+  return embedded.filter((css): css is string => !!css).join('\n')
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2124,9 +2133,9 @@ const handleShare = async () => {
       })
     )
 
-    // 4. 預先嵌入字型（自架 + Google Fonts 一起轉 base64）
-    // 不依賴 html-to-image 自動讀取 cssRules（跨網域會 SecurityError），改由我們主動提供。
-    const fontEmbedCSS = await buildFontEmbedCSS()
+    // 4. 預先嵌入字型：只挑這張便利貼用到的字所在的 LINE Seed 分片。
+    // 不依賴 html-to-image 自動讀取 cssRules —— 那會把 870+ 個分片全抓下來。
+    const fontEmbedCSS = await buildFontEmbedCSS(previewNoteData.value.content)
 
     // 4b. 注入紙張材質 base64 style 到 export node
     // ::after 偽元素的 background-image 若為相對 URL，html-to-image 在 off-screen 截圖時找不到；
