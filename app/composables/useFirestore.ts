@@ -50,6 +50,20 @@ export const useFirestore = () => {
   }
 
   /**
+   * 產生無法預測的檔名片段。
+   *
+   * 檔名**不能**只用便利貼的 doc ID：有 token 時 doc ID 就是 token，而 token
+   * 印在店內螢幕的 QR code 上任何人都看得到。配合 Storage 規則的「只允許
+   * 建立、不允許覆寫」，攻擊者只要搶先上傳一個同名檔案就能讓真正的顧客
+   * 永遠上傳失敗。加上隨機碼之後，卡位與重試碰撞都不可能發生。
+   */
+  const randomFileSuffix = (): string => {
+    const cryptoObj = globalThis.crypto
+    if (cryptoObj?.randomUUID) return cryptoObj.randomUUID().replace(/-/g, '').slice(0, 12)
+    return Math.random().toString(36).slice(2, 14)
+  }
+
+  /**
    * 手繪圖改存 Storage，文件只留網址。
    *
    * 原本是把 base64 data URL 直接塞進 Firestore 文件，但單筆文件上限 1MB，
@@ -57,7 +71,8 @@ export const useFirestore = () => {
    * 也等於把所有圖一起拖下來。
    *
    * 顯示端是 `<img :src>`，data URL 與 https URL 都能吃，所以**舊便利貼完全
-   * 不受影響**，也不需要搬移既有資料。
+   * 不受影響**，也不需要搬移既有資料。刪除便利貼時是用文件裡存的網址去刪檔，
+   * 不是從 doc ID 推算路徑，所以檔名帶隨機碼不影響清理。
    *
    * 上傳失敗時沿用原本的 base64：這樣「程式碼先上線、Storage 規則後套用」
    * 的順序也不會壞掉，只是暫時退回舊行為。
@@ -68,7 +83,8 @@ export const useFirestore = () => {
 
     try {
       const blob = await (await fetch(drawing)).blob()
-      const fileRef = storageRef(storage, `${NOTE_DRAWING_PATH}/${noteId}.png`)
+      const path = `${NOTE_DRAWING_PATH}/${noteId}-${randomFileSuffix()}.png`
+      const fileRef = storageRef(storage, path)
       await uploadBytes(fileRef, blob, { contentType: 'image/png' })
       return { ...style, drawing: await getDownloadURL(fileRef) }
     } catch (error) {

@@ -11,9 +11,14 @@ service firebase.storage {
 
     // ── 便利貼手繪圖 ──────────────────────────────────────
     // 前台使用者未登入就要能上傳（便利貼本來就是公開投稿）。
-    // 檔名是便利貼的 doc ID，只允許 create 不允許 update：
-    // 這樣既擋掉覆寫別人圖片的可能，重試失敗時程式也會自動退回
-    // 把圖內嵌進文件的舊行為，不會讓使用者上傳失敗。
+    //
+    // 只允許 create 不允許 update，擋掉覆寫別人圖片的可能。這之所以安全，
+    // 是因為檔名帶了不可預測的隨機碼（見 useFirestore 的 randomFileSuffix）：
+    // 若檔名只用 doc ID，而有 token 時 doc ID 就是印在店內 QR code 上的 token，
+    // 攻擊者搶先上傳同名檔案就能讓真正的顧客永遠上傳失敗。
+    //
+    // 這裡擋不住的是「匿名灌爆儲存空間」—— 那是匿名上傳的本質問題，
+    // 規則層無解，真要處理得靠 App Check 或改成經由伺服器上傳。
     match /note_drawings/{fileName} {
       allow read: if true;
       allow create: if request.resource.size < 3 * 1024 * 1024

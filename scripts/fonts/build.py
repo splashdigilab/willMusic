@@ -22,10 +22,12 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -73,9 +75,13 @@ def fetch_sources() -> None:
             log(f"已有 {name}（{target.stat().st_size / 1048576:.1f} MB）")
             continue
         log(f"下載 {name} …")
+        # 先寫到 .part 再改名。中途斷線若直接留下正式檔名，之後每次執行都會
+        # 因為「檔案已存在」而跳過下載，然後死在 BadZipFile，而且看不出原因。
+        part = target.with_name(target.name + ".part")
         req = urllib.request.Request(url, headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=600) as resp:
-            target.write_bytes(resp.read())
+            part.write_bytes(resp.read())
+        part.rename(target)
         log(f"  {target.stat().st_size / 1048576:.1f} MB")
 
     for key, (zip_name, suffix) in MEMBERS.items():
@@ -129,36 +135,54 @@ def subset(src: Path, dest: Path, *, text: str | None = None, unicodes: str | No
     ]
     if unicodes:
         args.append(f"--unicodes={unicodes}")
-    if text is not None:
-        tmp = dest.with_suffix(".charset.txt")
-        tmp.write_text(text, encoding="utf-8")
-        args.append(f"--text-file={tmp}")
-    subprocess.run(args, check=True, capture_output=True)
-    if text is not None:
-        dest.with_suffix(".charset.txt").unlink(missing_ok=True)
+
+    # 字集暫存檔放系統暫存目錄，不要寫進 public/fonts/：
+    # 那是已進版控的目錄，中途失敗留下的檔案會被 git add -A 一起提交。
+    charset_file: Path | None = None
+    try:
+        if text is not None:
+            handle, path = tempfile.mkstemp(prefix="willmusic-charset-", suffix=".txt")
+            charset_file = Path(path)
+            with os.fdopen(handle, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            args.append(f"--text-file={charset_file}")
+        subprocess.run(args, check=True, capture_output=True)
+    finally:
+        if charset_file is not None:
+            charset_file.unlink(missing_ok=True)
 
 
 def split_font(src: Path, out_dir: Path, weight: int) -> None:
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "npx", "--yes", CN_FONT_SPLIT, "run",
-            "-i", str(src), "-o", str(out_dir),
-            "--css.fontFamily", FAMILY,
-            "--css.fontWeight", str(weight),
-            "--css.fontDisplay", "swap",
-            "--chunkSize", CHUNK_SIZE,
-            "--languageAreas", "true",
-            "--testHtml", "false",
-            "-r", "false",
-        ],
-        check=True,
-        capture_output=True,
-    )
-    for junk in ("index.proto", "reporter.bin"):
-        (out_dir / junk).unlink(missing_ok=True)
+    """先產生到暫存目錄，成功之後才換掉正式目錄。
+
+    不能先 rmtree 再跑外部指令：public/fonts/tw 底下有近七百個已進版控的
+    分片，指令一失敗（離線、npm registry 連不上）就會留下一個空目錄，
+    之後 `git add -A` 會把這幾百個刪除一起提交。
+    """
+    with tempfile.TemporaryDirectory(prefix="willmusic-fontsplit-") as tmp:
+        staging = Path(tmp) / "out"
+        staging.mkdir()
+        subprocess.run(
+            [
+                "npx", "--yes", CN_FONT_SPLIT, "run",
+                "-i", str(src), "-o", str(staging),
+                "--css.fontFamily", FAMILY,
+                "--css.fontWeight", str(weight),
+                "--css.fontDisplay", "swap",
+                "--chunkSize", CHUNK_SIZE,
+                "--languageAreas", "true",
+                "--testHtml", "false",
+                "-r", "false",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        for junk in ("index.proto", "reporter.bin"):
+            (staging / junk).unlink(missing_ok=True)
+
+        if out_dir.exists():
+            shutil.rmtree(out_dir)
+        shutil.copytree(staging, out_dir)
 
 
 def format_unicode_range(codepoints) -> str:
@@ -199,16 +223,24 @@ def main() -> None:
     log(f"介面字集：{len(ui_chars)} 字")
 
     # ── UI 層：400 / 700 各一個檔案，preload 用
+    ui_ranges: dict[int, str] = {}
+    ui_covered: set[int] = set()
     for weight in (400, 700):
         dest = OUT_DIR / f"line-seed-ui-{weight}.woff2"
         subset(SRC_DIR / f"tw-{weight}.woff2", dest, text="".join(sorted(ui_chars)))
-        log(f"UI {weight}：{dest.stat().st_size / 1024:.0f} KB")
+        # unicode-range 必須以「產出的字型實際有哪些字形」為準，不能用請求的字集。
+        # 字集裡有不少字（例如大半個 Latin-1 補充區）LINE Seed TW 根本沒有收，
+        # 宣告了卻沒有字形的話，那些字會靜靜掉到系統字，沒有任何地方會報錯。
+        actual = font_codepoints(dest)
+        ui_ranges[weight] = format_unicode_range(actual)
+        ui_covered |= actual
+        log(f"UI {weight}：{dest.stat().st_size / 1024:.0f} KB，實際收錄 {len(actual)} 字")
 
-    ui_face_range = format_unicode_range(ord(c) for c in ui_chars)
+    log(f"介面字集請求 {len(ui_chars)} 字，字型實際有 {len(ui_covered)} 字")
 
-    # ── TW 內容層：全字集扣掉 UI 字集，避免 unicode-range 重疊
+    # ── TW 內容層：全字集扣掉 UI 層「實際涵蓋」的字，確保兩層既不重疊也不留縫
     tw_all = font_codepoints(SRC_DIR / "tw-400.woff2")
-    tw_content = "".join(sorted(chr(c) for c in tw_all if chr(c) not in ui_chars))
+    tw_content = "".join(sorted(chr(c) for c in tw_all if c not in ui_covered))
     log(f"中文內容字集：{len(tw_content)} 字")
     tw_src = SRC_DIR / "tw-content-400.woff2"
     subset(SRC_DIR / "tw-400.woff2", tw_src, text=tw_content)
@@ -240,7 +272,7 @@ def main() -> None:
         f'@font-face{{font-family:"{FAMILY}";'
         f'src:url("/fonts/line-seed-ui-{w}.woff2")format("woff2");'
         f"font-style:normal;font-display:swap;font-weight:{w};"
-        f"unicode-range:{ui_face_range};}}"
+        f"unicode-range:{ui_ranges[w]};}}"
         for w in (400, 700)
     ]
     (OUT_DIR / "line-seed-ui.css").write_text(

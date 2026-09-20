@@ -1009,9 +1009,11 @@ const confirmDelete = async () => {
   isDeleting.value = true
   try {
     const colName = deleteModalData.value.isPending ? 'queue_pending' : 'queue_history'
-    // 先清圖再刪文件：文件刪掉之後就查不到圖片網址了
-    await deleteNoteDrawing(deleteModalData.value.id, deleteModalData.value.isPending)
+    // 先刪文件再清圖。反過來的話，文件刪除一旦失敗（權限或網路），
+    // 便利貼會繼續留在牆上但圖片已經不存在，變成破圖。
+    // 圖片網址是從記憶體裡的清單讀的、不是重新查詢，所以文件先刪不影響。
     await deleteDoc(doc(db, colName, deleteModalData.value.id))
+    await deleteNoteDrawing(deleteModalData.value.id, deleteModalData.value.isPending)
     if (deleteModalData.value.isPending) {
       await loadPendingNotesPage()
     } else {

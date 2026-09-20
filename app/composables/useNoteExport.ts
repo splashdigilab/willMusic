@@ -35,9 +35,15 @@ const blobToDataURL = (blob: Blob): Promise<string> =>
     reader.readAsDataURL(blob)
   })
 
-/** 解析 @font-face 的 unicode-range，回傳 [起, 迄] 區間陣列 */
-const parseUnicodeRange = (value: string): Array<[number, number]> =>
-  value
+/**
+ * 解析 @font-face 的 unicode-range，回傳 [起, 迄] 區間陣列。
+ * 回傳 null 代表「看不懂，保守起見當成涵蓋全部」——規格允許 `U+30??` 這種
+ * 萬用字元寫法，硬解會把整個區間縮成單一碼位，讓該片字型被漏掉而默默掉字。
+ */
+const parseUnicodeRange = (value: string): Array<[number, number]> | null => {
+  if (value.includes('?')) return null
+
+  return value
     .split(',')
     .map(part => part.trim().replace(/^u\+/i, ''))
     .filter(Boolean)
@@ -47,12 +53,27 @@ const parseUnicodeRange = (value: string): Array<[number, number]> =>
       return [start, hi ? parseInt(hi, 16) : start]
     })
     .filter(([lo, hi]) => Number.isFinite(lo) && Number.isFinite(hi))
+}
+
+/**
+ * 便利貼內容永遠是 Regular —— TextBlockInstance 只有 color 與 align，
+ * 編輯器沒有粗體選項。介面字的 400 與 700 兩個檔案 unicode-range 相同，
+ * 不篩字重的話兩個都會被嵌入，白白多帶 226KB 進匯出流程。
+ */
+const isRegularWeight = (block: string): boolean => {
+  const declared = /font-weight:\s*(\d+)/.exec(block)?.[1]
+  return declared === undefined || declared === '400'
+}
 
 /**
  * 只挑出「這張便利貼實際用到的字」所在的字型分片並轉成 base64。
  *
  * 全站字型是 870+ 個 unicode-range 分片（約 6.6MB），若讓 html-to-image
  * 自己讀 cssRules 會全部抓下來，手機直接 OOM。
+ *
+ * 實際大小：介面字那一片涵蓋 ASCII，所以只要便利貼裡有一個空白或數字就一定
+ * 會被帶上（約 227KB），加上內容分片數十 KB，base64 之後總計約 360KB。
+ * 這不是「數十 KB」，但相較改版前一次嵌入整包 7.5MB 已經少了 95%。
  */
 const buildFontEmbedCSS = async (text: string): Promise<string> => {
   const wanted = [...new Set([...text].map(c => c.codePointAt(0) ?? 0))].filter(Boolean)
@@ -72,10 +93,12 @@ const buildFontEmbedCSS = async (text: string): Promise<string> => {
 
   const blocks = sheets.join('\n').match(/@font-face\s*\{[^}]*\}/g) ?? []
   const needed = blocks.filter((block) => {
+    if (!isRegularWeight(block)) return false
     const declared = /unicode-range:\s*([^;}]+)/i.exec(block)
     // 沒宣告 unicode-range 代表涵蓋全部字元，保守起見留著
     if (!declared) return true
     const ranges = parseUnicodeRange(declared[1] ?? '')
+    if (ranges === null) return true
     return wanted.some(cp => ranges.some(([lo, hi]) => cp >= lo && cp <= hi))
   })
 

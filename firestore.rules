@@ -20,20 +20,52 @@ service cloud.firestore {
       return request.resource.data;
     }
 
+    // 憑證有效期限與前台 checkTokenStatus() 的 30 分鐘一致。
+    // 只在前端判斷的話，顧客把結帳時的 QR code 截圖下來就能永久使用。
+    function tokenUnexpired(tokenDoc) {
+      return tokenDoc.createdAt is timestamp
+             && request.time < tokenDoc.createdAt + duration.value(30, 'm');
+    }
+
+    function tokenPath(tokenId) {
+      return /databases/$(database)/documents/tokens/$(tokenId);
+    }
+
+    // 後台是否要求必須帶憑證才能上傳。
+    // 判定方式必須與 editor.vue 一致：文件不存在或 enabled 非 true 都視為不需要。
+    function tokenRequired() {
+      return exists(/databases/$(database)/documents/system/editor_token_requirement)
+             && get(/databases/$(database)/documents/system/editor_token_requirement)
+                  .data.get('enabled', false) == true;
+    }
+
+    function hasUsableToken(tokenId) {
+      return exists(tokenPath(tokenId))
+             && get(tokenPath(tokenId)).data.status == 'unused'
+             && tokenUnexpired(get(tokenPath(tokenId)).data);
+    }
+
     // ── queue_pending：待播佇列，也是前台的投稿入口 ──────────────
     match /queue_pending/{noteId} {
       // 首頁、等待頁與大螢幕都要讀；內容本來就會公開展示
       allow read: if true;
 
-      // 前台未登入即可投稿，但限制欄位與長度，避免被塞任意資料
-      allow create: if incoming().status == 'waiting'
+      // 前台未登入即可投稿，但：
+      //   1. doc ID 必須等於 token —— moveToHistory 與去重邏輯都依賴這個不變式，
+      //      不強制的話可以建立 queue_pending/A 卻帶 token:'B'，歷史紀錄就會錯位
+      //   2. 後台開啟 Token 驗證時，必須真的持有一張未使用且未過期的憑證。
+      //      前台的 checkTokenStatus() 只是體驗，繞過前端直接打 API 就失效了
+      //   3. 限制欄位與長度，避免被塞任意資料
+      allow create: if noteId == incoming().token
+                    && incoming().status == 'waiting'
                     && incoming().content is string
                     && incoming().content.size() <= 1000
                     && incoming().style is map
                     && incoming().token is string
                     && incoming().keys().hasOnly(
                          ['content', 'style', 'token', 'timestamp', 'status']
-                       );
+                       )
+                    && (!tokenRequired() || hasUsableToken(noteId));
 
       // 送出後就不能再改；只有大螢幕播完或後台管理才會刪
       allow update: if false;
@@ -57,13 +89,14 @@ service cloud.firestore {
       // 只有後台可以發憑證
       allow create: if isStaff();
 
-      // 前台送出成功時要把 unused 改成 used —— 只允許這一種轉換，
-      // 而且只能動 status 這個欄位
+      // 前台送出成功時要把 unused 改成 used —— 只允許這一種轉換、
+      // 只能動 status 這個欄位，而且憑證必須還在 30 分鐘有效期內
       allow update: if isStaff()
                     || (
                       resource.data.status == 'unused'
                       && incoming().status == 'used'
                       && incoming().diff(resource.data).affectedKeys().hasOnly(['status'])
+                      && tokenUnexpired(resource.data)
                     );
 
       allow delete: if isStaff();

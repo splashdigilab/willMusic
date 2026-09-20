@@ -61,12 +61,21 @@ export default defineNuxtConfig({
         { name: 'description', content: 'Interactive digital sticky notes for K-Pop record store' }
       ],
       link: [
-        // 介面字與 HTML 平行下載（@font-face 已內嵌，preload 只是提前開始抓）
+        // 介面字與 HTML 平行下載（@font-face 已內嵌，preload 只是提前開始抓）。
+        // 400 與 700 都要 preload：全站的粗體都統一成 700，只預載 400 的話
+        // 所有粗體標題與按鈕都會先以後備字型渲染再換過來。
         {
           rel: 'preload',
           as: 'font',
           type: 'font/woff2',
           href: '/fonts/line-seed-ui-400.woff2',
+          crossorigin: ''
+        },
+        {
+          rel: 'preload',
+          as: 'font',
+          type: 'font/woff2',
+          href: '/fonts/line-seed-ui-700.woff2',
           crossorigin: ''
         },
         // 內容字分片：一般樣式表，確保大螢幕不會先閃後備字型再換成 LINE Seed

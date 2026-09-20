@@ -334,12 +334,16 @@ export function useAdminStats(db: any, { onError }: UseAdminStatsOptions) {
     if (!rangeIncludesToday.value || loading.value) return
     // 權限未開放時不必每 30 秒重試一次刷 console
     if (permissionDenied.value) return
+    // 記下進來時的世代：請求還在路上時使用者可能換了區間、load() 也跑完了，
+    // 那這次的結果就已經過期，寫回去會讓「近 1 小時」顯示不屬於該區間的數字。
+    const id = requestId
     const todayKey = toDateKey(new Date())
     try {
       const [today, lastHour] = await Promise.all([
         fetchDayUploadStat(db, todayKey),
         fetchLastHourUploads()
       ])
+      if (id !== requestId) return
       const index = dailyRows.value.findIndex(row => row.date === todayKey)
       if (index >= 0) {
         const next = dailyRows.value.slice()
