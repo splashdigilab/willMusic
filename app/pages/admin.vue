@@ -698,12 +698,15 @@ const copyToken = async (token: string) => {
 
 const startTokenRequirementListener = () => {
   unsubTokenRequirement = onSnapshot(doc(db, 'system', 'editor_token_requirement'), (snap) => {
+    // 判定方式必須與 editor.vue 完全一致：editor 是真正執行驗證的那一側，
+    // 它把「文件不存在」與「enabled 非 true」都視為不需要 Token。
+    // 後台若各自解讀，會出現「後台顯示需要 Token，但前台其實放行所有人」。
     if (!snap.exists()) {
-      tokenRequiredForSubmit.value = true
+      tokenRequiredForSubmit.value = false
       return
     }
     const data = snap.data() as { enabled?: boolean }
-    tokenRequiredForSubmit.value = data.enabled !== false
+    tokenRequiredForSubmit.value = data.enabled === true
   })
 }
 
