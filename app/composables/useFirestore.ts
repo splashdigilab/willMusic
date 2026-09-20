@@ -5,7 +5,6 @@ import {
   orderBy,
   limit,
   startAfter,
-  onSnapshot,
   getDocs,
   where,
   doc,
@@ -14,7 +13,6 @@ import {
   runTransaction,
   getDoc,
   setDoc,
-  type Unsubscribe,
   type QueryDocumentSnapshot,
   type DocumentData
 } from 'firebase/firestore'
@@ -143,26 +141,6 @@ export const useFirestore = () => {
   }
 
   /**
-   * 監聽待處理佇列
-   */
-  const listenToPendingQueue = (
-    callback: (items: QueuePendingItem[]) => void
-  ): Unsubscribe => {
-    const q = query(
-      collection(db, 'queue_pending'),
-      orderBy('timestamp', 'asc')
-    )
-
-    return onSnapshot(q, (snapshot) => {
-      const items: QueuePendingItem[] = snapshot.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      } as QueuePendingItem))
-      callback(items)
-    })
-  }
-
-  /**
    * 依 token 去重：同一 token 只保留一筆
    */
   const deduplicateByToken = (items: QueueHistoryItem[]): QueueHistoryItem[] => {
@@ -173,88 +151,6 @@ export const useFirestore = () => {
       seen.add(key)
       return true
     })
-  }
-
-  /**
-   * 即時監聯歷史紀錄（最新 N 筆，用於即時牆）
-   * 內建 self-healing：偵測到同 token 重複文件時自動刪除孤兒
-   */
-  const listenToHistory = (
-    pageSize: number = 60,
-    callback: (items: QueueHistoryItem[]) => void
-  ): Unsubscribe => {
-    const q = query(
-      collection(db, 'queue_history'),
-      orderBy('playedAt', 'desc'),
-      limit(pageSize)
-    )
-
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        const rawItems: QueueHistoryItem[] = snapshot.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        } as QueueHistoryItem))
-
-        // Self-healing：偵測同 token 的重複文件，自動刪除 doc ID ≠ token 的孤兒
-        const tokenCount = new Map<string, string[]>()
-        for (const item of rawItems) {
-          const token = item.token || ''
-          if (!token) continue
-          if (!tokenCount.has(token)) tokenCount.set(token, [])
-          tokenCount.get(token)!.push(item.id || '')
-        }
-        for (const [token, ids] of tokenCount) {
-          if (ids.length > 1) {
-            const orphanIds = ids.filter(id => id !== token)
-            for (const orphanId of orphanIds) {
-              if (orphanId) {
-                console.warn(`[listenToHistory] Self-healing: deleting orphan ${orphanId} (token=${token})`)
-                deleteDoc(doc(db, 'queue_history', orphanId)).catch(() => { })
-              }
-            }
-          }
-        }
-
-        callback(deduplicateByToken(rawItems))
-      },
-      (error) => {
-        console.error('Error listening to history:', error)
-      }
-    )
-  }
-
-  /**
-   * 即時監聽「今日」所有歷史紀錄（以當天凌晨 00:00 為分界）
-   */
-  const listenToTodayHistory = (
-    callback: (items: QueueHistoryItem[]) => void
-  ): Unsubscribe => {
-    const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD
-    const todayParams = todayStr.split('-')
-    // Get start of today
-    const startOfToday = new Date(parseInt(todayParams[0] || '0'), parseInt(todayParams[1] || '0') - 1, parseInt(todayParams[2] || '0'), 0, 0, 0, 0)
-
-    const q = query(
-      collection(db, 'queue_history'),
-      where('playedAt', '>=', startOfToday),
-      orderBy('playedAt', 'desc')
-    )
-
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        const rawItems: QueueHistoryItem[] = snapshot.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        } as QueueHistoryItem))
-        callback(deduplicateByToken(rawItems))
-      },
-      (error) => {
-        console.error('Error listening to today history:', error)
-      }
-    )
   }
 
   /**
@@ -412,19 +308,6 @@ export const useFirestore = () => {
   }
 
   /**
-   * 驗證 token 是否可用（目前僅供 admin 或內部工具使用）
-   * 前台 Editor 主要依賴 Firestore Rules 做強制驗證
-   */
-  const validateToken = async (token: string): Promise<boolean> => {
-    try {
-      const status = await checkTokenStatus(token)
-      return status === 'valid'
-    } catch {
-      return false
-    }
-  }
-
-  /**
    * 建立新的 token
    */
   const createToken = async (): Promise<string> => {
@@ -444,13 +327,8 @@ export const useFirestore = () => {
 
   return {
     createNote,
-    listenToPendingQueue,
-    listenToHistory,
-    listenToTodayHistory,
     getHistory,
     moveToHistory,
-    cleanupDuplicateHistory,
-    validateToken,
     checkTokenStatus,
     createToken
   }

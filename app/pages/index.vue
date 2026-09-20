@@ -82,7 +82,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { gsap } from 'gsap'
-import type { QueuePendingItem, QueueHistoryItem } from '~/types'
+import type { QueueHistoryItem } from '~/types'
 import { useFirestore } from '~/composables/useFirestore'
 import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
 import StickyNote from '~/components/StickyNote.vue'
@@ -100,52 +100,6 @@ const displayItems = ref<QueueHistoryItem[]>([])
 const showIntroOverlay = ref(true)
 const loading = ref(true)
 const HISTORY_FETCH_LIMIT = 100
-
-// ====== Intro Random Stickers ======
-const introStickers = ref<{src: string, x: number, y: number, rotation: number, scale: number, zIndex: number}[]>([])
-const generateRandomStickers = () => {
-  // Use a mix of the available stickers
-  const stickerFiles = [
-    'sticker-1.svg', 'sticker-2.svg', 'sticker-3.svg', 'sticker-4.svg', 'sticker-5.svg',
-    'sticker-10.svg', 'sticker-11.svg', 'sticker-12.svg', 'sticker-17.svg', 'sticker-25.svg',
-    'sticker-32.svg', 'sticker-44.svg', 'sticker-51.svg', 'sticker-60.svg',
-    'sticker-13.webp', 'sticker-16.webp', 'sticker-20.webp', 'sticker-35.webp', 'sticker-41.webp'
-  ]
-  const count = Math.floor(Math.random() * 5) + 6 // 6 to 10 stickers
-  const result = []
-  
-  for (let i = 0; i < count; i++) {
-    const file = stickerFiles[Math.floor(Math.random() * stickerFiles.length)]
-    
-    // Random position avoiding the center
-    // Center card is roughly 400px wide (maybe 30vw to 70vw) and height (30vh to 70vh)
-    let x = 0
-    let y = 0
-    let isCenter = true
-    
-    // Ensure it's not placed directly behind the intro card
-    while(isCenter) {
-      x = Math.random() * 90 // 0vw to 90vw
-      y = Math.random() * 90 // 0vh to 90vh
-      
-      // If outside the 25% - 75% region (both X and Y), it's safe
-      if (x < 25 || x > 75 || y < 25 || y > 75) {
-        isCenter = false
-      }
-    }
-
-    result.push({
-      src: `/svg/stickers/${file}`,
-      x,
-      y,
-      rotation: (Math.random() - 0.5) * 60, // -30deg to 30deg
-      scale: 0.6 + Math.random() * 0.6, // 0.6x to 1.2x
-      zIndex: Math.floor(Math.random() * 10)
-    })
-  }
-  introStickers.value = result
-}
-generateRandomStickers()
 
 // ====== Layout Math: Fermat's Spiral with Collision Detection ======
 const ITEM_SIZE = 150 
@@ -318,7 +272,6 @@ const playReflowSequence = async () => {
   }
 
   if (isFirstRender) {
-    const totalCount = elements.length
     calculatePositions(displayItems.value.length)
 
     elements.forEach((el, index) => {

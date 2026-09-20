@@ -583,7 +583,6 @@ import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shape
 import { EDITOR_TABS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
 import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
-import { useTextBlockInteraction } from '~/composables/useTextBlockInteraction'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
 import { useCanvasPinch } from '~/composables/useCanvasPinch'
 import { useStorage } from '~/composables/useStorage'
@@ -734,9 +733,6 @@ const showHorizontalCenterGuide = ref(false)
 
 // Tab: 便利貼 | 文字 | 繪圖 | 貼紙
 const activeTab = ref<'note' | 'text' | 'draw' | 'sticker' | null>(null)
-
-// 文字編輯模式：有選取文字區塊時
-const isTextEditMode = computed(() => selectedTextBlockId.value !== null)
 
 const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)
@@ -1421,20 +1417,6 @@ const saveDraftData = () => {
   }
   saveDraft(draft)
 }
-
-const {
-  onTextBlockTransformMouseDown,
-  onTextBlockTransformTouchStart
-} = useTextBlockInteraction({
-  canvasRef,
-  textBlocks,
-  selectedTextBlockId,
-  textBlockDragging,
-  textBlockTransforming,
-  selectTextBlock,
-  onDragEnd: saveDraftData,
-  onTransformEnd: saveDraftData
-})
 
 const {
   onCanvasTouchStart,

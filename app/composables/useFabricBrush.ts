@@ -287,40 +287,6 @@ export function useFabricBrush(onPathCreated?: () => void) {
     }
   }
 
-  const resize = (width: number, height: number) => {
-    if (!fabricCanvas || width <= 0 || height <= 0) return
-    if (initialWidth === 0 || initialHeight === 0) {
-      initialWidth = width
-      initialHeight = height
-      fabricCanvas.setDimensions({ width, height })
-      fabricCanvas.renderAll()
-      return
-    }
-
-    const scaleRatio = width / initialWidth
-    if (Math.abs(scaleRatio - 1) < 0.001) return
-
-    const objects = fabricCanvas.getObjects()
-    for (const obj of objects) {
-      const currentLeft = obj.left ?? 0
-      const currentTop = obj.top ?? 0
-      const currentScaleX = obj.scaleX ?? 1
-      const currentScaleY = obj.scaleY ?? 1
-      obj.set({
-        left: currentLeft * scaleRatio,
-        top: currentTop * scaleRatio,
-        scaleX: currentScaleX * scaleRatio,
-        scaleY: currentScaleY * scaleRatio
-      })
-      obj.setCoords()
-    }
-
-    initialWidth = width
-    initialHeight = height
-    fabricCanvas.setDimensions({ width, height })
-    fabricCanvas.renderAll()
-  }
-
   const isInitialized = () => !!fabricCanvas
 
   /**
@@ -368,12 +334,10 @@ export function useFabricBrush(onPathCreated?: () => void) {
     exportToDataURL,
     loadFromDataURL,
     clear,
-    resize,
     dispose,
     minimizeCanvas,
     restoreCanvas,
     isInitialized,
-    getCanvas: () => fabricCanvas,
     undo,
     redo,
     canUndo,

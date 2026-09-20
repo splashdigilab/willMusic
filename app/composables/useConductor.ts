@@ -8,16 +8,14 @@
  *  4. 暴露 onBeforeStateChange / onAfterStateChange 回呼，
  *     供 canvas.vue 嵌入 GSAP FLIP 動畫
  */
-import { ref, computed, reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import {
-    collection, doc, setDoc, onSnapshot,
-    query, limit, orderBy, getDocs
+    collection, onSnapshot,
+    query, limit, orderBy
 } from 'firebase/firestore'
 import { useNuxtApp } from '#app'
 import { useFirestore } from '~/composables/useFirestore'
-import type {
-    QueuePendingItem, QueueHistoryItem, CurrentStateData
-} from '~/types'
+import type { QueuePendingItem, QueueHistoryItem } from '~/types'
 
 /* ─── Types ─── */
 
@@ -46,7 +44,6 @@ interface ConductorState {
     // internals
     unsubPending: (() => void) | null
     unsubHistory: (() => void) | null
-    unsubState: (() => void) | null
     timer: ReturnType<typeof setTimeout> | null
     animTimer: ReturnType<typeof setTimeout> | null
     isAnimating: boolean
@@ -86,7 +83,6 @@ function getSingleton(): ConductorState {
             borrowedId: null,
             unsubPending: null,
             unsubHistory: null,
-            unsubState: null,
             timer: null,
             animTimer: null,
             isAnimating: false,
@@ -257,9 +253,6 @@ export function useConductor() {
     const db = $firestore as any
     const { moveToHistory } = useFirestore()
     const s = getSingleton()
-
-    // 給手機端用的 ref
-    const currentState = ref<CurrentStateData | null>(null)
 
     /* ── startConductor ── */
     const startConductor = async (opts?: ConductorOptions) => {
@@ -634,37 +627,6 @@ export function useConductor() {
         tick()
     }
 
-    /* ── broadcast ── */
-    const broadcast = () => {
-        const payload: CurrentStateData = {
-            mode: s.mode,
-            now_playing: s.nowPlaying,
-            live_grid: s.liveGrid,
-            updated_at: Date.now()
-        }
-        try {
-            setDoc(doc(db, 'system', 'current_state'), payload)
-                .catch(e => console.error('[Conductor] broadcast', e))
-        } catch (e) { console.error(e) }
-    }
-
-    /* ── 手機端監聽 ── */
-    const startListeningState = () => {
-        if (s.unsubState) return
-        s.unsubState = onSnapshot(
-            doc(db, 'system', 'current_state'),
-            snap => {
-                if (!snap.exists()) return
-                const d = snap.data() as CurrentStateData
-                if (currentState.value?.updated_at === d.updated_at) return
-                currentState.value = d
-            }
-        )
-    }
-    const stopListeningState = () => {
-        s.unsubState?.(); s.unsubState = null
-    }
-
     /* ── 暴露給 template 的 reactive 物件 ── */
     const displayState = computed(() => ({
         mode: s.mode,
@@ -677,9 +639,6 @@ export function useConductor() {
         startConductor,
         stopConductor,
         displayState,
-        currentState,
-        startListeningState,
-        stopListeningState,
         armInterstitialSlot,
         clearInterstitialArmQueue,
         finishInterstitial

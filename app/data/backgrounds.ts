@@ -31,10 +31,3 @@ export const BACKGROUND_IMAGES: BackgroundImage[] = [
   { id: 'bg-21', url: '/svg/bg/bg-21.svg' },
 
 ]
-
-/**
- * 根據 ID 取得背景圖片
- */
-export const getBackgroundById = (id: string): BackgroundImage | undefined => {
-  return BACKGROUND_IMAGES.find(bg => bg.id === id)
-}
