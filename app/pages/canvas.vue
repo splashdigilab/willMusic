@@ -56,6 +56,15 @@
     <div class="p-canvas__half p-canvas__half--stack">
       <!-- ─── 右半：單張展示區 ─── -->
       <div class="p-canvas__display-zone">
+        <!-- 標語 + QR：放在同一個容器用 flex 排，
+             各自絕對定位會互相重疊（標語與 QR 原本是同一張圖，拆開後才需要排版） -->
+        <div class="p-canvas__cta">
+          <p class="p-canvas__slogan">
+            <span>上傳便利貼</span>
+            <span>為你的本命<em>應援</em>！</span>
+          </p>
+          <img src="/qrcode.svg" alt="上傳便利貼 QR code" class="p-canvas__qr" />
+        </div>
         <div
           v-if="displayState.nowPlaying"
           :key="'display-' + getId(displayState.nowPlaying)"
