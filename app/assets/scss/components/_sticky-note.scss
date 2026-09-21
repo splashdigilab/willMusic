@@ -24,6 +24,9 @@
   min-height: 1.5em;
   padding: 0.1em 0.2em;
   box-sizing: border-box;
+  /* 便利貼文字統一 700。內容層字型本身就是 700（見 scripts/fonts/build.py），
+     所以不會出現部分真粗體、部分瀏覽器假粗體的混用。 */
+  font-weight: 700;
 }
 
 @mixin sticky-note-font-size {

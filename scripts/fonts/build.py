@@ -5,11 +5,12 @@
 分三層，對應這個專案實際的用字行為：
 
   UI 層   介面文字是編譯時就固定的（約 1,300 字），裁成單一檔案直接 preload，
-          介面永遠不會有 FOUT。便利貼內容沒有粗體選項（TextBlockInstance 只有
-          color / align），所以 700 / 800 只需要這一層（800 是新視覺的大標字重）。
+          介面永遠不會有 FOUT。三種字重：400 內文、700 強調、800 新視覺大標。
   TW 層   使用者輸入的中文，無法預先得知，依 unicode-range 分片讓瀏覽器只抓用到的字。
           已扣掉 UI 層的字，兩者 unicode-range 不重疊。
-  KR 層   使用者輸入的韓文，同上。介面沒有韓文，所以只有 400。
+          字重為 700：便利貼上的文字統一走粗體。這一層只有單一字重，
+          所以是「換一份」而非「多一份」，檔案數與體積不變。
+  KR 層   使用者輸入的韓文，同上，字重同樣是 700。介面沒有韓文。
 
 來源字型會自動從 seed.line.me 下載到 .src/（已 gitignore）。
 產出會 commit 進 repo，所以正常開發與部署都不需要跑這支腳本。
@@ -54,6 +55,7 @@ MEMBERS = {
     "tw-700": ("LINE_Seed_TW.zip", "WOFF2/LINESeedTW_OTF_Bd.woff2"),
     "tw-800": ("LINE_Seed_TW.zip", "WOFF2/LINESeedTW_OTF_Eb.woff2"),
     "kr-400": ("LINE_Seed_Sans_KR.zip", "Web/woff2/LINESeedKR-Rg.woff2"),
+    "kr-700": ("LINE_Seed_Sans_KR.zip", "Web/woff2/LINESeedKR-Bd.woff2"),
 }
 
 HANGUL_RANGES = "U+1100-11FF,U+3130-318F,U+A960-A97F,U+AC00-D7A3,U+D7B0-D7FF"
@@ -240,20 +242,22 @@ def main() -> None:
     log(f"介面字集請求 {len(ui_chars)} 字，字型實際有 {len(ui_covered)} 字")
 
     # ── TW 內容層：全字集扣掉 UI 層「實際涵蓋」的字，確保兩層既不重疊也不留縫
-    tw_all = font_codepoints(SRC_DIR / "tw-400.woff2")
+    #    內容層用 700（Bold）：便利貼上的使用者文字統一走粗體。
+    #    這一層只會有單一字重，因此不是「多加一份」而是「換一份」，檔案數與體積不變。
+    tw_all = font_codepoints(SRC_DIR / "tw-700.woff2")
     tw_content = "".join(sorted(chr(c) for c in tw_all if c not in ui_covered))
     log(f"中文內容字集：{len(tw_content)} 字")
-    tw_src = SRC_DIR / "tw-content-400.woff2"
-    subset(SRC_DIR / "tw-400.woff2", tw_src, text=tw_content)
-    split_font(tw_src, OUT_DIR / "tw", 400)
+    tw_src = SRC_DIR / "tw-content-700.woff2"
+    subset(SRC_DIR / "tw-700.woff2", tw_src, text=tw_content)
+    split_font(tw_src, OUT_DIR / "tw", 700)
     tw_faces = collect_faces(OUT_DIR / "tw" / "result.css", "/fonts/tw/")
     (OUT_DIR / "tw" / "result.css").unlink()
     log(f"中文內容分片：{len(tw_faces)} 片")
 
     # ── KR 內容層：只留韓文，拉丁與標點交給 TW，避免兩邊搶同一個字
-    kr_src = SRC_DIR / "kr-hangul-400.woff2"
-    subset(SRC_DIR / "kr-400.woff2", kr_src, unicodes=HANGUL_RANGES)
-    split_font(kr_src, OUT_DIR / "kr", 400)
+    kr_src = SRC_DIR / "kr-hangul-700.woff2"
+    subset(SRC_DIR / "kr-700.woff2", kr_src, unicodes=HANGUL_RANGES)
+    split_font(kr_src, OUT_DIR / "kr", 700)
     kr_faces = collect_faces(OUT_DIR / "kr" / "result.css", "/fonts/kr/")
     (OUT_DIR / "kr" / "result.css").unlink()
     log(f"韓文內容分片：{len(kr_faces)} 片")
