@@ -38,6 +38,7 @@ export interface UseAdminStatsOptions {
 }
 
 export function useAdminStats(db: any, { onError }: UseAdminStatsOptions) {
+  const cols = useCollections()
   const loading = ref(false)
   // 預設「今天」必須在掛載後用瀏覽器時區設定；若在 setup 用 new Date()，
   // SSR（多為 UTC）與客戶端本地日曆日可能不同，會造成 hydration mismatch。
@@ -287,10 +288,10 @@ export function useAdminStats(db: any, { onError }: UseAdminStatsOptions) {
     const oneHourAgoTs = Timestamp.fromDate(new Date(Date.now() - 60 * 60 * 1000))
     const [pendingSnapshot, historySnapshot] = await Promise.all([
       getCountFromServer(
-        query(collection(db, 'queue_pending'), where('timestamp', '>=', oneHourAgoTs))
+        query(collection(db, cols.queuePending), where('timestamp', '>=', oneHourAgoTs))
       ),
       getCountFromServer(
-        query(collection(db, 'queue_history'), where('timestamp', '>=', oneHourAgoTs))
+        query(collection(db, cols.queueHistory), where('timestamp', '>=', oneHourAgoTs))
       )
     ])
     return pendingSnapshot.data().count + historySnapshot.data().count

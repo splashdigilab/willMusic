@@ -45,6 +45,7 @@ definePageMeta({
 
 const { $firestore } = useNuxtApp()
 const db = $firestore as any
+const cols = useCollections()
 
 const queueCount = ref(0)
 let unsubscribe: (() => void) | null = null
@@ -53,7 +54,7 @@ let unsubscribe: (() => void) | null = null
 const displaySec = 15
 
 const startListening = () => {
-  const q = query(collection(db, 'queue_pending'))
+  const q = query(collection(db, cols.queuePending))
   
   unsubscribe = onSnapshot(q, (snapshot) => {
     queueCount.value = snapshot.size

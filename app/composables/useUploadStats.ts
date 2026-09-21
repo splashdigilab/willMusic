@@ -26,7 +26,12 @@ import {
  * 需要對應的 Firestore Rules 允許上傳端 create/update 這個集合，
  * 否則 recordUploadStat 會被拒（上傳本身不受影響，統計會停在 0）。
  */
-export const STATS_DAILY_COLLECTION = 'stats_daily'
+/**
+ * 每日統計集合名稱。
+ * 改由 useCollections() 取得，才能跟著 NUXT_PUBLIC_FIRESTORE_SUFFIX 切到測試資料，
+ * 否則測試時的上傳會累加到正式統計裡。
+ */
+export const statsDailyCollection = () => useCollections().statsDaily
 
 /**
  * 一次查詢允許的最長區間。
@@ -107,7 +112,7 @@ const emptyDailyStat = (dateKey: string): DailyUploadStat => ({
 export const recordUploadStat = async (db: any, at: Date = new Date()): Promise<void> => {
   const dateKey = toDateKey(at)
   await setDoc(
-    doc(db, STATS_DAILY_COLLECTION, dateKey),
+    doc(db, statsDailyCollection(), dateKey),
     {
       date: dateKey,
       total: increment(1),
@@ -126,7 +131,7 @@ export const fetchDailyUploadStats = async (
 ): Promise<DailyUploadStat[]> => {
   const snapshot = await getDocs(
     query(
-      collection(db, STATS_DAILY_COLLECTION),
+      collection(db, statsDailyCollection()),
       where('date', '>=', startKey),
       where('date', '<=', endKey),
       orderBy('date', 'asc')
@@ -145,7 +150,7 @@ export const fetchDailyUploadStats = async (
 
 /** 讀取單日統計，給 30 秒自動刷新用（1 read） */
 export const fetchDayUploadStat = async (db: any, dateKey: string): Promise<DailyUploadStat> => {
-  const snapshot = await getDoc(doc(db, STATS_DAILY_COLLECTION, dateKey))
+  const snapshot = await getDoc(doc(db, statsDailyCollection(), dateKey))
   if (!snapshot.exists()) return emptyDailyStat(dateKey)
   return toDailyStat(dateKey, snapshot.data())
 }

@@ -566,6 +566,8 @@ use([
 ])
 
 const db = $firestore as any
+
+const cols = useCollections()
 const storage = $storage as any
 
 // 頁面內操作結果提示（取代 alert）
@@ -803,7 +805,7 @@ const pendingNotesPageItems = computed(() => buildPageItems(pendingNotesPage.val
 const historyNotesPageItems = computed(() => buildPageItems(historyNotesPage.value, historyNotesTotalPages.value))
 
 const buildNotesQuery = (
-  collectionName: 'queue_pending' | 'queue_history',
+  collectionName: string,
   orderField: 'timestamp' | 'playedAt',
   orderDirection: 'asc' | 'desc',
   cursor: any,
@@ -821,7 +823,7 @@ const ensurePendingCursorForPage = async (targetPage: number) => {
   while (pendingNotesPageCursors.length < targetPage - 1) {
     const knownPage = pendingNotesPageCursors.length + 1
     const cursor = knownPage > 1 ? pendingNotesPageCursors[knownPage - 2] : null
-    const snapshot = await getDocs(buildNotesQuery('queue_pending', 'timestamp', 'asc', cursor, false))
+    const snapshot = await getDocs(buildNotesQuery(cols.queuePending, 'timestamp', 'asc', cursor, false))
     const docs = snapshot.docs
     if (docs.length === 0) return false
     pendingNotesPageCursors[knownPage - 1] = docs[docs.length - 1] || null
@@ -837,7 +839,7 @@ const ensureHistoryCursorForPage = async (targetPage: number) => {
   while (historyNotesPageCursors.length < targetPage - 1) {
     const knownPage = historyNotesPageCursors.length + 1
     const cursor = knownPage > 1 ? historyNotesPageCursors[knownPage - 2] : null
-    const snapshot = await getDocs(buildNotesQuery('queue_history', 'playedAt', 'desc', cursor, false))
+    const snapshot = await getDocs(buildNotesQuery(cols.queueHistory, 'playedAt', 'desc', cursor, false))
     const docs = snapshot.docs
     if (docs.length === 0) return false
     historyNotesPageCursors[knownPage - 1] = docs[docs.length - 1] || null
@@ -850,14 +852,14 @@ const ensureHistoryCursorForPage = async (targetPage: number) => {
 const loadPendingNotesPage = async () => {
   pendingNotesLoading.value = true
   try {
-    const countSnap = await getCountFromServer(collection(db, 'queue_pending'))
+    const countSnap = await getCountFromServer(collection(db, cols.queuePending))
     pendingNotesTotal.value = countSnap.data().count
 
     const cursor = pendingNotesPage.value > 1
       ? pendingNotesPageCursors[pendingNotesPage.value - 2]
       : null
 
-    const snapshot = await getDocs(buildNotesQuery('queue_pending', 'timestamp', 'asc', cursor))
+    const snapshot = await getDocs(buildNotesQuery(cols.queuePending, 'timestamp', 'asc', cursor))
     const docs = snapshot.docs
     const pageDocs = docs.slice(0, NOTES_PAGE_SIZE)
     pendingNotes.value = pageDocs.map(d => ({ id: d.id, ...d.data() }))
@@ -879,14 +881,14 @@ const loadPendingNotesPage = async () => {
 const loadHistoryNotesPage = async () => {
   historyNotesLoading.value = true
   try {
-    const countSnap = await getCountFromServer(collection(db, 'queue_history'))
+    const countSnap = await getCountFromServer(collection(db, cols.queueHistory))
     historyNotesTotal.value = countSnap.data().count
 
     const cursor = historyNotesPage.value > 1
       ? historyNotesPageCursors[historyNotesPage.value - 2]
       : null
 
-    const snapshot = await getDocs(buildNotesQuery('queue_history', 'playedAt', 'desc', cursor))
+    const snapshot = await getDocs(buildNotesQuery(cols.queueHistory, 'playedAt', 'desc', cursor))
     const docs = snapshot.docs
     const pageDocs = docs.slice(0, NOTES_PAGE_SIZE)
     historyNotes.value = pageDocs.map(d => ({ id: d.id, ...d.data() }))
@@ -1008,7 +1010,7 @@ const confirmDelete = async () => {
   if (!deleteModalData.value) return
   isDeleting.value = true
   try {
-    const colName = deleteModalData.value.isPending ? 'queue_pending' : 'queue_history'
+    const colName = deleteModalData.value.isPending ? cols.queuePending : cols.queueHistory
     // 先刪文件再清圖。反過來的話，文件刪除一旦失敗（權限或網路），
     // 便利貼會繼續留在牆上但圖片已經不存在，變成破圖。
     // 圖片網址是從記憶體裡的清單讀的、不是重新查詢，所以文件先刪不影響。

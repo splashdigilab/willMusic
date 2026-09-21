@@ -112,6 +112,9 @@ export default defineNuxtConfig({
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     public: {
       gtmId: gtmId,
+      // 便利貼資料集合的後綴。空值＝正式環境；設為 _dev 等值可切到獨立的測試資料。
+      // 詳見 app/utils/collections.ts
+      firestoreSuffix: process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || '',
       firebase: {
         apiKey: process.env.NUXT_PUBLIC_FIREBASE_API_KEY || '',
         authDomain: process.env.NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
