@@ -13,9 +13,18 @@ body.is-editor-page {
   height: 100dvh;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
-  background-image: url('/paperBg.webp');
-  background-size: cover;
-  background-position: center;
+  /* 新視覺：稿子的編輯器底是深灰純色，不再用紙紋貼圖 */
+  background-color: var.$will-dark;
+}
+
+/* 返回／說明浮動圓鈕：稿子沒有上方橫條，沿用首頁的圓鈕樣式 */
+.p-editor__float-actions {
+  position: absolute;
+  top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  left: 0.75rem;
+  z-index: 200;
+  display: flex;
+  gap: 0.6rem;
 }
 
 body.is-editor-page #__nuxt,
@@ -309,7 +318,7 @@ body.is-editor-page #app {
     left: -4px;
     width: ed.$editor-edit-frame-delete-size;
     height: ed.$editor-edit-frame-delete-size;
-    background: #f43f5e;
+    background: #E5204D; /* 刪除鈕：改用新色票的桃紅 */
     color: white;
     border: 2px solid white;
     border-radius: 50%;
@@ -329,7 +338,7 @@ body.is-editor-page #app {
     right: 0;
     width: ed.$editor-edit-frame-transform-handle-size;
     height: ed.$editor-edit-frame-transform-handle-size;
-    background: #3b82f6;
+    background: #00A7C5; /* 縮放把手：改用新色票的天藍 */
     color: white;
     border: 2px solid white;
     border-radius: 50%;
@@ -346,23 +355,37 @@ body.is-editor-page #app {
   }
 
   /* ========== 控制面板：Tab Bar + Tab Content ========== */
+  /* 面板與底部按鈕列的共同外層。
+     漸層底掛在這裡，兩個區塊才會共用同一片底色而不是各塗各的。 */
+  &__panel-wrap {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: linear-gradient(to bottom left, #FFFFFF 0%, #ECECEC 100%);
+    border-radius: 1.4rem 1.4rem 0 0;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.18);
+  }
+
   &__control-panel {
     padding: 0;
-    background: white;
-    box-shadow: var(--shadow-default);
+    background: transparent;
     overflow-y: auto;
     flex-shrink: 0;
-    border-radius: 1rem 1rem 0 0;
     transition: height ed.$editor-transition-duration ease-in-out;
     /* 使用 grid 讓子元素可以在同一個區域重疊，達到 position:absolute 的效果但不破壞父層高度 */
     display: grid;
     align-items: end;
   }
 
+  /* 一鍵清除：貼齊面板實際上緣。
+     原本寫死 calc(72px + 56px)，那是舊面板高度的推算值；
+     內距一改面板變高，按鈕就會壓到分頁列。改用 bottom:100% 讓它跟著面板走。 */
   &__top-actions {
     position: absolute;
-    right: 0.5rem;
-    bottom: calc(72px + 56px + 0.5rem); // 落在 control-panel 上方，與 tab 區有距離
+    right: 0.75rem;
+    bottom: calc(100% + 0.5rem);
     display: flex;
     justify-content: flex-end;
     z-index: 10;
@@ -375,7 +398,8 @@ body.is-editor-page #app {
     flex-shrink: 0;
     border: none;
     border-radius: 999px;
-    background: var.$will-red;
+    /* 一鍵清除：與其他次要按鈕同一套桃紅漸層 */
+    background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -512,14 +536,15 @@ body.is-editor-page #app {
     grid-area: 1 / 1;
     width: 100%;
 
-    padding: 1rem 0;
+    /* 稿子畫板 09 實測：面板四邊內距與區塊間距都是 70/1080 = 6.48vw */
+    padding: 6.48vw 6.48vw 0;
     max-width: ed.$editor-control-max-width;
     margin: 0 auto;
     min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: ed.$editor-grid-gap;
+    gap: 6.48vw;
     box-sizing: border-box;
     /* 展開時給足夠 max-height，讓 leave 動畫能從此值過渡到 0（height: auto 無法過渡） */
     max-height: 70vh;
@@ -572,8 +597,8 @@ body.is-editor-page #app {
 
   &__control-section {
     max-width: ed.$editor-control-max-width;
-    margin: 0 0.5rem;
-    // padding-left: 1rem;
+    /* 左右內距已由 tab-content 統一負責，這裡不再另外加 */
+    margin: 0;
 
     &:last-child {
       margin-bottom: 0;
@@ -593,44 +618,58 @@ body.is-editor-page #app {
     }
   }
 
+  /* STEP 標題。稿子字色 #323232，字距較寬 */
   &__control-title {
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var.$color-grey;
-    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: #323232;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.6rem;
   }
 
   /* ========== 控制項：筆刷／顏色／對齊／材質／造型／貼紙 ========== */
   // 移除舊的繪圖控制項樣式，使用統一的顏色選擇器
 
+  /* 筆刷寬度滑桿。稿子畫板 10 實測：
+     已走過的軌道 #00A7C5、未走過 #E6E6E6、把手為同色圓球加白圈與陰影。
+     原生 range 無法直接分段上色，改用 --brush-pct（由 editor.vue 綁入）畫漸層。 */
   &__brush-slider {
     width: 100%;
-    height: 8px;
-    border-radius: 3px;
+    height: 6px;
+    /* 把手高 1.6rem，遠高於軌道，外層 overflow:hidden 會把上下切掉。
+       用等高的 margin 撐出空間，讓把手完整顯示。 */
+    margin: 0.8rem 0;
+    border-radius: 999px;
     appearance: none;
-    background: #7f7f7f;
+    background: linear-gradient(
+      to right,
+      #00A7C5 0%,
+      #00A7C5 var(--brush-pct, 50%),
+      #E6E6E6 var(--brush-pct, 50%),
+      #E6E6E6 100%
+    );
     outline: none;
     cursor: pointer;
 
     &::-webkit-slider-thumb {
       appearance: none;
-      width: 1.5rem;
-      height: 1.5rem;
+      width: 1.6rem;
+      height: 1.6rem;
       border-radius: 50%;
-      background: white;
-      border: 2px solid #7f7f7f;
+      background: #00A7C5;
+      border: 4px solid #fff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
       cursor: pointer;
-      // box-shadow: var(--shadow-soft);
     }
 
     &::-moz-range-thumb {
-      width: 1.5rem;
-      height: 1.5rem;
+      width: 1.6rem;
+      height: 1.6rem;
       border-radius: 50%;
-      background: white;
-      border: 2px solid #7f7f7f;
+      background: #00A7C5;
+      border: 4px solid #fff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
       cursor: pointer;
-      // box-shadow: var(--shadow-soft);
     }
   }
 
@@ -655,6 +694,25 @@ body.is-editor-page #app {
         opacity: 0.5;
       }
     }
+
+    /* 文字顏色：稿子畫板 09 是較大的圓角方形色票，不是圓點，也沒有打勾，
+       選中時改用外圈天藍描邊表示，避免像圓點那樣把顏色變半透明 */
+    &--square {
+      width: 3.2rem;
+      height: 3.2rem;
+      border-radius: 0.6rem;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+
+      &.is-active {
+        background: var(--btn-color);
+        box-shadow: 0 0 0 3px #00A7C5;
+      }
+    }
+  }
+
+  /* 文字色票只有兩個，間距放寬 */
+  &__color-grid--text {
+    gap: 0.9rem;
   }
 
   &__color-check {
@@ -669,23 +727,28 @@ body.is-editor-page #app {
   }
 
   // 文字對齊（與選擇便利貼造型一致：圖片即按鈕，選取時 opacity 0.5）
+  /* 對齊圖示。稿子畫板 09 實測：圖示 102.5×56.2、三條高 13 的圓角橫條，
+     彼此間距 62.9。選中為天藍，未選為淺灰。 */
   &__align-row {
-    @include edm.editor-grid-scroll-x;
+    display: flex;
+    gap: 5.82vw;
   }
 
   &__align-btn {
     @include btn.btn-reset;
     position: relative;
-    width: 32px;
-    height: 32px;
+    width: 9.49vw;
+    max-width: 68px;
+    aspect-ratio: 102.5 / 56.18;
+    height: auto;
     flex-shrink: 0;
     background: transparent;
     border: none;
     border-radius: 0;
+    color: #C9C9C9;
 
-
-    &.is-active .p-editor__align-icon {
-      opacity: 0.5;
+    &.is-active {
+      color: #00A7C5;
     }
   }
 
@@ -693,7 +756,15 @@ body.is-editor-page #app {
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    background-color: currentColor;
+    mask-image: var(--align-svg);
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-image: var(--align-svg);
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
   }
 
   // 材質/背景圖片選擇器：超過寬度時換行，不左右滑動
@@ -706,7 +777,8 @@ body.is-editor-page #app {
     position: relative;
 
     &.is-active {
-      .p-editor__background-img {
+      .p-editor__background-img,
+      .p-editor__background-swatch {
         opacity: 0.5;
       }
     }
@@ -716,6 +788,13 @@ body.is-editor-page #app {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
+  }
+
+  /* 純色材質的色票（新視覺前三個選項）。圖片材質仍走 __background-img */
+  &__background-swatch {
+    width: 100%;
+    height: 100%;
     display: block;
   }
 
@@ -749,7 +828,7 @@ body.is-editor-page #app {
     display: block;
     width: 100%;
     height: 100%;
-    background-color: #7f7f7f;
+    background-color: #4B4B4B; /* 造型圖示：稿子畫板 08 實測色 */
     mask-image: var(--shape-svg);
     mask-size: contain;
     mask-repeat: no-repeat;
@@ -779,24 +858,31 @@ body.is-editor-page #app {
     @include edm.editor-scrollbar-hidden;
   }
 
+  /* 稿子的貼圖直接放在面板上，沒有白色方格襯底與外框 */
   &__sticker-btn {
     @include btn.btn-square;
-    border: 1px solid #e5e5e5;
-    background: white;
+    border: none;
+    background: transparent;
     padding: 0.5rem;
 
     &-img {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      filter: drop-shadow(0px 0px 1px rgba(0, 0, 0, 0.25));
+      /* 不少貼圖本身是白色或淺色描邊，直接放在淺灰面板上會看不清楚。
+         稿子沒有方框，所以改用貼合輪廓的陰影把它們墊出來，
+         比加外框乾淨，也不會讓面板變成 24 個格子。 */
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
     }
   }
 
   /* ========== 底部按鈕列 ========== */
   &__bottom-actions {
-    padding: 0 0.5rem 1rem 0.5rem;
-    background: white;
+    /* 左右與面板同為 6.48vw；下方稿子量到約 77/1080 = 7.1vw */
+    padding: 6.48vw 6.48vw 7.1vw;
+    /* 不再自己上白底，讓 control-panel 的淺灰漸層貫穿到底，
+       否則面板下半會出現一條與上半不同色的白帶 */
+    background: transparent;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -804,35 +890,48 @@ body.is-editor-page #app {
     z-index: 10;
   }
 
+  /* 按鈕內的附註（如「長按解鎖」）：比主要動作小一級，
+     讓「鎖定」這個動作本身仍是視覺重點，也讓兩顆按鈕能等寬 */
+  &__btn-hint {
+    font-size: 0.78em;
+    font-weight: 700;
+    opacity: 0.9;
+  }
+
   &__text-actions {
     display: flex;
     gap: 0.5rem;
     width: 100%;
+
+    /* 稿子畫板 09：兩顆按鈕等寬 */
+    .p-editor__action-btn {
+      flex: 1 1 0;
+      min-width: 0;
+    }
   }
 
+  /* 主要操作按鈕。稿子畫板 08「完成挑選」實測為水平漸層 #66CADC → #01A7C5，
+     桃紅按鈕依同樣的深淺關係推出 #F26A88 → #E5204D。 */
   &__action-btn {
     @include btn.btn-action;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    /* min-width:auto 會讓 flex 無法把不換行的文字縮小，兩顆並排時會撐爆容器。
+       改為可縮，並讓左右內距與字級隨螢幕寬度調整（iPhone SE 375 也塞得下）。 */
+    min-width: 0;
+    padding-left: clamp(0.5rem, 3vw, 1.25rem);
+    padding-right: clamp(0.5rem, 3vw, 1.25rem);
+    font-size: clamp(0.85rem, 3.9vw, 1rem);
 
     &--secondary {
-      background: var.$will-red;
+      background: linear-gradient(to right, #F26A88 0%, #E5204D 100%);
       color: white;
-
-      // &:hover:not(:disabled) {
-      //   background: #d43f5f;
-      //   transform: translateY(-1px);
-      //   box-shadow: 0 4px 12px rgba(232, 76, 108, 0.3);
-      // }
     }
 
     &--primary {
-      background: var.$will-blue;
+      background: linear-gradient(to right, #66CADC 0%, #01A7C5 100%);
       color: white;
-
-      // &:hover:not(:disabled) {
-      //   background: #1fb5c7;
-      //   transform: translateY(-1px);
-      //   box-shadow: 0 4px 12px rgba(34, 197, 217, 0.3);
-      // }
 
       &:active:not(:disabled) {
         transform: translateY(0);
@@ -840,7 +939,7 @@ body.is-editor-page #app {
     }
 
     &--share {
-      background: var.$will-red;
+      background: linear-gradient(to right, #F26A88 0%, #E5204D 100%);
       color: white;
     }
 
@@ -855,7 +954,7 @@ body.is-editor-page #app {
     }
   }
 
-  // 繪圖模式圓形按鈕（上一步/下一步）- 固定尺寸確保正圓，will-red，與完成按鈕同高
+  // 繪圖模式圓形按鈕（上一步/下一步）- 固定尺寸確保正圓，與其他次要按鈕同一套桃紅漸層
   &__draw-btn {
     @include btn.btn-reset;
     width: ed.$editor-draw-btn-size;
@@ -864,7 +963,8 @@ body.is-editor-page #app {
     flex-grow: 0;
     border: none;
     border-radius: 999px;
-    background: var.$will-red;
+    background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
     padding: 0;
 
     &:disabled {

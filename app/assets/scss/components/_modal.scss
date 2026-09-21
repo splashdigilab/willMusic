@@ -20,29 +20,35 @@
     padding: 1rem;
 }
 
+/* 稿子畫板 11 / 13 實測：卡片為淺灰斜向漸層、圓角約 28，
+   圖示放大、標題加大加粗、副標為灰色小字，按鈕為漸層膠囊。 */
 .c-modal {
-    background: white;
-    border-radius: 16px;
-    padding: 2rem;
+    background: linear-gradient(to bottom left, #FCFCFC 0%, #EEEEEE 100%);
+    border-radius: 28px;
+    padding: 2.25rem 1.75rem;
     max-width: 400px;
     width: 100%;
     text-align: center;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
 
     &__icon {
-        font-size: 4rem;
-        margin-bottom: 1rem;
+        font-size: 5rem;
+        line-height: 1;
+        margin-bottom: 1.25rem;
+        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.18));
     }
 
     &__title {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #333;
-        margin-bottom: 1rem;
+        font-size: 2rem;
+        font-weight: 800;
+        color: #323232;
+        letter-spacing: 0.02em;
+        margin-bottom: 0.6rem;
     }
 
     &__message {
         color: #666;
+        font-size: 0.95rem;
         margin-bottom: 2rem;
         line-height: 1.6;
     }
@@ -75,6 +81,27 @@
         .c-button,
         button {
             flex: 1;
+            border: none;
+            border-radius: 999px;
+            padding: 0.75rem 1.25rem;
+            font-weight: 800;
+            font-size: 1.05rem;
+            letter-spacing: 0.06em;
+            color: #fff;
+            cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+            /* 預設＝確認／前進，天藍 */
+            background: linear-gradient(to right, #63C9DB 0%, #0CABC8 100%);
+
+            &:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+        }
+
+        /* 取消／次要動作，桃紅 */
+        .c-button--secondary {
+            background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
         }
     }
 }

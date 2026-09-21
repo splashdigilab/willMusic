@@ -50,5 +50,14 @@ export const EDITOR_PALETTE = [
   { value: '#fccdd9' },
 ] as const
 
-export const TEXT_COLORS = EDITOR_PALETTE
+/**
+ * 文字顏色：稿子畫板 09 只提供白與深灰兩色（方形色票）。
+ * 與筆刷刻意分開 —— 筆刷仍是整組調色盤（畫板 10）。
+ * 既有便利貼若存了其他文字色，顯示不受影響，只是新的做不出來。
+ */
+export const TEXT_COLORS = [
+  { value: '#ffffff' },
+  { value: '#323232' },
+] as const
+
 export const BRUSH_COLORS = EDITOR_PALETTE

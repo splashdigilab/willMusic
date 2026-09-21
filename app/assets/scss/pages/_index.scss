@@ -176,6 +176,110 @@
     p {
         margin: 0;
     }
+
+    /* 編輯器的活動規範用條列，首頁沒有 */
+    ol {
+        margin: 0;
+        padding-left: 1.4em;
+    }
+
+    li {
+        margin-bottom: 0.7em;
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+}
+
+/* 同意勾選（只有編輯器的規範頁會用到） */
+.p-index__intro-terms {
+    display: flex;
+    align-items: center;
+    gap: 2.5cqw;
+    margin-top: 5cqw;
+    font-size: 4.4cqw;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    user-select: none;
+
+    input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        flex-shrink: 0;
+        width: 5.5cqw;
+        height: 5.5cqw;
+        border: 0.55cqw solid #fff;
+        border-radius: 1cqw;
+        background: transparent;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s ease;
+
+        &:checked {
+            background: #fff;
+
+            &::after {
+                content: '';
+                width: 1.4cqw;
+                height: 2.8cqw;
+                border: solid var.$will-blue;
+                border-width: 0 0.7cqw 0.7cqw 0;
+                transform: rotate(45deg) translate(-0.1cqw, -0.35cqw);
+            }
+        }
+    }
+}
+
+/* ===== 編輯器的活動規範頁 =====
+   版面與首頁開場共用，差別只在規範文字很長。
+
+   高度策略：hug + 上限。
+   卡片高度跟著內容走（與首頁一致），但不超過可用高度；
+   一旦撞到上限，就只讓規範那一段縮小並開始捲動，
+   標題與 START 固定不動。 */
+.p-editor__intro-overlay {
+    .p-index__intro-card {
+        height: auto;
+        max-height: calc(100dvh - 10rem);
+        overflow: hidden;
+        /* 規範比首頁長，上下留白收一點讓內容有空間 */
+        padding-top: 72px;
+        padding-bottom: 56px;
+    }
+
+    .p-index__intro-title,
+    .p-index__intro-btn {
+        flex-shrink: 0;
+    }
+
+    .p-index__intro-rules {
+        /* 0 1 auto：可縮不可脹。內容短時卡片跟著縮，不會撐出空洞 */
+        flex: 0 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        /* 只要有一軸不是 visible，另一軸的 visible 會被算成 auto，
+           所以這裡要明確關掉橫向，否則條列縮排會多出一條水平捲軸 */
+        overflow-x: hidden;
+        overflow-wrap: anywhere;
+        -webkit-overflow-scrolling: touch;
+        margin-bottom: 8cqw;
+        /* 捲動條低調一點，不要壓過視覺 */
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.55) transparent;
+
+        &::-webkit-scrollbar {
+            width: 1.2cqw;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.55);
+            border-radius: 999px;
+        }
+    }
 }
 
 /* START：白框膠囊、透明底。稿子 453×115，字 95pt。

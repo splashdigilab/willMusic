@@ -1,15 +1,42 @@
 <template>
   <div class="p-editor">
-      <!-- Header -->
-      <AppHeader show-back show-help relative @back="goBack" @help="showTutorialModal = true" />
+      <!-- 稿子的編輯器畫面沒有上方橫條，返回與說明改為浮動圓鈕（與首頁一致） -->
+      <div class="p-editor__float-actions">
+        <button type="button" class="p-index__icon-btn" aria-label="返回" @click="goBack">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"></path>
+          </svg>
+        </button>
+        <button type="button" class="p-index__icon-btn" aria-label="說明" @click="showTutorialModal = true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </button>
+      </div>
 
-      <!-- 活動介紹滿版 overlay：載入時顯示，loading 完後按「開始」關閉 -->
+      <!-- 活動規範滿版 overlay：版面與首頁開場完全共用，只有文字不同 -->
       <Transition name="intro-fade">
         <div v-if="showIntroOverlay" class="p-index__intro-overlay p-editor__intro-overlay">
           <div class="p-index__intro-card">
-            <img src="/svg/stickers/sticker-35.webp" class="p-index__card-sticker p-index__card-sticker--tl" alt="" />
-            <img src="/svg/stickers/sticker-41.webp" class="p-index__card-sticker p-index__card-sticker--br" alt="" />
-            <img src="/postBoardLogoColumn.svg" alt="WillMusic Logo" class="p-index__intro-logo" />
+            <!-- 四角裝飾方塊 -->
+            <div class="p-index__intro-marks p-index__intro-marks--tl">
+              <i class="p-index__intro-mark" /><i class="p-index__intro-mark" /><i class="p-index__intro-mark" />
+            </div>
+            <div class="p-index__intro-marks p-index__intro-marks--br">
+              <i class="p-index__intro-mark" /><i class="p-index__intro-mark" /><i class="p-index__intro-mark" />
+            </div>
+
+            <!-- 卡片上下的英文小字 -->
+            <p class="p-index__intro-caption p-index__intro-caption--top">Create your customized message here<br>and share your passion for music with everyone.</p>
+            <p class="p-index__intro-caption p-index__intro-caption--bottom">Create your customized message here<br>and share your passion for music with everyone.</p>
+
+            <h1 class="p-index__intro-title">
+              <span>活動規範</span>
+              <span>RULES</span>
+            </h1>
+
             <div class="p-index__intro-desc p-index__intro-rules">
               <ol>
                 <li>於南西旗艦店消費達 599 元，即可獲得一張數位應援便利貼。</li>
@@ -21,9 +48,10 @@
                 <span>我已閱讀並同意上述活動規範</span>
               </label>
             </div>
+
             <button
               type="button"
-              class="p-index__intro-btn c-btn c-btn--primary"
+              class="p-index__intro-btn"
               :disabled="loading"
               @click="onStartClick"
             >
@@ -31,9 +59,11 @@
                 <span class="p-index__intro-spinner" aria-hidden="true" />
                 載入中...
               </span>
-              <span v-else>開始</span>
+              <span v-else>START</span>
             </button>
           </div>
+
+          <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__intro-logo" />
         </div>
       </Transition>
 
@@ -101,9 +131,9 @@
     <AppModal
       v-model="showClearAllModal"
       icon="⚠️"
-      title="確認清除"
-      message="確定要清除畫面上所有的內容嗎？此動作無法復原。"
-      confirmText="確定清除"
+      title="確認清除嗎？"
+      message="－ 此動作將無法復原 －"
+      confirmText="確認"
       cancelText="取消"
       @confirm="confirmClearAll"
       @cancel="showClearAllModal = false"
@@ -287,23 +317,26 @@
       </div>
     </div>
 
-    <!-- 一鍵清除：在 control-panel 外、tab 上方，與 tab 同顯示條件；v-if + transition 才有漸變 -->
-    <transition name="p-editor-top-actions">
-      <div
-        v-if="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'"
-        class="p-editor__top-actions"
-      >
-        <button
-          type="button"
-          class="p-editor__clear-btn"
-          @click="handleClearAll"
-          aria-label="清除全部"
-        >
-          <img src="/undo.svg" alt="清除全部" class="p-editor__clear-btn-icon" />
-        </button>
-      </div>
-    </transition>
 
+    <!-- 控制面板 + 底部按鈕列：包在同一層，漸層底才會連續。
+         兩者原本是並排的兄弟元素，按鈕列自己塗白底才看起來相連。 -->
+    <div class="p-editor__panel-wrap">
+      <!-- 一鍵清除：在 control-panel 外、tab 上方，與 tab 同顯示條件；v-if + transition 才有漸變 -->
+      <transition name="p-editor-top-actions">
+        <div
+          v-if="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'"
+          class="p-editor__top-actions"
+        >
+          <button
+            type="button"
+            class="p-editor__clear-btn"
+            @click="handleClearAll"
+            aria-label="清除全部"
+          >
+            <img src="/undo.svg" alt="清除全部" class="p-editor__clear-btn-icon" />
+          </button>
+        </div>
+      </transition>
     <!-- Control Panel -->
     <div class="p-editor__control-panel">
       <!-- Tab Bar（操作文字或繪圖時隱藏；v-if + transition 才會有出現/消失動畫） -->
@@ -326,7 +359,7 @@
       <transition name="p-editor-tab">
         <div v-if="activeTab === 'note'" class="p-editor__tab-content">
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">選擇便利貼材質</h3>
+            <h3 class="p-editor__control-title">STEP 1. 挑選材質</h3>
             <div class="p-editor__background-grid">
               <button
                 v-for="bg in backgrounds"
@@ -335,13 +368,19 @@
                 :class="{ 'is-active': backgroundImage === bg.url }"
                 @click="backgroundImage = bg.url"
               >
-                <img :src="bg.url" :alt="bg.id" loading="lazy" class="p-editor__background-img" />
+                <!-- 材質可能是純色或圖片，兩種預覽方式 -->
+                <span
+                  v-if="isColorMaterial(bg.url)"
+                  class="p-editor__background-swatch"
+                  :style="{ backgroundColor: bg.url }"
+                />
+                <img v-else :src="bg.url" :alt="bg.id" loading="lazy" class="p-editor__background-img" />
                 <img v-if="backgroundImage === bg.url" src="/check.svg" alt="" class="p-editor__background-check" />
               </button>
             </div>
           </div>
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">選擇便利貼造型</h3>
+            <h3 class="p-editor__control-title">STEP 2. 挑選造型</h3>
             <div class="p-editor__shape-grid">
               <button
                 v-for="shapeItem in shapes"
@@ -364,22 +403,19 @@
         <div v-if="activeTab === 'text'" class="p-editor__tab-content">
           <template v-if="selectedBlock">
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">選擇文字顏色</h3>
-            <div class="p-editor__color-grid">
+            <h3 class="p-editor__control-title">STEP 3. 挑選文字顏色 &amp; 對齊</h3>
+            <div class="p-editor__color-grid p-editor__color-grid--text">
               <button
                 v-for="color in TEXT_COLORS"
                 :key="color.value"
-                class="p-editor__color-btn"
+                class="p-editor__color-btn p-editor__color-btn--square"
                 :class="{ 'is-active': selectedBlock.color === color.value }"
                 :style="{ '--btn-color': color.value }"
                 @click="selectedBlock.color = color.value; saveDraftData()"
-              >
-                <img v-if="selectedBlock.color === color.value" src="/check.svg" alt="" class="p-editor__color-check" />
-              </button>
+              />
             </div>
           </div>
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">文字對齊</h3>
             <div class="p-editor__align-row">
               <button
                 v-for="opt in TEXT_ALIGN_OPTIONS"
@@ -390,7 +426,7 @@
                 :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
                 @click="selectedBlock.align = opt.value; saveDraftData()"
               >
-                <img :src="opt.svg" :alt="''" class="p-editor__align-icon" />
+                <span class="p-editor__align-icon" :style="{ '--align-svg': `url(${opt.svg})` }" />
               </button>
             </div>
           </div>
@@ -405,7 +441,7 @@
       <transition name="p-editor-tab">
         <div v-if="activeTab === 'draw'" class="p-editor__tab-content">
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">選擇筆刷顏色</h3>
+            <h3 class="p-editor__control-title">STEP 4. 挑選筆刷顏色 &amp; 寬度</h3>
             <div class="p-editor__color-grid">
               <!-- 橡皮擦按鈕（第一個） -->
               <button
@@ -428,13 +464,13 @@
             </div>
           </div>
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">調整筆刷大小</h3>
             <input
               v-model.number="brushWidth"
               type="range"
               min="2"
               max="40"
               class="p-editor__brush-slider"
+              :style="{ '--brush-pct': `${((brushWidth - 2) / 38) * 100}%` }"
             />
           </div>
         </div>
@@ -444,7 +480,7 @@
       <transition name="p-editor-tab">
         <div v-if="activeTab === 'sticker'" class="p-editor__tab-content">
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">選擇貼紙</h3>
+            <h3 class="p-editor__control-title">STEP 5. 挑選貼圖</h3>
             <div class="p-editor__sticker-grid">
             <button
               v-for="sticker in STICKER_LIBRARY"
@@ -496,7 +532,7 @@
           class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--complete"
           @click="activeTab = null"
         >
-          完成繪圖
+          ＼ 完成繪圖 ／
         </button>
         <button
           type="button"
@@ -517,14 +553,17 @@
             :disabled="!selectedBlock || !selectedBlock.content.trim()"
             @click="toggleLockSelectedTextBlock"
           >
-            {{ selectedBlock?.locked ? '解除鎖定' : '鎖定（長按可解鎖）' }}
+            <template v-if="selectedBlock?.locked">解除鎖定</template>
+            <template v-else>
+              鎖定<span class="p-editor__btn-hint">（長按解鎖）</span>
+            </template>
           </button>
           <button
             type="button"
             class="p-editor__action-btn p-editor__action-btn--primary"
             @click="completeTextEditing"
           >
-            完成
+            ＼ 完成文字 ／
           </button>
         </div>
       </template>
@@ -536,7 +575,7 @@
           class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
           @click="activeTab = null"
         >
-          完成
+          ＼ 完成挑選 ／
         </button>
       </template>
 
@@ -547,7 +586,7 @@
           class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
           @click="completeStickerEditing"
         >
-          完成
+          ＼ 完成貼圖。一鍵上傳 ／
         </button>
       </template>
       
@@ -559,7 +598,7 @@
           :disabled="isSubmitting || isSharing"
           @click="handleShare"
         >
-          {{ isSharing ? '處理中...' : '下載 / 分享便利貼' }}
+          {{ isSharing ? '處理中...' : '＼ 分享便利貼 ／' }}
         </button>
         <button
           type="button"
@@ -567,9 +606,10 @@
           :disabled="isSubmitting || isSharing"
           @click="openSubmitModal"
         >
-          上傳大螢幕
+          ＼ 上傳大螢幕 ／
         </button>
       </template>
+    </div>
     </div>
   </div>
 </template>
@@ -578,7 +618,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { StickerInstance, DraftData, StickyNoteStyle, TextBlockInstance } from '~/types'
 import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
-import { BACKGROUND_IMAGES } from '~/data/backgrounds'
+import { BACKGROUND_IMAGES, isColorMaterial } from '~/data/backgrounds'
 import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_TABS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
 import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
@@ -733,7 +773,9 @@ const showVerticalCenterGuide = ref(false)
 const showHorizontalCenterGuide = ref(false)
 
 // Tab: 便利貼 | 文字 | 繪圖 | 貼紙
-const activeTab = ref<'note' | 'text' | 'draw' | 'sticker' | null>(null)
+// 進入編輯器就直接停在 STEP 1 / STEP 2（挑選材質與造型），與稿子畫板 08 一致；
+// 按「完成挑選」後才回到 null，顯示四個分頁的入口。
+const activeTab = ref<'note' | 'text' | 'draw' | 'sticker' | null>('note')
 
 const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)

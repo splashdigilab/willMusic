@@ -1,33 +1,47 @@
 /**
- * 便利貼背景圖片資料庫
+ * 便利貼材質資料庫
+ *
+ * 2026 新視覺改版：稿子畫板 08 的「STEP 1. 挑選材質」是四個選項 ——
+ * 前三個純色（黃／天藍／桃紅），第四個是鐳射質感的圖片。
+ *
+ * value 同時承載兩種材質，用開頭是不是 "#" 來區分：
+ *   "#FADC00"                 → 純色，套 background-color
+ *   "/svg/bg/material-holo.webp" → 圖片，套 background-image
+ *
+ * 這樣設計是為了相容既有資料：舊便利貼存的是圖片路徑，
+ * 沿用同一個欄位就不需要資料庫遷移，舊貼紙仍能正確顯示。
  */
 
+export interface StickyNoteMaterial {
+  id: string
+  /** 色碼或圖片路徑，見上方說明 */
+  value: string
+}
+
+/** 判斷材質值是純色還是圖片 */
+export const isColorMaterial = (value?: string): boolean =>
+  !!value && value.trim().startsWith('#')
+
+export const STICKY_NOTE_MATERIALS: StickyNoteMaterial[] = [
+  { id: 'yellow', value: '#FADC00' },
+  { id: 'cyan', value: '#4CC1D6' },
+  { id: 'pink', value: '#EA4C71' },
+  { id: 'holo', value: '/svg/bg/material-holo.webp' }
+]
+
+/** 預設材質（第一個） */
+export const DEFAULT_MATERIAL = STICKY_NOTE_MATERIALS[0]?.value ?? '#FADC00'
+
+/**
+ * 舊名稱相容：先前的程式以 BACKGROUND_IMAGES / bg.url 取用。
+ * 保留匯出避免一次改動過多呼叫端，欄位對應到新的 value。
+ */
 export interface BackgroundImage {
   id: string
   url: string
 }
 
-export const BACKGROUND_IMAGES: BackgroundImage[] = [
-  { id: 'bg-14', url: '/svg/bg/bg-14.svg' },
-  { id: 'bg-15', url: '/svg/bg/bg-15.svg' },
-  { id: 'bg-16', url: '/svg/bg/bg-16.svg' },
-  { id: 'bg-17', url: '/svg/bg/bg-17.svg' },
-  { id: 'bg-18', url: '/svg/bg/bg-18.svg' },
-  { id: 'bg-19', url: '/svg/bg/bg-19.svg' },
-  { id: 'bg-20', url: '/svg/bg/bg-20.svg' },
-  { id: 'bg-12', url: '/svg/bg/bg-12.svg' },
-  { id: 'bg-2', url: '/svg/bg/bg-2.svg' },
-  { id: 'bg-10', url: '/svg/bg/bg-10.svg' },
-  { id: 'bg-1', url: '/svg/bg/bg-1.svg' },
-  { id: 'bg-11', url: '/svg/bg/bg-11.svg' },
-  { id: 'bg-13', url: '/svg/bg/bg-13.svg' },
-  { id: 'bg-4', url: '/svg/bg/bg-4.webp' },
-  { id: 'bg-3', url: '/svg/bg/bg-3.webp' },
-  { id: 'bg-5', url: '/svg/bg/bg-5.webp' },
-  { id: 'bg-6', url: '/svg/bg/bg-6.webp' },
-  { id: 'bg-7', url: '/svg/bg/bg-7.webp' },
-  { id: 'bg-8', url: '/svg/bg/bg-8.webp' },
-  { id: 'bg-9', url: '/svg/bg/bg-9.webp' },
-  { id: 'bg-21', url: '/svg/bg/bg-21.svg' },
-
-]
+export const BACKGROUND_IMAGES: BackgroundImage[] = STICKY_NOTE_MATERIALS.map(m => ({
+  id: m.id,
+  url: m.value
+}))

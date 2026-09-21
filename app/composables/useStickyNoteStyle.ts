@@ -1,5 +1,6 @@
 import { computed, type Ref } from 'vue'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
+import { isColorMaterial } from '~/data/backgrounds'
 
 export interface StickyNoteStyleProps {
     shape?: string
@@ -45,15 +46,20 @@ export function useStickyNoteStyle(styleRef: Ref<StickyNoteStyleProps>) {
         }
     })
 
-    // 內層容器：負責形狀裁切與背景圖片（mask 會切掉此層所有內容，所以不可放 drop-shadow）
+    // 內層容器：負責形狀裁切與背景（mask 會切掉此層所有內容，所以不可放 drop-shadow）
     const innerStyles = computed(() => {
         const maskUrl = shapeMaskUrl.value
-        const bgUrl = styleRef.value.backgroundImage || ''
-        const bgStyles = bgUrl ? {
-            backgroundImage: `url(${bgUrl})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-        } : {}
+        const material = styleRef.value.backgroundImage || ''
+        // 材質同時支援純色與圖片：開頭為 # 視為色碼（新視覺），否則視為圖片路徑（既有資料）
+        const bgStyles = !material
+            ? {}
+            : isColorMaterial(material)
+                ? { backgroundColor: material }
+                : {
+                    backgroundImage: `url(${material})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                }
         return {
             ...bgStyles,
             maskImage: `url(${maskUrl})`,

@@ -1,19 +1,43 @@
 @use '../base/variables' as var;
 @use '../mixins/fonts' as *;
 
+/* 稿子畫板 05~07 實測：
+   卡片 #FCFCFC→#EEEEEE 斜向漸層、圓角約 28
+   標題 #323232，前後帶「＼ ／」
+   示意區 #00A7C5 純色、圓角約 16
+   略過 #ED5F80→#E5224F，下一步 #63C9DB→#0CABC8
+   圓點 作用中 #00A7C5、未作用 #DCDDDD */
 .c-modal--tutorial {
   max-width: 360px;
   display: flex;
   flex-direction: column;
   max-height: 85vh;
   min-height: 0;
+  background: linear-gradient(to bottom left, #FCFCFC 0%, #EEEEEE 100%);
+  border-radius: 28px;
 
   .c-modal__title {
     margin-bottom: 0.5rem;
+    color: #323232;
+    font-weight: 800;
+    font-size: 1.75rem;
+    letter-spacing: 0.02em;
+
+    /* 稿子的標題前後有斜線裝飾，用 CSS 加，資料保持乾淨 */
+    &::before {
+      content: '＼';
+      margin-right: 0.15em;
+    }
+
+    &::after {
+      content: '／';
+      margin-left: 0.15em;
+    }
   }
 
   .c-modal__message {
     margin-bottom: 1.25rem;
+    color: #323232;
   }
 }
 
@@ -29,8 +53,8 @@
   flex: 1;
   min-height: 250px;
   width: 100%;
-  background-color: var.$will-blue;
-  border-radius: 12px;
+  background-color: #00A7C5;
+  border-radius: 16px;
   position: relative;
   overflow: hidden;
   font-family: $font-sans;
@@ -158,11 +182,36 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #e2e8f0;
+  background-color: #DCDDDD;
   transition: all 0.3s ease;
 
   &.is-active {
-    background-color: var.$will-blue;
+    background-color: #00A7C5;
     transform: scale(1.2);
+  }
+}
+
+/* 教學彈窗的兩顆按鈕：與編輯器主要按鈕同一套漸層膠囊
+   （稿子畫板 05 實測：略過 #ED5F80→#E5224F、下一步 #63C9DB→#0CABC8） */
+.c-modal--tutorial .c-modal__actions {
+  .c-button {
+    flex: 1;
+    border: none;
+    border-radius: 999px;
+    padding: 0.7rem 1.25rem;
+    font-weight: 800;
+    font-size: 1.05rem;
+    letter-spacing: 0.04em;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+  }
+
+  .c-button--secondary {
+    background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
+  }
+
+  .c-button--primary {
+    background: linear-gradient(to right, #63C9DB 0%, #0CABC8 100%);
   }
 }

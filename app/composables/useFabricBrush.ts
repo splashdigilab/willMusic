@@ -280,8 +280,11 @@ export function useFabricBrush(onPathCreated?: () => void) {
       redoStack.length = 0
       fabricCanvas.clear()
       fabricCanvas.backgroundColor = 'transparent'
-      initialWidth = fabricCanvas.getWidth()
-      initialHeight = fabricCanvas.getHeight()
+      // 這裡不可以用 getWidth/getHeight 覆寫 initialWidth/initialHeight。
+      // 「一鍵清除」只在非繪圖模式出現，而離開繪圖模式時畫布已被 minimizeCanvas
+      // 縮成 1×1，若在此記錄尺寸就會把原始尺寸寫成 1×1，
+      // 之後 restoreCanvas 還原成 1×1，導致清除後再也畫不上去。
+      // 原始尺寸由 init() 決定，清除內容不應該改變它。
       fabricCanvas.renderAll()
       onUndoRedoChange?.()
     }
