@@ -261,8 +261,10 @@
             @mousedown="() => selectTextBlock(block.id)"
             @touchstart="() => { if (!isTwoFingerGesture) selectTextBlock(block.id) }"
           >
-            <!-- 隱藏 sizer：與 contenteditable 同字體/padding，讓編輯框寬高與文字一致；空白時用 placeholder 撐開寬度 -->
-            <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="getTextStyleForBlock(block)">{{ (selectedTextBlockId === block.id && composingPreviewText != null) ? (composingPreviewText || '在這裡輸入文字...') : (block.content || '在這裡輸入文字...') }}</span>
+            <!-- 隱藏 sizer：與 contenteditable 同字體/padding，讓編輯框寬高與文字一致；空白時用 placeholder 撐開寬度。
+                 判斷「是否為空」必須與上方 is-empty 的 .trim() 一致 —— 刪光文字後瀏覽器常留下一個換行，
+                 若只用 || 判斷會認為有內容，量尺量到換行就把編輯框縮成一條。 -->
+            <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="getTextStyleForBlock(block)">{{ sizerTextFor(block) }}</span>
             <!-- 刪除按鈕 -->
             <button
               v-if="selectedTextBlockId === block.id"
@@ -1078,6 +1080,21 @@ const commitComposingContent = () => {
   }
   isComposing.value = false
   composingPreviewText.value = null
+}
+
+const TEXT_PLACEHOLDER = '在這裡輸入文字...'
+
+/**
+ * 編輯框量尺要顯示的文字。
+ * 空白判斷必須與模板上的 is-empty（同樣用 .trim()）一致：
+ * 刪光文字後 innerText 常留下一個換行，若用 `content || placeholder` 會誤判成有內容，
+ * 導致 placeholder 有顯示、編輯框卻縮成一條。
+ */
+const sizerTextFor = (block: { id: string; content: string }) => {
+  const raw = (selectedTextBlockId.value === block.id && composingPreviewText.value != null)
+    ? composingPreviewText.value
+    : block.content
+  return raw.trim() ? raw : TEXT_PLACEHOLDER
 }
 
 // Methods
