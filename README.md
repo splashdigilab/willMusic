@@ -154,10 +154,14 @@ OPENAI_API_KEY           # 沒填的話內容審核會直接放行
 
 | 變數 | 所有分支 | staging 覆寫 |
 |---|---|---|
-| `NUXT_PUBLIC_FIRESTORE_SUFFIX` | 留空（正式資料） | `_dev` |
-| `NUXT_PUBLIC_GTM_ID` | 正式容器編號 | `off` |
+| `NUXT_PUBLIC_FIRESTORE_SUFFIX` | `none`（正式資料） | `_dev` |
+| `NUXT_PUBLIC_GTM_ID` | 正式容器編號 | `none` |
 
 其餘變數兩站共用（同一個 Firebase 專案）。
+
+> **`none` 不是 Nuxt 的慣例，是為了繞開 Amplify。** Amplify 的環境變數一律不接受
+> 空字串（連「所有分支」那一列也不行），所以本來用「留空」表達的「不加後綴」
+> 與「不載入 GTM」，都改成填 `none`。本機 `.env` 留空即可，兩種寫法等價。
 
 要注意兩站**不是**完全隔離：`system` 集合（啟用中 token、GPS 圍籬、大螢幕影片）
 刻意不分組，Storage 的 `note_drawings/` 也沒有後綴。細節見

@@ -2,12 +2,22 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-// GTM 容器編號。只認 GTM- 開頭的正規格式，其他值一律視同沒設、不載入 GTM。
-// 之所以不是單純判斷有沒有值：Amplify 的分支覆寫不接受空字串，測試站要關掉 GTM
-// 只能填一個非空的值（例如 off），所以「關閉」這件事得由格式判斷來表達。
-// 附帶好處是編號打錯時會直接不載入，而不是靜靜去要一個不存在的容器。
+// ─── Amplify 的空值限制 ───────────────────────────────────────────
+// Amplify 的環境變數一律不接受空字串，連「所有分支」那一列也不行。
+// 所以本來用「留空」表達的兩件事（不載入 GTM、不加集合後綴），都得改用
+// 一個看得懂的值來表達，約定成 none。
+
+// GTM 容器編號。只認 GTM- 開頭的正規格式，其他值（none、留空、打錯字）
+// 一律視同沒設、不載入 GTM —— 編號打錯時直接不載入，
+// 而不是靜靜去要一個不存在的容器。
 const rawGtmId = process.env.NUXT_PUBLIC_GTM_ID || ''
 const gtmId = /^GTM-[A-Z0-9]+$/i.test(rawGtmId) ? rawGtmId : ''
+
+// 便利貼資料集合的後綴。只有 none 與留空代表「正式資料、不加後綴」，
+// 其餘值一律原樣當後綴用。這裡刻意不做格式寬容：後綴打錯字時集合名稱會對不上
+// firestore.rules 的 match，投稿當場被規則擋下，而不是安靜地寫進正式資料。
+const rawFirestoreSuffix = process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || ''
+const firestoreSuffix = rawFirestoreSuffix === 'none' ? '' : rawFirestoreSuffix
 
 // LINE Seed 介面字的 @font-face（約 13KB）在建置時讀進來直接內嵌到 <head>，
 // 省掉一次樣式表往返，介面文字不會有 FOUT。內容字（使用者輸入的中／韓文）
@@ -118,8 +128,8 @@ export default defineNuxtConfig({
     public: {
       gtmId: gtmId,
       // 便利貼資料集合的後綴。空值＝正式環境；設為 _dev 等值可切到獨立的測試資料。
-      // 詳見 app/utils/collections.ts
-      firestoreSuffix: process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || '',
+      // 詳見 app/utils/collections.ts 與檔案開頭 firestoreSuffix 的說明
+      firestoreSuffix,
       firebase: {
         apiKey: process.env.NUXT_PUBLIC_FIREBASE_API_KEY || '',
         authDomain: process.env.NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
