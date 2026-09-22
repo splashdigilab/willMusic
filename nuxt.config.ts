@@ -13,11 +13,9 @@ import { fileURLToPath } from 'node:url'
 const rawGtmId = process.env.NUXT_PUBLIC_GTM_ID || ''
 const gtmId = /^GTM-[A-Z0-9]+$/i.test(rawGtmId) ? rawGtmId : ''
 
-// 便利貼資料集合的後綴。只有 none 與留空代表「正式資料、不加後綴」，
-// 其餘值一律原樣當後綴用。這裡刻意不做格式寬容：後綴打錯字時集合名稱會對不上
-// firestore.rules 的 match，投稿當場被規則擋下，而不是安靜地寫進正式資料。
-const rawFirestoreSuffix = process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || ''
-const firestoreSuffix = rawFirestoreSuffix === 'none' ? '' : rawFirestoreSuffix
+// 便利貼資料集合的後綴在這裡原樣傳遞，'none' 的正規化寫在 app/utils/collections.ts。
+// 原因：NUXT_PUBLIC_FIRESTORE_SUFFIX 命中 Nuxt 的 runtimeConfig 自動覆寫規則，
+// SSR 時環境變數會蓋掉這裡算好的值，轉換放這裡會被繞過。
 
 // LINE Seed 介面字的 @font-face（約 13KB）在建置時讀進來直接內嵌到 <head>，
 // 省掉一次樣式表往返，介面文字不會有 FOUT。內容字（使用者輸入的中／韓文）
@@ -127,9 +125,9 @@ export default defineNuxtConfig({
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     public: {
       gtmId: gtmId,
-      // 便利貼資料集合的後綴。空值＝正式環境；設為 _dev 等值可切到獨立的測試資料。
-      // 詳見 app/utils/collections.ts 與檔案開頭 firestoreSuffix 的說明
-      firestoreSuffix,
+      // 便利貼資料集合的後綴。空值或 none ＝正式環境；設為 _dev 等值可切到獨立的測試資料。
+      // 詳見 app/utils/collections.ts
+      firestoreSuffix: process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || '',
       firebase: {
         apiKey: process.env.NUXT_PUBLIC_FIREBASE_API_KEY || '',
         authDomain: process.env.NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',

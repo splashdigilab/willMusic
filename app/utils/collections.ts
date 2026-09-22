@@ -24,7 +24,15 @@ export interface FirestoreCollections {
 }
 
 export const useCollections = (): FirestoreCollections => {
-  const suffix = (useRuntimeConfig().public.firestoreSuffix as string) || ''
+  const raw = (useRuntimeConfig().public.firestoreSuffix as string) || ''
+  // 'none' 等同不加後綴 —— Amplify 的環境變數一律不接受空字串，
+  // 正式站那一列沒辦法留空，只能填一個字來表達「無」。
+  //
+  // 這段正規化刻意放在這裡，不放 nuxt.config：NUXT_PUBLIC_FIRESTORE_SUFFIX 這個名字
+  // 剛好命中 Nuxt 的 runtimeConfig 自動覆寫規則（public.firestoreSuffix），
+  // SSR 時 Nuxt 會拿環境變數的原始字串蓋掉 nuxt.config 算好的值。
+  // 寫在 nuxt.config 的話會被繞過，正式站就會去找 queue_pendingnone。
+  const suffix = raw === 'none' ? '' : raw
   return {
     queuePending: `queue_pending${suffix}`,
     queueHistory: `queue_history${suffix}`,
