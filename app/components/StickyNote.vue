@@ -125,14 +125,25 @@ const contentWrapStyle = computed(() => {
 const getStickerData = (type: string) => STICKER_LIBRARY.find(s => s.id === type)
 
 // GSAP 動畫（如果需要）與縮放
- const scalerStyle = ref({ transform: 'scale(1)' })
 const VIRTUAL_SIZE = 600
+
+// scaler 是固定 600×600，要縮到多小得先量到容器寬度，而那要等 onMounted。
+// 在那之前先不要畫出來：否則新便利貼的第一幀會以 600px 全尺寸、
+// 從左上角（transform-origin: 0 0）展開，看起來就是閃一下。
+// 量到寬度後（含 ResizeObserver 的後續變化）才切回 visible。
+const scalerStyle = ref<Record<string, string>>({
+  transform: 'scale(1)',
+  visibility: 'hidden'
+})
 
 function updateScale() {
   if (noteRef.value) {
     const width = noteRef.value.clientWidth
     if (width > 0) {
-      scalerStyle.value = { transform: `scale(${width / VIRTUAL_SIZE})` }
+      scalerStyle.value = {
+        transform: `scale(${width / VIRTUAL_SIZE})`,
+        visibility: 'visible'
+      }
     }
   }
 }

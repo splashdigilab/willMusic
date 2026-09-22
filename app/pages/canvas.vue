@@ -120,6 +120,13 @@ const ANIM = {
   scaleDuration: 0.5,
 } as const
 
+/**
+ * 一輪動畫從頭到尾要多久：拿起 → 移動 → 放下，外加一點緩衝。
+ * 傳給 Conductor 當作「動畫進行中不要開始下一輪」的守衛長度。
+ * 這個值必須跟著 ANIM 走，寫死就會在改動畫時間後悄悄失準。
+ */
+const ANIM_TOTAL_MS = (ANIM.scaleDuration * 2 + ANIM.moveDuration) * 1000 + 50
+
 /* ─── URL 參數 ─── */
 const route = useRoute()
 const maxNotes   = computed(() => Number(route.query.count) || 16)
@@ -422,7 +429,9 @@ function getScatterStyle(flipId: string) {
    ══════════════════════════════════════════════ */
 
 let flipSnapshot: any = null
-let capturedElements: { 
+/** 這一輪正在跑的主時間軸；下一輪開始前要先讓它收尾，避免兩輪動畫互相覆蓋 */
+let activeTimeline: gsap.core.Timeline | null = null
+let capturedElements: {
   flipId: string; 
   rect: DOMRect; 
   offsetWidth: number; 
@@ -449,6 +458,7 @@ const beginCanvasSession = async () => {
   await startConductor({
     loopIntervalMs: displaySec.value * 1000,
     historyLimit:   maxNotes.value,
+    animationMs:    ANIM_TOTAL_MS,
     getInterstitialVideoUrl: () => interstitialSrc.value,
     onInterstitialStart: () => {
       showInterstitial.value = true
@@ -457,10 +467,22 @@ const beginCanvasSession = async () => {
 
     /* ── BEFORE：拍快照 ── */
     onBeforeStateChange() {
-      flipSnapshot = Flip.getState('.p-canvas__note-wrap')
+      // 上一輪動畫還沒跑完就進到下一輪時，先讓它瞬間走到結尾再丟掉。
+      // 不這樣做有兩個後果：這裡會拍到動畫中途的位置，下一輪就從錯的地方起飛；
+      // 而且舊 timeline 末端「清掉 transform 殘留」那一步會在新動畫進行中才觸發，
+      // 把元素硬拉回定位，畫面上看到的就是一次跳動。
+      if (activeTimeline) {
+        activeTimeline.progress(1).kill()
+        activeTimeline = null
+      }
+
+      // 離場中的複製節點 class 仍是 p-canvas__note-wrap，若拍進快照，
+      // Flip 會把這些 position:fixed 的殘影一起納入計算（下面收集
+      // capturedElements 時是靠 data-flip-id 排除的，兩邊條件要一致）
+      flipSnapshot = Flip.getState('.p-canvas__note-wrap:not(.is-leaving)')
 
       capturedElements = []
-      document.querySelectorAll('.p-canvas__note-wrap').forEach(el => {
+      document.querySelectorAll('.p-canvas__note-wrap:not(.is-leaving)').forEach(el => {
         const flipId = el.getAttribute('data-flip-id')
         if (flipId) {
           const rect = el.getBoundingClientRect()
@@ -566,107 +588,86 @@ const beginCanvasSession = async () => {
 
       // 找出所有需要 Flip 動畫的元素
       const flipTargets: Element[] = []
-      const crossInnerTargets: HTMLElement[] = [] // 跨區移動的元素，其內部元素需要額外縮放動畫
-      const movingFlipTargets: Element[] = []     // 真正有產生位置變化的元素
+      const movingFlipTargets: Element[] = []       // 真正有產生位置變化的元素
+      const enteringTargets: HTMLElement[] = []     // 這一輪才出現在 DOM 的新便利貼
 
       document.querySelectorAll('.p-canvas__note-wrap:not(.is-leaving)').forEach(el => {
         const flipId = el.getAttribute('data-flip-id')
-        if (flipId) {
-          flipTargets.push(el)
+        if (!flipId) return
 
-          // 判斷是否真的有移動
-          const captured = capturedElements.find(c => c.flipId === flipId)
-          let hasMoved = false
+        const captured = capturedElements.find(c => c.flipId === flipId)
 
-          if (captured) {
-            const cur = el.getBoundingClientRect()
-            hasMoved = (
-              Math.abs(cur.left   - captured.rect.left)   > 1 ||
-              Math.abs(cur.top    - captured.rect.top)    > 1 ||
-              Math.abs(cur.width  - captured.rect.width)  > 1 ||
-              Math.abs(cur.height - captured.rect.height) > 1
-            )
-          } else {
-            hasMoved = true // 新進場的元素視同有移動
-          }
+        // 新進場的元素不交給 Flip：Flip 只在 onEnter 的「回傳值」會被併進它的
+        // 時間軸，起點何時套用不由我們決定。改成自己設起點、自己排進 timeline，
+        // 才能保證瀏覽器畫下一幀之前它已經在畫面外。
+        if (!captured) {
+          enteringTargets.push(el as HTMLElement)
+          return
+        }
 
-          if (hasMoved) {
-            movingFlipTargets.push(el)
-          }
+        flipTargets.push(el)
 
-          if (hasMoved && wasInDisplayIds.has(flipId) && !el.classList.contains('p-canvas__note-wrap--display')) {
-            // 從 display 區移動到 live 區的元素
-            const inner = (el as HTMLElement).firstElementChild as HTMLElement
-            if (inner) crossInnerTargets.push(inner)
-          }
+        // 判斷是否真的有移動
+        const cur = el.getBoundingClientRect()
+        const hasMoved = (
+          Math.abs(cur.left   - captured.rect.left)   > 1 ||
+          Math.abs(cur.top    - captured.rect.top)    > 1 ||
+          Math.abs(cur.width  - captured.rect.width)  > 1 ||
+          Math.abs(cur.height - captured.rect.height) > 1
+        )
+
+        if (hasMoved) {
+          movingFlipTargets.push(el)
         }
       })
 
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // 全部動畫：ONE Flip.from() 統一驅動
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // ▸ 新進場元素：立刻擺到 display 區下方的畫面外
+      //   必須在這裡同步做完。Vue 剛把元素插進 DOM 時它在最終位置（display 正中），
+      //   晚一幀才移到起點就會看到它先閃一下再從下面飛上來。
+      if (enteringTargets.length) {
+        const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
+        const dRect = dZone.getBoundingClientRect()
+        const displayCenterX = dRect.left + dRect.width / 2
 
-      // 單一 Flip.from()，targets 包含所有需要動畫的元素
-      if (flipTargets.length) {
-        // 先建立 Flip 動畫時間軸
-        const flipAnim = Flip.from(flipSnapshot, {
-          targets: flipTargets,
-          duration: ANIM.moveDuration,
-          ease: 'power2.inOut',
-          absolute: true,
-          scale: true, // 關鍵：讓元素以 transform scale 的方式變形，而非直接改 width/height，避免瞬間爆大
-          paused: true, // 先暫停，由我們的手動時間軸控制
-          // 情境 1：新進場元素的飛入動畫
-          onEnter: (elements: Element[]) => {
-            // 飛入前子元素先設為 1.1
-            elements.forEach(el => {
-              const inner = (el as HTMLElement).firstElementChild as HTMLElement
-              if (inner) gsap.set(inner, { scale: 1.1 })
-            })
-
-            const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
-            const dRect = dZone.getBoundingClientRect()
-            const displayCenterX = dRect.left + dRect.width / 2
-            // 起始 Y：display zone 底部再加上元素高度，確保完全在畫面外
-            const entryBottomY = dRect.bottom
-
-            gsap.from(elements, {
-              x: (i, el) => {
-                const rect = el.getBoundingClientRect()
-                return displayCenterX - (rect.left + rect.width / 2)
-              },
-              y: (i, el) => {
-                const rect = el.getBoundingClientRect()
-                return entryBottomY + rect.height - (rect.top + rect.height / 2)
-              },
-              duration: ANIM.moveDuration,
-              ease: 'power3.out',
-              delay: flipTargets.length ? ANIM.scaleDuration : 0, // 等待拿起動作
-              onComplete: () => {
-                // 落地後：display 元素 scale 1.1→1
-                elements.forEach(el => {
-                  if (el.classList.contains('p-canvas__note-wrap--display')) {
-                    const inner = (el as HTMLElement).firstElementChild as HTMLElement
-                    if (inner) {
-                      gsap.to(inner, {
-                        scale: 1,
-                        duration: ANIM.scaleDuration,
-                        ease: 'power2.inOut',
-                      })
-                    }
-                  }
-                })
-              },
-            })
-          }
-
+        enteringTargets.forEach(el => {
+          const inner = el.firstElementChild as HTMLElement
+          if (inner) gsap.set(inner, { scale: 1.1 })
+          const rect = el.getBoundingClientRect()
+          gsap.set(el, {
+            x: displayCenterX - (rect.left + rect.width / 2),
+            y: dRect.bottom + rect.height - (rect.top + rect.height / 2)
+          })
         })
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 主時間軸：1. 拿起(放大) → 2. 移動(既有的 Flip + 新便利貼飛入) → 3. 放下(縮小)
+      // 每個步驟都用絕對時間定位，不用 '<' 之類的相對位置 ——
+      // 相對位置會跟著「上一個被加進 timeline 的動畫」跑，改動順序就會錯位。
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      if (flipTargets.length || enteringTargets.length) {
+        // 既有元素的位置變化，交給單一 Flip.from()
+        const flipAnim = flipTargets.length
+          ? Flip.from(flipSnapshot, {
+              targets: flipTargets,
+              duration: ANIM.moveDuration,
+              ease: 'power2.inOut',
+              absolute: true,
+              scale: true, // 關鍵：讓元素以 transform scale 的方式變形，而非直接改 width/height，避免瞬間爆大
+              paused: true // 先暫停，由下面的主時間軸控制
+            })
+          : null
 
         // 提取所有要移動的元素的內部節點（用來放大縮小）
         const flipInnerTargets = movingFlipTargets.map(el => (el as HTMLElement).firstElementChild as HTMLElement).filter(Boolean)
+        const enteringInnerTargets = enteringTargets.map(el => el.firstElementChild as HTMLElement).filter(Boolean)
 
-        // 建立主時間軸，安排動畫順序： 1. 拿起(放大) -> 2. 移動(Flip) -> 3. 放下(縮小)
+        // 沒有東西要「拿起」時，移動就不必等
+        const moveStart = flipInnerTargets.length ? ANIM.scaleDuration : 0
+        const moveEnd = moveStart + ANIM.moveDuration
+
         const tl = gsap.timeline()
+        activeTimeline = tl
 
         // 步驟 1：所有要移動的元素原地放大 (拿起)
         if (flipInnerTargets.length) {
@@ -674,26 +675,54 @@ const beginCanvasSession = async () => {
             scale: 1.1,
             duration: ANIM.scaleDuration,
             ease: 'power2.out',
-          })
+          }, 0)
         }
 
-        // 步驟 2：執行所有位置移動 (Live重排 + 跨區移動)
-        tl.add(flipAnim.play(), flipInnerTargets.length ? ANIM.scaleDuration : 0)
+        // 步驟 2：既有元素的位置移動 (Live 重排 + 跨區移動)
+        if (flipAnim) {
+          tl.add(flipAnim.play(), moveStart)
+        }
 
-        // 步驟 3：所有移動的元素到達目的地後縮小 (放下)
+        // 步驟 2b：新便利貼從 display 區下方飛入（起點在上面已經設好）
+        if (enteringTargets.length) {
+          tl.to(enteringTargets, {
+            x: 0,
+            y: 0,
+            duration: ANIM.moveDuration,
+            ease: 'power3.out',
+          }, moveStart)
+        }
+
+        // 步驟 3：抵達目的地後縮小 (放下)
         if (flipInnerTargets.length) {
-          // `<` 代表對齊上一個動畫(也就是移動)的開端，加上移動時間代表「一抵達目標就馬上縮小」
           tl.to(flipInnerTargets, {
             scale: 1,
             duration: ANIM.scaleDuration,
             ease: 'power2.inOut',
-          }, `<${ANIM.moveDuration}`)
+          }, moveEnd)
+        }
+        if (enteringInnerTargets.length) {
+          tl.to(enteringInnerTargets, {
+            scale: 1,
+            duration: ANIM.scaleDuration,
+            ease: 'power2.inOut',
+          }, moveEnd)
         }
 
-        // 僅 display 區：強制最終 translate 為 0 0，避免 FLIP 殘留導致跑到螢幕右下角
+        // 收尾：把 GSAP 寫進 transform 的殘留值清掉
         tl.call(() => {
+          // display 區：CSS 沒有給 transform，歸零即可
           document.querySelectorAll('.p-canvas__note-wrap--display').forEach(el => {
             gsap.set(el, { x: 0, y: 0 })
+          })
+          // live 區：inline style 的 transform 只有 rotate()，但動畫期間會被 GSAP
+          // 覆寫成帶 translate 的值。Vue 只在「綁定值」改變時才 patch style，
+          // rot 沒變它就不會重寫，於是 translate 殘留下來，下一輪便從錯的位置起跳
+          // —— 症狀就是便利貼先閃現在右下角，再飛向左半邊。
+          document.querySelectorAll('.p-canvas__note-wrap:not(.p-canvas__note-wrap--display):not(.is-leaving)').forEach(el => {
+            const flipId = el.getAttribute('data-flip-id')
+            const pos = flipId ? positionMap[flipId] : null
+            if (pos) gsap.set(el, { x: 0, y: 0, scale: 1, rotation: pos.rot })
           })
         })
       }
@@ -753,6 +782,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  // 動畫還在跑就離開頁面時，GSAP 的 ticker 會繼續驅動已經卸載的節點
+  activeTimeline?.kill()
+  activeTimeline = null
   stopRecalcWatch?.()
   stopRecalcWatch = null
   unsubCanvasVideo?.()

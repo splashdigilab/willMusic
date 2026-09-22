@@ -32,6 +32,12 @@ export interface ConductorOptions {
     getInterstitialVideoUrl?: () => string | null
     /** FLIP 結束後開始播放插播影片（canvas 內顯示 video） */
     onInterstitialStart?: () => void
+    /**
+     * 一輪動畫從頭到尾的毫秒數。這段期間 tick 會延後，插播也不會開始。
+     * 實際長度由 canvas 的 ANIM 決定（拿起 + 移動 + 放下），所以由呼叫端傳入；
+     * 寫死在這裡的話，改了動畫時間這邊不會跟著改，守衛就會提早解除。
+     */
+    animationMs?: number
 }
 
 interface ConductorState {
@@ -59,6 +65,8 @@ interface ConductorState {
     // config
     loopMs: number
     gridMax: number
+    /** 一輪動畫的總長度，決定 isAnimating 守衛要撐多久 */
+    animationMs: number
     /** 固定間隔插播：待播放的時段鍵（FIFO） */
     interstitialQueue: string[]
     /** 插播播放中：不排程 tick、不接 pending 重排 */
@@ -94,6 +102,7 @@ function getSingleton(): ConductorState {
             onAfter: null,
             loopMs: 15_000,
             gridMax: 20,
+            animationMs: 2_250,
             interstitialQueue: [],
             interstitialBlocking: false,
             getVideoUrl: null,
@@ -263,6 +272,7 @@ export function useConductor() {
         // 套用設定
         if (opts?.loopIntervalMs) s.loopMs = opts.loopIntervalMs
         if (opts?.historyLimit) s.gridMax = opts.historyLimit
+        if (opts?.animationMs) s.animationMs = opts.animationMs
         s.onBefore = opts?.onBeforeStateChange ?? null
         s.onAfter = opts?.onAfterStateChange ?? null
         s.getVideoUrl = opts?.getInterstitialVideoUrl ?? null
@@ -586,7 +596,7 @@ export function useConductor() {
             s.animTimer = setTimeout(() => {
                 s.isAnimating = false
                 if (interstitialThisRound) s.onInterstitialStart?.()
-            }, 1250) // 等待 CSS Flip 動畫播放完畢 (1.2s + 緩衝)
+            }, s.animationMs) // 整輪動畫跑完才解除守衛（拿起 + 移動 + 放下）
         }
 
         if (interstitialThisRound) {
