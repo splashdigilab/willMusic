@@ -2,7 +2,12 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const gtmId = process.env.NUXT_PUBLIC_GTM_ID || ''
+// GTM 容器編號。只認 GTM- 開頭的正規格式，其他值一律視同沒設、不載入 GTM。
+// 之所以不是單純判斷有沒有值：Amplify 的分支覆寫不接受空字串，測試站要關掉 GTM
+// 只能填一個非空的值（例如 off），所以「關閉」這件事得由格式判斷來表達。
+// 附帶好處是編號打錯時會直接不載入，而不是靜靜去要一個不存在的容器。
+const rawGtmId = process.env.NUXT_PUBLIC_GTM_ID || ''
+const gtmId = /^GTM-[A-Z0-9]+$/i.test(rawGtmId) ? rawGtmId : ''
 
 // LINE Seed 介面字的 @font-face（約 13KB）在建置時讀進來直接內嵌到 <head>，
 // 省掉一次樣式表往返，介面文字不會有 FOUT。內容字（使用者輸入的中／韓文）

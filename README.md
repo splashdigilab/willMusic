@@ -143,9 +143,25 @@ NUXT_PUBLIC_FIREBASE_PROJECT_ID
 NUXT_PUBLIC_FIREBASE_STORAGE_BUCKET
 NUXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 NUXT_PUBLIC_FIREBASE_APP_ID
-NUXT_PUBLIC_GTM_ID       # 選填，沒填就不會載入 GTM
+NUXT_PUBLIC_GTM_ID       # 選填，只認 GTM- 開頭的編號，其他值一律不載入 GTM
 OPENAI_API_KEY           # 沒填的話內容審核會直接放行
 ```
+
+### 測試站（staging 分支）
+
+`staging` 分支掛在同一個 Amplify app 底下，用 **branch-level 覆寫**跟正式站區隔。
+設在 app 層（所有分支）會連正式站一起改到，一定要指定分支：
+
+| 變數 | 所有分支 | staging 覆寫 |
+|---|---|---|
+| `NUXT_PUBLIC_FIRESTORE_SUFFIX` | 留空（正式資料） | `_dev` |
+| `NUXT_PUBLIC_GTM_ID` | 正式容器編號 | `off` |
+
+其餘變數兩站共用（同一個 Firebase 專案）。
+
+要注意兩站**不是**完全隔離：`system` 集合（啟用中 token、GPS 圍籬、大螢幕影片）
+刻意不分組，Storage 的 `note_drawings/` 也沒有後綴。細節見
+`app/utils/collections.ts` 與 `docs/firebase-rules.md`。
 
 ## 專案結構
 
