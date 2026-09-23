@@ -247,7 +247,7 @@
             :class="{ 'is-active': drawMode }"
             :style="{ 
               pointerEvents: drawMode ? 'auto' : 'none',
-              zIndex: getObjectZIndex('drawing-layer')
+              zIndex: getObjectZIndex(DRAWING_LAYER_ID)
             }"
           >
             <!-- Fabric.js canvas：始終留在 DOM（init 需要），縮小後視覺空白 -->
@@ -694,7 +694,9 @@ const selectedTextBlockId = ref<string | null>(null)
 const textBlockDragging = ref(false)
 const textBlockTransforming = ref(false)
 
-// 每個物件（文字區塊 / 貼紙）各自疊放順序：點選時 bringToFront，完成後該物件維持最頂層
+// 每個物件（文字區塊 / 貼紙）各自疊放順序：點選時 bringToFront，完成後該物件維持最頂層。
+// 手繪層沒有實體 id，用這個固定鍵混在同一張表裡排序；顯示端（StickyNote）也讀同一個鍵。
+const DRAWING_LAYER_ID = 'drawing-layer'
 const objectZOrder = ref<Record<string, number>>({})
 let zOrderCounter = 0
 const getObjectZIndex = (id: string) => objectZOrder.value[id] ?? 1
@@ -931,7 +933,7 @@ watch(activeTab, (tab) => {
     // 恢復畫布尺寸（從 1×1 最小化還原為 600×600，重新分配 GPU backing store）
     fabricBrush.restoreCanvas()
     fabricBrush.setDrawingMode(true)
-    bringToFront('drawing-layer')
+    bringToFront(DRAWING_LAYER_ID)
   } else {
     if (drawMode.value) {
       // 離開繪圖模式：立即存檔（saveImmediately=true），不用防抖，避免資料遺失
@@ -1617,10 +1619,16 @@ const loadDraftData = async (draft: DraftData) => {
   // 還原物件前後順序：與編輯時一致；保證唯一 z 且強制更新視圖
   const textIds = textBlocks.value.map(b => b.id)
   const stickerIds = stickers.value.map(s => s.id)
-  const allIds = new Set([...textIds, ...stickerIds])
   const orderFromDraft = draft.objectLayerOrder && Object.keys(draft.objectLayerOrder).length > 0
     ? { ...draft.objectLayerOrder }
     : null
+  const allIds = new Set([...textIds, ...stickerIds])
+  // 手繪層的順序也記在 objectZOrder 裡（鍵是 DRAWING_LAYER_ID），但它不是 textBlocks
+  // 也不是 stickers，上面兩行掃不到。不補進來的話，回復草稿後手繪會掉到最底層 ——
+  // 存檔前明明蓋在貼紙上，回來就跑到底下，而且送出的 objectLayerOrder 也會少這一筆，
+  // 顯示端只能退回預設值，畫布、預覽、大螢幕三邊各長一個樣。
+  // 舊草稿沒存過這一筆時不補，維持原本的預設行為，不去猜它當初在第幾層。
+  if (orderFromDraft?.[DRAWING_LAYER_ID] != null) allIds.add(DRAWING_LAYER_ID)
 
   if (orderFromDraft) {
     const restored: Record<string, number> = {}

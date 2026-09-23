@@ -8,6 +8,7 @@
   因此所有字級與間距都除以 764，不是除以 876。
 */
 @use '../base/variables' as var;
+@use '../base/editor-variables' as ed;
 
 .p-index {
     position: relative;
@@ -445,7 +446,6 @@
     white-space: nowrap;
 }
 
-/* 浮動圓鈕：貼在底部橫條上方右側 */
 /* 說明：左上角，與編輯器的說明同一個位置 */
 .p-index__help {
     position: absolute;
@@ -460,10 +460,11 @@
 .p-index__controls {
     position: absolute;
     right: 1rem;
-    /* 底部橫條的高度是 max(22.1vw, 92px)（它有 min-height），
-       這裡只算 22.1vw 的話，390 寬時會少算 6px，0.75rem 的留白幾乎全被吃掉，
-       按鈕會貼在橫條上緣。用同一條式子算才對得起來。 */
-    bottom: calc(max(22.1vw, 92px) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+    /* 橫條實際佔的高度是 max(22.1vw + safe-area, 92px)：height 本身含 safe-area，
+       min-height 再把它托到 92px。safe-area 要寫在 max() 裡面 ——
+       寫在外面的話，有 home indicator 又偏窄的機型（min-height 生效時）
+       會多算掉那段 safe-area，留白從 12px 變成 18px。 */
+    bottom: calc(max(22.1vw + env(safe-area-inset-bottom, 0px), 92px) + 0.75rem);
     z-index: 100;
     display: flex;
     flex-direction: column;
@@ -482,11 +483,14 @@
     transform: scale(0.8);
 }
 
-/* 浮動圓鈕：稿子沒有這兩顆，但功能要保留。
-   它們落在白色漸層區上，所以用深底白圖示才看得見。 */
+/* 浮動圓鈕：稿子沒有這兩顆，但功能要保留。編輯器的返回／說明也共用這個 class。
+   底色與便利貼牆的底同為 $will-dark，所以在深色背景上只靠白圖示與陰影辨識；
+   會這樣是因為它原本只出現在畫面下方的白色漸層區。說明移到左上之後那裡沒有漸層，
+   對比會比原本弱 —— 之所以還是沿用同一顆，是為了與編輯器的說明長得一樣。 */
 .p-index__icon-btn {
-    width: 42px;
-    height: 42px;
+    /* 尺寸與編輯器共用同一個變數：編輯器的畫布要靠它算出上方要讓出多少空間 */
+    width: ed.$editor-float-btn-size;
+    height: ed.$editor-float-btn-size;
     border-radius: 50%;
     background: var.$will-dark;
     border: none;

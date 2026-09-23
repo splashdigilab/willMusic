@@ -20,8 +20,8 @@ body.is-editor-page {
 /* 返回／說明浮動圓鈕：稿子沒有上方橫條，沿用首頁的圓鈕樣式 */
 .p-editor__float-actions {
   position: absolute;
-  top: calc(0.75rem + env(safe-area-inset-top, 0px));
-  left: 0.75rem;
+  top: calc(#{ed.$editor-float-btn-inset} + env(safe-area-inset-top, 0px));
+  left: ed.$editor-float-btn-inset;
   z-index: 200;
   display: flex;
   gap: 0.6rem;
@@ -29,14 +29,14 @@ body.is-editor-page {
   /* 全部重來掛在右上角，與左上的返回／說明對稱 */
   &--right {
     left: auto;
-    right: 0.75rem;
+    right: ed.$editor-float-btn-inset;
   }
 }
 
-/* 全部重來：帶字的藥丸，高度與左邊兩顆圓鈕一致（42px），視覺上仍是同一排 */
+/* 全部重來：帶字的藥丸，高度與左邊兩顆圓鈕一致，視覺上仍是同一排 */
 .p-editor__reset-btn {
   @include btn.btn-reset;
-  height: 42px;
+  height: ed.$editor-float-btn-size;
   gap: 0.35rem;
   padding: 0 0.95rem;
   border: none;
@@ -124,8 +124,12 @@ body.is-editor-page #app {
     /* 上方替浮動按鈕列留位：那排是 absolute，不佔版面高度，而便利貼是置中的，
        面板一高（STEP 4 最高）加上瀏海的 safe-area，上方空隙就會小於按鈕高度，
        便利貼會滑到按鈕底下。這裡把它們的高度算進來，任何機型都不會重疊。
-       0.75rem 起始位置 + 42px 按鈕 + 0.5rem 間隙。 */
-    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px) + 42px + 0.5rem);
+       尺寸與起始位置都取自變數 —— 寫死的話，日後按鈕一改大這裡不會跟著動，
+       重疊會無聲地回來。0.5rem 是按鈕底緣到便利貼的間隙。 */
+    padding-top: calc(
+      #{ed.$editor-float-btn-inset} + env(safe-area-inset-top, 0px) +
+      #{ed.$editor-float-btn-size} + 0.5rem
+    );
     touch-action: pan-x pan-y;
     /* 允許 pan、禁用 pinch-zoom，讓 touchmove 能觸發且不縮放畫面 */
   }
@@ -703,12 +707,9 @@ body.is-editor-page #app {
     /* 文字顏色：稿子畫板 09 是較大的圓角方形色票，不是圓點，也沒有打勾，
        選中時改用外圈天藍描邊表示，避免像圓點那樣把顏色變半透明 */
     &--square {
-      /* 與 STEP 1 的材質色票同尺寸 —— 稿子上這兩處是一樣大的（面板寬的 11.27%）。
+      /* 與 STEP 1 的材質色票同尺寸 —— 稿子上這兩處是一樣大的。
          原本寫死 3.2rem，在 390 寬時是 13.13%，比稿子大了快兩成。 */
-      width: 11.27vw;
-      height: 11.27vw;
-      max-width: 68px;
-      max-height: 68px;
+      @include edm.editor-swatch-box;
       border-radius: 0.6rem;
       border: 1px solid rgba(0, 0, 0, 0.12);
 
@@ -721,7 +722,7 @@ body.is-editor-page #app {
 
   /* 文字色票的間距與 STEP 1 的材質同一個值（稿子上兩處相同） */
   &__color-grid--text {
-    gap: min(2.7vw, 16px);
+    gap: ed.$editor-swatch-gap;
   }
 
   &__color-check {
@@ -741,7 +742,7 @@ body.is-editor-page #app {
   &__align-row {
     display: flex;
     /* 與色票同一個格距，兩列才會排成同一組模組 */
-    gap: min(2.7vw, 16px);
+    gap: ed.$editor-swatch-gap;
   }
 
   &__align-btn {
@@ -750,10 +751,7 @@ body.is-editor-page #app {
     /* 與色票等寬的正方形格子：兩列的第一格、第二格左右對齊，讀起來是同一個網格。
        圖示本身維持 102.5:56.18 的比例（由下面的 mask-size: contain 決定），
        所以格子是正方形、圖示是橫長形置中 —— 順帶把觸控範圍從 23px 高補到 44px。 */
-    width: 11.27vw;
-    height: 11.27vw;
-    max-width: 68px;
-    max-height: 68px;
+    @include edm.editor-swatch-box;
     flex-shrink: 0;
     background: transparent;
     border: none;
@@ -785,18 +783,15 @@ body.is-editor-page #app {
     @include edm.editor-grid-wrap;
     /* 設計稿量到的格距是面板寬的 2.7%。$editor-grid-gap 是筆刷色與貼圖共用的，
        那兩處不在這次對稿範圍內，所以只覆寫這裡而不動變數。 */
-    gap: min(2.7vw, 16px);
+    gap: ed.$editor-swatch-gap;
   }
 
   &__background-btn {
     @include btn.btn-square;
     position: relative;
-    /* 稿子裡材質與造型同尺寸，都是面板寬的 11.27%（原本寫死 40px，約只有 8 成大）。
-       改用 vw 才會跟著面板等比例縮放；上限 68px 與對齊圖示同一個天花板。 */
-    width: 11.27vw;
-    height: 11.27vw;
-    max-width: 68px;
-    max-height: 68px;
+    /* 稿子裡材質與造型同尺寸（原本寫死 40px，約只有 8 成大）。
+       改用 vw 才會跟著面板等比例縮放。 */
+    @include edm.editor-swatch-box;
 
     &.is-active {
       .p-editor__background-img,
@@ -826,17 +821,14 @@ body.is-editor-page #app {
 
   // Shape Grid - 樣式/形狀選擇器（符合設計稿）
   &__shape-grid {
-    @include edm.editor-grid-scroll-x(min(2.7vw, 16px));
+    @include edm.editor-grid-scroll-x(ed.$editor-swatch-gap);
   }
 
   &__shape-btn {
     @include btn.btn-reset;
     position: relative;
     /* 與材質色票同尺寸 —— 稿子上這兩列是一樣大的 */
-    width: 11.27vw;
-    height: 11.27vw;
-    max-width: 68px;
-    max-height: 68px;
+    @include edm.editor-swatch-box;
     flex-shrink: 0;
     background: transparent;
     border: none;

@@ -11,7 +11,6 @@
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
   justify-content: center;
   background-color: var.$will-dark;
   color: #fff;
@@ -22,15 +21,22 @@
 .p-queue-status__container {
   width: 100%;
   max-width: 420px;
-  /* 上下留安全區，iPhone 的瀏海與 home indicator 都吃得到 */
+  /* 置中用 margin: auto 而不是父層的 align-items: center。
+     用 align-items 置中時，內容超過畫面高度的話上半會溢出到捲動起點之外，
+     scrollTop 不能是負的，所以字標和標題會被切掉而且捲不回去（橫放時就會發生）。
+     margin: auto 在空間不足時會自動退成 0，上半才拿得回來。 */
+  margin: auto;
+  /* 上下留安全區，iPhone 的瀏海與 home indicator 都吃得到。
+     左右用 min() 夾住：容器本身封頂在 420px，桌機上 6.48vw 會膨脹到把內容擠沒。 */
   padding:
     calc(2rem + env(safe-area-inset-top, 0px))
-    6.48vw
+    min(6.48vw, 26px)
     calc(2rem + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2rem;
+  box-sizing: border-box;
 }
 
 .p-queue-status__logo {
@@ -64,7 +70,8 @@
 .p-queue-status__stats {
   width: 100%;
   box-sizing: border-box;
-  padding: 7.5vw 6.48vw;
+  /* 同樣要夾住：容器封頂 420px，桌機上未夾的 vw 內距會大過卡片本身 */
+  padding: min(7.5vw, 30px) min(6.48vw, 26px);
   border-radius: 1.4rem;
   background: linear-gradient(to bottom left, #FFFFFF 0%, #ECECEC 100%);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
@@ -104,7 +111,7 @@
 .p-queue-status__stat-divider {
   height: 1px;
   width: 100%;
-  margin: 5.5vw 0;
+  margin: min(5.5vw, 22px) 0;
   background: rgba(0, 0, 0, 0.1);
 }
 

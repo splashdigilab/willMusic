@@ -4,6 +4,16 @@
  */
 @use '../base/editor-variables' as ed;
 
+/// 選項格子的尺寸（材質、造型、文字色票、對齊）。
+/// 這四處在稿子上是同一個大小，所以共用一個 mixin —— 改稿時只要動
+/// editor-variables 裡的 $editor-swatch-size / $editor-swatch-max 一處。
+@mixin editor-swatch-box {
+  width: ed.$editor-swatch-size;
+  height: ed.$editor-swatch-size;
+  max-width: ed.$editor-swatch-max;
+  max-height: ed.$editor-swatch-max;
+}
+
 /// 隱藏捲軸（橫向或縱向捲動區塊使用）
 @mixin editor-scrollbar-hidden {
   &::-webkit-scrollbar {

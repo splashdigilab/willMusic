@@ -64,11 +64,16 @@ export function usePanZoom(
     let pinchStartStateY = 0
 
     // === 效能優化：快取 container rect，避免每幀 reflow ===
+    // 刻意不是 ref：拖曳／縮放的每一幀都在讀它，包成響應式沒有好處。
+    // 但 isCentered 這個 computed 也要用它算目標值，所以另外用一個版本號當依賴 ——
+    // 只在真的重新量測時 +1，不影響上面那些熱路徑的讀取。
     let cachedRect: DOMRect | null = null
+    const rectVersion = ref(0)
 
     const cacheContainerRect = () => {
         if (containerRef.value) {
             cachedRect = containerRef.value.getBoundingClientRect()
+            rectVersion.value++
         }
     }
 
@@ -301,8 +306,6 @@ export function usePanZoom(
     /** centerContent 的目標值。抽出來讓 isCentered 與它用同一條式子，不會各算各的 */
     const centerTarget = () => {
         const targetScale = options.initialScale ?? 1
-        // cachedRect 只在互動開始時更新，不是響應式的；scale 為 1 時 (1 - scale) = 0，
-        // 目標本來就是 (0, 0)，拿不到 rect 也不影響。
         return {
             x: ((cachedRect?.width ?? 0) / 2) * (1 - targetScale),
             y: ((cachedRect?.height ?? 0) / 2) * (1 - targetScale),
@@ -316,6 +319,9 @@ export function usePanZoom(
      * 門檻放寬到 8px / 0.02 倍，避免手指輕輕碰一下就讓按鈕閃出來。
      */
     const isCentered = computed(() => {
+        // 目標值在 initialScale 不等於 1 時會用到 container 尺寸，
+        // 讀一下版本號讓重新量測能使這個 computed 失效。
+        void rectVersion.value
         const t = centerTarget()
         return Math.abs(state.value.x - t.x) < 8 &&
             Math.abs(state.value.y - t.y) < 8 &&
