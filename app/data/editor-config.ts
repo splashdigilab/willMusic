@@ -4,14 +4,21 @@
 
 export const MAX_CONTENT_LENGTH = 200
 
-export const EDITOR_TABS = [
-  { id: 'note' as const, label: '便利貼', icon: '/editor-icon/icons3.png' },
-  { id: 'text' as const, label: '文字', icon: '/editor-icon/icons2.png' },
-  { id: 'draw' as const, label: '繪圖', icon: '/editor-icon/icons1.png' },
-  { id: 'sticker' as const, label: '貼紙', icon: '/editor-icon/icons4.png' }
+/**
+ * 編輯流程的四個畫面，陣列順序就是步驟順序。
+ *
+ * 舊版是可自由切換的分頁列（EDITOR_TABS，帶 icon），使用者做完一項就回到中樞
+ * 自己挑下一項；現在改成線性流程，只靠上一步／下一步與面板右上的步驟點導覽，
+ * icon 不再需要。STEP 1 與 STEP 2 共用第一個畫面，所以是 4 個畫面、5 個 STEP 標題。
+ */
+export const EDITOR_STEPS = [
+  { id: 'note' as const, label: '便利貼' },
+  { id: 'text' as const, label: '文字' },
+  { id: 'draw' as const, label: '繪圖' },
+  { id: 'sticker' as const, label: '貼紙' }
 ] as const
 
-export type EditorTabId = typeof EDITOR_TABS[number]['id']
+export type EditorStepId = typeof EDITOR_STEPS[number]['id']
 
 export const TEXT_ALIGN_OPTIONS = [
   { value: 'left' as const, svg: '/align-left.svg' },

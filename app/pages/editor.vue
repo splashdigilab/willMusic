@@ -16,6 +16,20 @@
         </button>
       </div>
 
+      <!-- 全部重來：分頁列拿掉後失去了原本的位置，改放右上角與返回／說明對稱。
+           它現在全程可見，所以刻意用和返回／說明同一套低調圓鈕，不再是搶眼的桃紅實心鈕。 -->
+      <div class="p-editor__float-actions p-editor__float-actions--right">
+        <button
+          type="button"
+          class="p-index__icon-btn p-editor__reset-btn"
+          :disabled="!hasAnyContent"
+          aria-label="全部重來"
+          @click="handleClearAll"
+        >
+          <img src="/undo.svg" alt="" class="p-editor__reset-btn-icon" />
+        </button>
+      </div>
+
       <!-- 活動規範滿版 overlay：版面與首頁開場完全共用，只有文字不同 -->
       <Transition name="intro-fade">
         <div v-if="showIntroOverlay" class="p-index__intro-overlay p-editor__intro-overlay">
@@ -113,7 +127,9 @@
       @confirm="handleAlertConfirm"
     />
 
-    <!-- Submit Confirmation Modal -->
+    <!-- Submit Confirmation Modal。
+         分享便利貼原本在中樞那一列，線性流程沒有中樞了，改放這裡：
+         這個 modal 本來就有預覽，看著成品決定要存到手機還是送上大螢幕是同一個當下的事。 -->
     <AppModal
       v-model="showSubmitModal"
       title="確認上傳"
@@ -124,6 +140,16 @@
     >
       <template #preview>
         <StickyNote v-if="previewNoteData" :note="previewNoteData" />
+      </template>
+      <template #secondary-action>
+        <button
+          type="button"
+          class="c-modal__side-btn"
+          :disabled="isSubmitting || isSharing"
+          @click="handleShare"
+        >
+          {{ isSharing ? '處理中...' : '分享便利貼' }}
+        </button>
       </template>
     </AppModal>
 
@@ -180,7 +206,7 @@
                   'is-empty': !block.content.trim() && !(selectedTextBlockId === block.id && isComposing),
                   'is-locked': block.locked
                 }"
-                :contenteditable="!drawMode"
+                :contenteditable="activeTab === 'text' && !block.locked"
                 @compositionstart="() => { isComposing = true }"
                 @compositionend="(e: Event) => handleCompositionEnd(e, block.id)"
                 @input="(e: Event) => handleTextInput(e, block.id)"
@@ -249,7 +275,7 @@
           <div
             v-for="block in textBlocks"
             :key="`ui-text-${block.id}`"
-            v-show="activeTab === 'text' && selectedTextBlockId === block.id"
+            v-show="!drawMode && selectedTextBlockId === block.id"
             :data-text-block-id="block.id"
             class="p-editor__edit-frame p-editor__edit-frame--text"
             :class="{ 
@@ -323,40 +349,25 @@
     <!-- 控制面板 + 底部按鈕列：包在同一層，漸層底才會連續。
          兩者原本是並排的兄弟元素，按鈕列自己塗白底才看起來相連。 -->
     <div class="p-editor__panel-wrap">
-      <!-- 一鍵清除：在 control-panel 外、tab 上方，與 tab 同顯示條件；v-if + transition 才有漸變 -->
-      <transition name="p-editor-top-actions">
-        <div
-          v-if="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'"
-          class="p-editor__top-actions"
+      <!-- 步驟指示，同時也是捷徑：點了直接跳，不必一路按上一步。
+           絕對定位貼在面板右上與 STEP 標題同一條水平線，所以不佔面板高度。 -->
+      <div class="p-editor__step-nav">
+        <button
+          v-for="(s, i) in EDITOR_STEPS"
+          :key="s.id"
+          type="button"
+          class="p-editor__step-dot"
+          :class="{ 'is-active': step === i, 'is-done': i < step }"
+          :aria-label="`第 ${i + 1} 步：${s.label}`"
+          :aria-current="step === i ? 'step' : undefined"
+          @click="goToStep(i)"
         >
-          <button
-            type="button"
-            class="p-editor__clear-btn"
-            @click="handleClearAll"
-            aria-label="清除全部"
-          >
-            <img src="/undo.svg" alt="清除全部" class="p-editor__clear-btn-icon" />
-          </button>
-        </div>
-      </transition>
+          <span />
+        </button>
+      </div>
+
     <!-- Control Panel -->
     <div class="p-editor__control-panel">
-      <!-- Tab Bar（操作文字或繪圖時隱藏；v-if + transition 才會有出現/消失動畫） -->
-      <transition name="p-editor-tab-bar">
-        <div v-if="!drawMode && activeTab !== 'text' && activeTab !== 'note' && activeTab !== 'sticker'" class="p-editor__tab-bar">
-          <button
-            v-for="tab in EDITOR_TABS"
-            :key="tab.id"
-            class="p-editor__tab-btn"
-            :class="{ 'is-active': activeTab === tab.id }"
-            @click="handleTabClick(tab.id)"
-          >
-            <img :src="tab.icon" :alt="tab.label" class="p-editor__tab-icon" />
-            <span class="p-editor__tab-label">{{ tab.label }}</span>
-          </button>
-        </div>
-      </transition>
-
       <!-- Tab: 便利貼（v-if 才能觸發 leave 動畫，v-show 只切 display 不會跑 transition） -->
       <transition name="p-editor-tab">
         <div v-if="activeTab === 'note'" class="p-editor__tab-content">
@@ -392,8 +403,9 @@
                 :style="{ '--shape-svg': `url(${shapeItem.svg})` }"
                 @click="shape = shapeItem.id"
               >
+                <!-- 選中不放打勾：勾是對齊按鈕正中央，愛心、爆炸星這種非滿版的輪廓
+                     會有一段勾落在形狀外，白色壓在淺灰面板上等於消失。改成整個造型變天藍。 -->
                 <span class="p-editor__shape-icon" :aria-label="shapeItem.id" />
-                <img v-if="shape === shapeItem.id" src="/check.svg" alt="" class="p-editor__shape-check" />
               </button>
             </div>
           </div>
@@ -403,38 +415,67 @@
       <!-- Tab: 文字 -->
       <transition name="p-editor-tab">
         <div v-if="activeTab === 'text'" class="p-editor__tab-content">
-          <template v-if="selectedBlock">
+          <!-- 沒有選取文字時不再整片換成提示文字：控制項停用、「＋ 新增文字」照樣可按，
+               面板高度也才不會在選取切換時上下跳。 -->
           <div class="p-editor__control-section">
             <h3 class="p-editor__control-title">STEP 3. 挑選文字顏色 &amp; 對齊</h3>
-            <div class="p-editor__color-grid p-editor__color-grid--text">
+            <div class="p-editor__control-row">
+              <div class="p-editor__color-grid p-editor__color-grid--text">
+                <button
+                  v-for="color in TEXT_COLORS"
+                  :key="color.value"
+                  class="p-editor__color-btn p-editor__color-btn--square"
+                  :class="{ 'is-active': selectedBlock?.color === color.value }"
+                  :style="{ '--btn-color': color.value }"
+                  :disabled="!selectedBlock"
+                  @click="() => { if (selectedBlock) { selectedBlock.color = color.value; saveDraftData() } }"
+                />
+              </div>
               <button
-                v-for="color in TEXT_COLORS"
-                :key="color.value"
-                class="p-editor__color-btn p-editor__color-btn--square"
-                :class="{ 'is-active': selectedBlock.color === color.value }"
-                :style="{ '--btn-color': color.value }"
-                @click="selectedBlock.color = color.value; saveDraftData()"
-              />
-            </div>
-          </div>
-          <div class="p-editor__control-section">
-            <div class="p-editor__align-row">
-              <button
-                v-for="opt in TEXT_ALIGN_OPTIONS"
-                :key="opt.value"
                 type="button"
-                class="p-editor__align-btn"
-                :class="{ 'is-active': selectedBlock.align === opt.value }"
-                :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
-                @click="selectedBlock.align = opt.value; saveDraftData()"
+                class="p-editor__chip-btn"
+                :disabled="!canAddTextBlock"
+                @click="addTextBlockFromPanel"
               >
-                <span class="p-editor__align-icon" :style="{ '--align-svg': `url(${opt.svg})` }" />
+                <svg class="p-editor__chip-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                新增文字
               </button>
             </div>
           </div>
-          </template>
-          <div v-else class="p-editor__control-section">
-            <p style="text-align: center; opacity: 0.6;">請先選取一個文字區塊</p>
+          <div class="p-editor__control-section">
+            <div class="p-editor__control-row">
+              <div class="p-editor__align-row">
+                <button
+                  v-for="opt in TEXT_ALIGN_OPTIONS"
+                  :key="opt.value"
+                  type="button"
+                  class="p-editor__align-btn"
+                  :class="{ 'is-active': selectedBlock?.align === opt.value }"
+                  :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
+                  :disabled="!selectedBlock"
+                  @click="() => { if (selectedBlock) { selectedBlock.align = opt.value; saveDraftData() } }"
+                >
+                  <span class="p-editor__align-icon" :style="{ '--align-svg': `url(${opt.svg})` }" />
+                </button>
+              </div>
+              <button
+                type="button"
+                class="p-editor__chip-btn p-editor__chip-btn--lock"
+                :class="{ 'is-active': selectedBlock?.locked }"
+                :disabled="!selectedBlock || !selectedBlock.content.trim()"
+                @click="toggleLockSelectedTextBlock"
+              >
+                <svg class="p-editor__chip-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="4" y="10.5" width="16" height="10.5" rx="2.4" />
+                  <!-- 鎖環：鎖定時閉合，未鎖定時往右上翻開 -->
+                  <path v-if="selectedBlock?.locked" d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+                  <path v-else d="M8 10.5V7a4 4 0 0 1 7.7-1.4" />
+                </svg>
+                {{ selectedBlock?.locked ? '已鎖定' : '鎖定圖層' }}
+              </button>
+            </div>
           </div>
         </div>
       </transition>
@@ -466,14 +507,36 @@
             </div>
           </div>
           <div class="p-editor__control-section">
-            <input
-              v-model.number="brushWidth"
-              type="range"
-              min="2"
-              max="40"
-              class="p-editor__brush-slider"
-              :style="{ '--brush-pct': `${((brushWidth - 2) / 38) * 100}%` }"
-            />
+            <!-- undo/redo 從底部按鈕列移上來，分居滑桿左右兩側，
+                 方向與按鈕上的箭頭一致（左＝往回、右＝往前） -->
+            <div class="p-editor__brush-row">
+              <button
+                type="button"
+                class="p-editor__draw-btn"
+                :disabled="!drawCanUndo"
+                aria-label="復原一筆"
+                @click="fabricBrush.undo()"
+              >
+                <img src="/undo.svg" alt="" class="p-editor__draw-btn-icon" />
+              </button>
+              <input
+                v-model.number="brushWidth"
+                type="range"
+                min="2"
+                max="40"
+                class="p-editor__brush-slider"
+                :style="{ '--brush-pct': `${((brushWidth - 2) / 38) * 100}%` }"
+              />
+              <button
+                type="button"
+                class="p-editor__draw-btn"
+                :disabled="!drawCanRedo"
+                aria-label="重做一筆"
+                @click="fabricBrush.redo()"
+              >
+                <img src="/undo.svg" alt="" class="p-editor__draw-btn-icon p-editor__draw-btn-icon--redo" />
+              </button>
+            </div>
           </div>
         </div>
       </transition>
@@ -517,100 +580,34 @@
       </div>
     </div>
 
-    <!-- Bottom Actions -->
+    <!-- Bottom Actions：四個步驟共用同一組上一步／下一步。
+         鎖定與 undo/redo 已經移到各自的面板上，這裡只留導覽。 -->
     <div class="p-editor__bottom-actions">
-      <!-- 繪圖模式：上一步 / 完成繪圖 / 下一步 -->
-      <template v-if="drawMode">
-        <button
-          type="button"
-          class="p-editor__draw-btn p-editor__draw-btn--undo"
-          :disabled="!drawCanUndo"
-          @click="fabricBrush.undo()"
-        >
-          <img src="/undo.svg" alt="上一步" class="p-editor__draw-btn-icon" />
-        </button>
-        <button
-          type="button"
-          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--complete"
-          @click="activeTab = null"
-        >
-          ＼ 完成繪圖 ／
-        </button>
-        <button
-          type="button"
-          class="p-editor__draw-btn p-editor__draw-btn--redo"
-          :disabled="!drawCanRedo"
-          @click="fabricBrush.redo()"
-        >
-          <img src="/undo.svg" alt="下一步" class="p-editor__draw-btn-icon p-editor__draw-btn-icon--redo" />
-        </button>
-      </template>
-
-      <!-- 文字模式：完成（回到 default，Tab Bar 會再出現） + 鎖定圖層 -->
-      <template v-else-if="activeTab === 'text'">
-        <div class="p-editor__text-actions">
-          <button
-            type="button"
-            class="p-editor__action-btn p-editor__action-btn--secondary p-editor__action-btn--lock"
-            :disabled="!selectedBlock || !selectedBlock.content.trim()"
-            @click="toggleLockSelectedTextBlock"
-          >
-            <template v-if="selectedBlock?.locked">解除鎖定</template>
-            <template v-else>
-              鎖定<span class="p-editor__btn-hint">（長按解鎖）</span>
-            </template>
-          </button>
-          <button
-            type="button"
-            class="p-editor__action-btn p-editor__action-btn--primary"
-            @click="completeTextEditing"
-          >
-            ＼ 完成文字 ／
-          </button>
-        </div>
-      </template>
-
-      <!-- 便利貼模式：完成（回到 default，Tab Bar 會再出現） -->
-      <template v-else-if="activeTab === 'note'">
-        <button
-          type="button"
-          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
-          @click="activeTab = null"
-        >
-          ＼ 完成挑選 ／
-        </button>
-      </template>
-
-      <!-- 貼紙模式：完成（回到 default，編輯框消失） -->
-      <template v-else-if="activeTab === 'sticker'">
-        <button
-          type="button"
-          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full"
-          @click="completeStickerEditing"
-        >
-          ＼ 完成貼圖。一鍵上傳 ／
-        </button>
-      </template>
-      
-      <!-- default 狀態：上傳大螢幕（草稿自動儲存） -->
-      <template v-else>
-        <button
-          type="button"
-          class="p-editor__action-btn p-editor__action-btn--share" 
-          :disabled="isSubmitting || isSharing"
-          @click="handleShare"
-        >
-          {{ isSharing ? '處理中...' : '＼ 分享便利貼 ／' }}
-        </button>
-        <button
-          type="button"
-          class="p-editor__action-btn p-editor__action-btn--primary p-editor__action-btn--full" 
-          :disabled="isSubmitting || isSharing"
-          @click="openSubmitModal"
-        >
-          ＼ 上傳大螢幕 ／
-        </button>
-      </template>
+      <button
+        v-if="step > 0"
+        type="button"
+        class="p-editor__action-btn p-editor__action-btn--secondary"
+        @click="goPrevStep"
+      >
+        ＼ 上一步 ／
+      </button>
+      <button
+        v-if="step < EDITOR_STEPS.length - 1"
+        type="button"
+        class="p-editor__action-btn p-editor__action-btn--primary"
+        @click="goNextStep"
+      >
+        ＼ 下一步 ／
+      </button>
+      <button
+        v-else
+        type="button"
+        class="p-editor__action-btn p-editor__action-btn--primary"
+        :disabled="isSubmitting || isSharing"
+        @click="openSubmitModal"
+      >
+        ＼ 送出 ／
+      </button>
     </div>
     </div>
   </div>
@@ -621,8 +618,8 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { StickerInstance, DraftData, StickyNoteStyle, TextBlockInstance } from '~/types'
 import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
 import { BACKGROUND_IMAGES, isColorMaterial } from '~/data/backgrounds'
-import { STICKY_NOTE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
-import { EDITOR_TABS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
+import { SELECTABLE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
+import { EDITOR_STEPS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH, type EditorStepId } from '~/data/editor-config'
 import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
@@ -720,7 +717,8 @@ const hasCurrentTextEdits = () => {
   return block.content !== initial
 }
 
-// 文字模式「完成」：移除空白文字區塊，結束文字編輯流程；保留選取使該區塊維持最上層
+// 離開文字步驟時的收尾：移除空白文字區塊、存檔。不負責換步驟，因為它也被
+// 「在畫布上改點另一個物件」呼叫，那時候使用者還停在同一步。
 const completeTextEditing = () => {
   // 若 IME 組字中按完成，先提交組字內容
   commitComposingContent()
@@ -738,16 +736,10 @@ const completeTextEditing = () => {
   if (selectedTextBlockId.value && !textBlocks.value.some(b => b.id === selectedTextBlockId.value)) {
     selectedTextBlockId.value = null
   }
-  activeTab.value = null
 
   // 延遲到下一個 event loop：讓 Vue 先完成 DOM 更新，再做 JSON.stringify + localStorage 重 I/O，
   // 避免同步 JSON.stringify 大型 drawingData（500KB+ base64）與 DOM 更新搶 CPU 造成 OOM
   setTimeout(saveDraftData, 0)
-}
-
-const completeStickerEditing = () => {
-  selectedStickerId.value = null
-  activeTab.value = null
 }
 
 // 計算屬性：當前選取的文字區塊
@@ -774,10 +766,15 @@ const drawingCanvasRef = ref<HTMLCanvasElement | null>(null)
 const showVerticalCenterGuide = ref(false)
 const showHorizontalCenterGuide = ref(false)
 
-// Tab: 便利貼 | 文字 | 繪圖 | 貼紙
-// 進入編輯器就直接停在 STEP 1 / STEP 2（挑選材質與造型），與稿子畫板 08 一致；
-// 按「完成挑選」後才回到 null，顯示四個分頁的入口。
-const activeTab = ref<'note' | 'text' | 'draw' | 'sticker' | null>('note')
+// 線性流程：step 是唯一的狀態來源，activeTab 只是它的別名。
+// 之所以保留 activeTab，是因為畫布、編輯框、繪圖模式都以「目前在哪個工具」來判斷，
+// 讓它由 step 推導出來，這些地方就不用跟著改。
+//
+// 只有兩條路能改 step，都集中在一處以免各處各自寫：
+//   goToStep       —— 上一步／下一步／步驟點，會套用「還沒輸入文字不能往後」的關卡
+//   revealStepFor  —— 在畫布上選到物件，面板跟著切到那個物件的控制項，不套用關卡
+const step = ref(0)
+const activeTab = computed(() => EDITOR_STEPS[step.value]?.id ?? 'note')
 
 const transformingStickerId = ref<string | null>(null)
 const showDraftModal = ref(false)
@@ -878,12 +875,12 @@ const eraserMode = ref(false)
 const drawingData = ref<string | null>(null)
 // 資料來源
 const backgrounds = BACKGROUND_IMAGES
-const shapes = STICKY_NOTE_SHAPES
+const shapes = SELECTABLE_SHAPES
 
-// 是否顯示貼紙編輯框：有選取貼紙 且 非便利貼/繪圖狀態（便利貼或繪圖 tab 時編輯框消失）
-const showStickerEditFrame = computed(() => {
-  return !!selectedStickerId.value && activeTab.value !== 'note' && activeTab.value !== 'draw'
-})
+// 編輯框跟著「有沒有被選取」，不跟著目前在第幾步。
+// 拖曳（revealStep: false）時步驟不會跟著切，編輯框若綁在步驟上就會中途消失。
+// 繪圖時例外：畫布要讓給筆刷，所有編輯框都收起來。
+const showStickerEditFrame = computed(() => !!selectedStickerId.value && !drawMode.value)
 
 // Sticker Management
 
@@ -941,11 +938,10 @@ watch(activeTab, (tab) => {
     }
     drawMode.value = false
   }
-  // 文字：切到其他 tab（便利貼/繪圖/貼紙）時才取消文字選取；按「完成」時 tab 為 null，保留選取讓文字維持最上層
+  // 離開文字步驟就收起文字選取與鍵盤。疊放順序存在 objectZOrder，不靠選取維持，
+  // 所以清掉選取不會讓文字掉到底層。
   if (tab !== 'text') {
-    if (tab != null) {
-      selectedTextBlockId.value = null
-    }
+    selectedTextBlockId.value = null
     nextTick(() => {
       contentEditableRefs.forEach(el => el?.blur())
     })
@@ -1215,70 +1211,112 @@ const removeTextBlock = (blockId: string) => {
   newTextBlockIds.delete(blockId)
   if (selectedTextBlockId.value === blockId) {
     selectedTextBlockId.value = null
-    // 刪除目前選取的文字區塊後，回到「無 tab 被選取」的預設狀態
-    activeTab.value = null
   }
   saveDraftData()
 }
 
-// Tab 點擊處理：文字 tab 自動新增文字區塊
-const handleTabClick = (tabId: string) => {
-  if (tabId === 'text') {
-    if (textBlocks.value.length < MAX_TEXT_BLOCKS) {
-      const newBlock = addTextBlock()
-      selectedTextBlockId.value = newBlock.id
-      selectedStickerId.value = null
-      bringToFront(newBlock.id)
-      activeTab.value = 'text'
-      nextTick(() => {
-        const el = contentEditableRefs.get(newBlock.id)
-        if (el) {
-          el.focus()
-          placeCaretAtEnd(el)
-        }
-      })
-    } else {
-      // 已經到達上限：改為直接選取最後一組文字區塊，不再顯示提示
-      const lastBlock = textBlocks.value[textBlocks.value.length - 1]
-      if (lastBlock) {
-        snapshotTextBlockInitial(lastBlock.id)
-        newTextBlockIds.delete(lastBlock.id)
-        selectedTextBlockId.value = lastBlock.id
-        selectedStickerId.value = null
-        bringToFront(lastBlock.id)
-        activeTab.value = 'text'
-        nextTick(() => {
-          const el = contentEditableRefs.get(lastBlock.id)
-          if (el) {
-            el.focus()
-            placeCaretAtEnd(el)
-          }
-        })
-      }
-    }
-  } else {
-    activeTab.value = tabId as any
+/**
+ * 進入文字步驟：還沒有任何文字就開一個，已經有就接續編輯最後一個。
+ * 從 STEP 4 按上一步回來時不能再開新的，否則每回來一次就多一個空白文字框。
+ */
+const enterTextStep = () => {
+  const existing = textBlocks.value[textBlocks.value.length - 1]
+  const target = existing ?? addTextBlock()
+  if (existing) {
+    // 既有的文字區塊：重新記錄編輯前內容，並移出「本次新建」名單，
+    // 這樣取消編輯時是還原內容而不是把它整個刪掉
+    snapshotTextBlockInitial(existing.id)
+    newTextBlockIds.delete(existing.id)
   }
+  selectedTextBlockId.value = target.id
+  selectedStickerId.value = null
+  bringToFront(target.id)
+  if (!target.locked) focusSelectedTextBlock()
 }
 
-// 文字模式「取消」：新增未輸入時 = 刪除；編輯時 = 還原到編輯前內容
+/**
+ * 能不能再開一段文字。
+ * 除了數量上限，還擋「目前有空白的文字區塊」—— 手上這段都還沒打字就再開一段沒有意義，
+ * 而且離開這一步時空白的本來就會被 completeTextEditing 清掉。
+ * 用 some 判斷而不是看 selectedBlock：把唯一一段刪掉後沒有選取，那時要能再開一段，不能變死路。
+ */
+const canAddTextBlock = computed(() =>
+  textBlocks.value.length < MAX_TEXT_BLOCKS &&
+  !textBlocks.value.some(b => !b.content.trim())
+)
+
+/** 面板上的「＋ 新增文字」。舊版是靠再點一次「文字」分頁來新增，分頁列拿掉後需要明確的入口 */
+const addTextBlockFromPanel = () => {
+  if (!canAddTextBlock.value) return
+  commitComposingContent()
+  const newBlock = addTextBlock()
+  selectedTextBlockId.value = newBlock.id
+  selectedStickerId.value = null
+  bringToFront(newBlock.id)
+  focusSelectedTextBlock()
+}
+
+/** 步驟切換的唯一入口：離開目前步驟先收尾，再進入目標步驟 */
+const goToStep = (index: number) => {
+  const target = Math.min(Math.max(index, 0), EDITOR_STEPS.length - 1)
+  if (target === step.value) return
+
+  // 要往後離開文字步驟，至少得有一段文字。
+  // 送出本來就擋沒有文字的便利貼（openSubmitModal），在這裡先講，
+  // 比讓人畫完圖、貼完貼紙、走到最後一步才被退回來好。
+  // 往前（上一步／點步驟點回頭）不擋，不然會被困在這一步。
+  if (activeTab.value === 'text' && target > step.value) {
+    commitComposingContent()
+    if (!textBlocks.value.some(b => b.content.trim())) {
+      showAlert('便利貼上還沒有文字，請先輸入想說的話再繼續。', '還差一段文字')
+      return
+    }
+  }
+
+  // 離開文字步驟：清掉沒輸入內容的空白文字區塊並存檔
+  if (activeTab.value === 'text') completeTextEditing()
+  // 離開貼紙步驟：收起貼紙編輯框
+  if (activeTab.value === 'sticker') selectedStickerId.value = null
+
+  step.value = target
+
+  // 進入文字步驟的選取必須等 activeTab 的 watcher 跑完 ——
+  // 它在離開繪圖模式時會清掉所有選取，直接呼叫會被它蓋掉。
+  if (EDITOR_STEPS[target]?.id === 'text') nextTick(enterTextStep)
+}
+
+const goNextStep = () => goToStep(step.value + 1)
+const goPrevStep = () => goToStep(step.value - 1)
+
+/**
+ * 在畫布上選到某個物件時，面板跟著切到那個物件的控制項。
+ *
+ * 刻意不走 goToStep：這不是「往下一步」，而是跳到被選物件的介面，所以
+ *   - 不套用「還沒輸入文字不能往後」的關卡（選貼紙只是想搬它，不該被攔下來問文字）
+ *   - 不重複做離開步驟的收尾，呼叫端的 selectTextBlock / selectSticker 已經處理過
+ *     舊文字的提交或還原了。
+ */
+const revealStepFor = (tabId: EditorStepId) => {
+  const index = EDITOR_STEPS.findIndex(s => s.id === tabId)
+  if (index >= 0) step.value = index
+}
+
+// 文字「取消」：新增未輸入時 = 刪除；編輯時 = 還原到編輯前內容。
+// 與 completeTextEditing 一樣不負責換步驟 —— 呼叫它的是「改點另一個物件」。
 const cancelTextEditing = () => {
   // 清除任何進行中的 IME 狀態
   isComposing.value = false
   composingPreviewText.value = null
 
   const id = selectedTextBlockId.value
-  if (!id) {
-    activeTab.value = null
-    return
-  }
+  if (!id) return
+
   const block = textBlocks.value.find(b => b.id === id)
   const initial = textBlockInitialContents.get(id) ?? ''
   const isNew = newTextBlockIds.has(id)
 
   if (block && isNew) {
     removeTextBlock(id)
-    activeTab.value = null
     return
   }
 
@@ -1290,7 +1328,6 @@ const cancelTextEditing = () => {
 
   textBlockInitialContents.delete(id)
   selectedTextBlockId.value = null
-  activeTab.value = null
 }
 
 const MAX_STICKERS = 10
@@ -1315,11 +1352,10 @@ const addSticker = (stickerType: string) => {
   }
   stickers.value.push(newSticker)
   saveDraftData()
-  // 選取新貼紙並切到貼紙 tab，讓編輯框出現
+  // 選取新貼紙讓編輯框出現（貼紙只能從 STEP 5 的貼圖庫加，本來就在這一步）
   selectedStickerId.value = newSticker.id
   selectedTextBlockId.value = null
   bringToFront(newSticker.id)
-  activeTab.value = 'sticker'
 }
 
 const selectSticker = (id: string) => {
@@ -1332,20 +1368,22 @@ const selectSticker = (id: string) => {
       cancelTextEditing()
     }
   }
-  // 如果正在便利貼模式（選擇材質/形狀），點擊貼紙時回到 default tab（null）
-  if (activeTab.value === 'note') {
-    activeTab.value = null
-  }
-  
+
   selectedStickerId.value = id
   selectedTextBlockId.value = null
   bringToFront(id)
+  // 面板切到貼圖那一步，被選中的貼紙才有對應的控制項可用
+  revealStepFor('sticker')
 }
 
-const selectTextBlock = (blockId: string) => {
+/**
+ * @param options.revealStep 預設 true＝面板跟著切到文字步驟。
+ *   拖曳時要傳 false：文字的 onTextDragStart 是「手指移動超過門檻」才觸發的，
+ *   這時切步驟會在拖到一半改變面板高度，畫布跟著縮放，物件就會在手指底下跳掉。
+ *   （貼紙不受影響，它的 selectSticker 是在 touchstart 就呼叫，還沒開始移動。）
+ */
+const selectTextBlock = (blockId: string, options?: { revealStep?: boolean }) => {
   const isCurrentlyEditing = selectedTextBlockId.value === blockId && activeTab.value === 'text'
-
-  activeTab.value = 'text'
 
   if (isCurrentlyEditing) {
     bringToFront(blockId)
@@ -1368,7 +1406,13 @@ const selectTextBlock = (blockId: string) => {
   selectedTextBlockId.value = blockId
   selectedStickerId.value = null
   bringToFront(blockId)
-  
+  // 面板切到文字那一步。順序很重要：contenteditable 綁在 activeTab === 'text'，
+  // 要先切步驟，下面的 focus 才有東西可以聚焦。
+  if (options?.revealStep !== false) revealStepFor('text')
+
+  // 沒切到文字步驟就不要聚焦叫鍵盤（拖曳中）
+  if (activeTab.value !== 'text') return
+
   nextTick(() => {
     const el = contentEditableRefs.get(blockId)
     if (el) {
@@ -1396,14 +1440,16 @@ const toggleLockSelectedTextBlock = () => {
   const block = textBlocks.value.find(b => b.id === id)
   if (!block) return
   block.locked = !block.locked
-  // 鎖定時回到 default 模式並清除選取與編輯狀態；解鎖則僅改狀態，需長按重新選取才能編輯
+  // 鎖定後保留選取，面板上那顆鎖定鈕才有對象可以再按一次解鎖；
+  // 清掉選取的話按鈕會連同整個文字面板一起失去目標，等於把自己關掉。
+  // 實際的「不能編輯」由 contenteditable 與 useCanvasPinch 的 locked 判斷負責。
   if (block.locked) {
-    activeTab.value = null
-    selectedTextBlockId.value = null
     textBlockDragging.value = false
     textBlockTransforming.value = false
     // 清除所有文字框的 focus，避免仍可輸入文字
     contentEditableRefs.forEach(el => el?.blur())
+  } else {
+    focusSelectedTextBlock()
   }
   saveDraftData()
 }
@@ -1512,7 +1558,7 @@ const {
     }
     // 已選取的文字區塊：不做任何操作，瀏覽器已在 touchstart 自然定位游標
   },
-  onTextDragStart: (blockId: string) => selectTextBlock(blockId),
+  onTextDragStart: (blockId: string) => selectTextBlock(blockId, { revealStep: false }),
   showVerticalCenterGuide,
   showHorizontalCenterGuide
 })
@@ -1639,7 +1685,7 @@ const resetEditorToInitial = () => {
   textBlocks.value = []
   selectedTextBlockId.value = null
   selectedStickerId.value = null
-  activeTab.value = null
+  step.value = 0
   drawingData.value = null
   objectZOrder.value = {}
   zOrderCounter = 0
@@ -1678,28 +1724,17 @@ const handleDraftDecision = async (useDraft: boolean) => {
 
 const isSubmitting = ref(false)
 
+/**
+ * 開啟確認 modal。
+ *
+ * 這裡只擋「沒有文字」—— 冷卻與 Token 的檢查移到 confirmSubmit（它本來就各做了一次），
+ * 因為「分享便利貼」現在住在這個 modal 裡：把 Token／冷卻擋在開啟之前，
+ * 等於讓沒有 QR Code 或在冷卻中的人連自己的便利貼都存不下來。
+ */
 const openSubmitModal = () => {
   const hasContent = textBlocks.value.some(b => b.content.trim())
   if (!hasContent) {
     showAlert('請輸入文字內容')
-    return
-  }
-
-  if (!tokenRequiredForSubmit.value) {
-    const remainingCooldownMs = getTokenDisabledRemainingCooldownMs()
-    if (remainingCooldownMs > 0) {
-      showAlert(
-        `每次上傳後需等待 3 分鐘。請於 ${formatCooldownRemaining(remainingCooldownMs)} 後再試。`,
-        '上傳冷卻中',
-        '⏱️'
-      )
-      return
-    }
-  }
-  
-  const token = loadToken()
-  if (tokenRequiredForSubmit.value && !token) {
-    showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
     return
   }
 
@@ -1899,6 +1934,8 @@ const confirmSubmit = async () => {
 
   const tokenForSubmit = tokenRequiredForSubmit.value ? (loadToken() || undefined) : undefined
   if (tokenRequiredForSubmit.value && !tokenForSubmit) {
+    // 與上面的冷卻分支一致先收掉 modal，否則提示會疊在確認畫面上
+    showSubmitModal.value = false
     showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
     return
   }

@@ -25,6 +25,29 @@ body.is-editor-page {
   z-index: 200;
   display: flex;
   gap: 0.6rem;
+
+  /* 全部重來掛在右上角，與左上的返回／說明對稱 */
+  &--right {
+    left: auto;
+    right: 0.75rem;
+  }
+}
+
+.p-editor__reset-btn {
+  /* 破壞性動作而且全程可見，沒東西可清時就明確地停用，不要按了沒反應 */
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  &-icon {
+    width: 20px;
+    height: 20px;
+    display: block;
+    object-fit: contain;
+    /* undo.svg 是黑色的，圓鈕底是深灰，轉白才看得見 */
+    filter: brightness(0) invert(1);
+  }
 }
 
 body.is-editor-page #__nuxt,
@@ -379,165 +402,61 @@ body.is-editor-page #app {
     align-items: end;
   }
 
-  /* 一鍵清除：貼齊面板實際上緣。
-     原本寫死 calc(72px + 56px)，那是舊面板高度的推算值；
-     內距一改面板變高，按鈕就會壓到分頁列。改用 bottom:100% 讓它跟著面板走。 */
-  &__top-actions {
+  /* 步驟指示／捷徑。絕對定位在面板右上，與第一個 STEP 標題同一條水平線，
+     所以四個步驟的面板高度都不會因為它而變高。
+     top 的 -0.22rem 是把按鈕（含觸控用的上下內距，約 27px）對齊標題那行（約 20px）的中線。 */
+  &__step-nav {
     position: absolute;
-    right: 0.75rem;
-    bottom: calc(100% + 0.5rem);
+    top: calc(6.48vw - 0.22rem);
+    right: 6.48vw;
     display: flex;
-    justify-content: flex-end;
-    z-index: 10;
+    align-items: center;
+    z-index: 6;
   }
 
-  &__clear-btn {
+  &__step-dot {
     @include btn.btn-reset;
-    width: ed.$editor-draw-btn-size;
-    height: ed.$editor-draw-btn-height;
-    flex-shrink: 0;
-    border: none;
-    border-radius: 999px;
-    /* 一鍵清除：與其他次要按鈕同一套桃紅漸層 */
-    background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    color: white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    transition: opacity ed.$editor-transition-duration ease-in-out, transform 0.1s ease-in-out;
-
-    &:active {
-      transform: scale(0.95);
-    }
-
-    &-icon {
-      width: 22px;
-      height: 22px;
-      display: block;
-      object-fit: contain;
-      /* 若 src="/undo.svg" 是黑色的，可用 filter 轉成白色 */
-      filter: brightness(0) invert(1);
-    }
-  }
-
-  /* 一鍵清除區塊出現/消失漸變（與 tab bar 同條件）；出現 ease-in-out、消失 ease-in */
-  .p-editor-top-actions-enter-active {
-    transition: opacity ed.$editor-transition-duration ease-in-out, transform ed.$editor-transition-duration ease-in-out;
-  }
-
-  .p-editor-top-actions-leave-active {
-    transition: opacity ed.$editor-transition-duration ease-in-out, transform ed.$editor-transition-duration ease-in-out;
-  }
-
-  .p-editor-top-actions-enter-from,
-  .p-editor-top-actions-leave-to {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-
-  .p-editor-top-actions-enter-to,
-  .p-editor-top-actions-leave-from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  &__tab-bar {
-    /* 讓它與 tab-content 疊在同一個 grid 區域，互不推擠 */
-    grid-area: 1 / 1;
-    width: 100%;
-    display: flex;
-    gap: 0;
-    padding: 0;
-    margin: 0;
-    overflow-x: auto;
-    justify-content: space-around;
-    box-sizing: border-box;
-  }
-
-  /* Tab Bar 出現/消失：高度 + 透明度一起過渡；出現 ease-in-out、消失 ease-in */
-  .p-editor-tab-bar-enter-active {
-    transition:
-      opacity ed.$editor-transition-duration ease-in-out,
-      transform ed.$editor-transition-duration ease-in-out,
-      max-height ed.$editor-transition-duration ease-in-out;
-    overflow: hidden;
-  }
-
-  .p-editor-tab-bar-leave-active {
-    transition:
-      opacity ed.$editor-transition-duration ease-in-out,
-      transform ed.$editor-transition-duration ease-in-out,
-      max-height ed.$editor-transition-duration ease-in-out;
-    overflow: hidden;
-  }
-
-  .p-editor-tab-bar-enter-from,
-  .p-editor-tab-bar-leave-to {
-    max-height: 0;
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-
-  .p-editor-tab-bar-enter-to,
-  .p-editor-tab-bar-leave-from {
-    max-height: 6rem;
-    /* 足夠涵蓋 icon + label + padding */
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  &__tab-btn {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 0.25rem 0.5rem 0.5rem 0.5rem;
+    /* 圓點只有 9px，靠上下左右內距把可點範圍撐到手指按得到的大小 */
+    padding: 0.55rem 0.25rem;
     background: transparent;
     border: none;
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-    transition: border-color ed.$editor-transition-duration ease-in-out, background ed.$editor-transition-duration ease-in-out;
-    position: relative;
-    min-width: 0;
+    display: flex;
+    align-items: center;
 
-    // &:hover {
-    //   background: #f9f9f9;
-    // }
-
-    &.is-active {
-      border-bottom-color: #FF99B2;
-
-      .p-editor__tab-label {
-        color: var.$color-grey;
-        font-weight: 700;
-      }
+    span {
+      display: block;
+      width: 0.55rem;
+      height: 0.55rem;
+      /* 固定 3px，四顆共用一個值：用 50% / 999px 的話，圓點與拉寬後的
+         active 會是兩種不同的曲率規則，寬度一變曲率就跟著變。 */
+      border-radius: 3px;
+      background: #D4D4D4;
+      transition:
+        background ed.$editor-transition-duration ease-in-out,
+        width ed.$editor-transition-duration ease-in-out;
     }
-  }
 
-  &__tab-icon {
-    width: 2.5rem;
-    height: 2.5rem;
-    object-fit: contain;
-    flex-shrink: 0;
-  }
+    /* 已經走過的步驟：淺天藍，和目前這一步的實心天藍拉開層次 */
+    &.is-done span {
+      background: #9BD8E4;
+    }
 
-  &__tab-label {
-    font-size: 0.75rem;
-    color: var.$color-grey;
-    white-space: nowrap;
-    /* font-weight 不列入 transition：LINE Seed 只有 400 / 700 兩級，
-       非可變字型無法補間，本來就是瞬間切換。 */
-    transition: color ed.$editor-transition-duration ease-in-out;
+    &.is-active span {
+      width: 1.4rem;
+      background: #00A7C5;
+    }
   }
 
   &__tab-content {
-    /* 與 tab-bar 重疊在同一個 grid 區域 */
+    /* control-panel 是 grid（原本用來讓分頁列與內容重疊），現在只剩內容這一個子元素 */
     grid-area: 1 / 1;
     width: 100%;
 
-    /* 稿子畫板 09 實測：面板四邊內距與區塊間距都是 70/1080 = 6.48vw */
-    padding: 6.48vw 6.48vw 0;
+    /* 稿子畫板 09 實測：面板四邊內距與區塊間距都是 70/1080 = 6.48vw。
+       下方原本是 0，但這裡是 overflow:hidden，最後一列若有陰影（STEP 4 的 undo/redo
+       是 0 3px 10px）就會被貼著容器底邊切掉。留 0.85rem 給陰影，
+       同樣的量從 bottom-actions 的上內距扣回去，面板總高不變。 */
+    padding: 6.48vw 6.48vw 0.85rem;
     max-width: ed.$editor-control-max-width;
     margin: 0 auto;
     min-height: 0;
@@ -604,9 +523,8 @@ body.is-editor-page #app {
       margin-bottom: 0;
     }
 
-    &:has(.p-editor__brush-slider) {
-      padding-right: 1rem;
-    }
+    /* 滑桿那一列原本右邊要留 1rem 給把手，現在右側換成 redo 圓鈕，
+       再留內距會讓左右兩顆按鈕到面板邊緣的距離不對稱。 */
 
     /* 貼紙：control-section 撐滿、不捲動 */
     &:has(.p-editor__sticker-grid) {
@@ -625,6 +543,60 @@ body.is-editor-page #app {
     color: #323232;
     letter-spacing: 0.06em;
     margin-bottom: 0.6rem;
+    /* 右側留給步驟點，標題長一點也不會壓到 */
+    padding-right: 5.5rem;
+  }
+
+  /* 控制項那一列：左邊是原本的色票／對齊，右邊靠齊一顆次要開關。
+     鎖定與「＋ 新增文字」是這樣塞進面板而不多佔一列的。 */
+  &__control-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  /* 面板上的次要開關（＋ 新增文字／鎖定）。
+     兩顆固定同寬、右側對齊成一直行，各自帶一個圖示。
+     底色用實心淺灰而不是描邊 —— 描邊小藥丸在這個淺灰面板上會被誤讀成停用狀態，
+     實心反而更清楚它可以按，同時又與底部的漸層主要按鈕拉開階層。 */
+  &__chip-btn {
+    @include btn.btn-reset;
+    margin-left: auto;
+    flex-shrink: 0;
+    /* 寬度取「新增文字」需要的長度，鎖定跟著它，兩列的右側才會切齊 */
+    width: 7.2rem;
+    gap: 0.35rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 999px;
+    border: none;
+    background: #E2E2E2;
+    color: #5A5A5A;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    white-space: nowrap;
+    transition:
+      background ed.$editor-transition-duration ease-in-out,
+      color ed.$editor-transition-duration ease-in-out;
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* 鎖定中：填滿桃紅，狀態一眼看得出來，再按一次就解鎖 */
+    &.is-active {
+      background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
+      color: #fff;
+    }
+  }
+
+  &__chip-btn-icon {
+    width: 0.95rem;
+    height: 0.95rem;
+    flex-shrink: 0;
+    display: block;
   }
 
   /* ========== 控制項：筆刷／顏色／對齊／材質／造型／貼紙 ========== */
@@ -633,6 +605,18 @@ body.is-editor-page #app {
   /* 筆刷寬度滑桿。稿子畫板 10 實測：
      已走過的軌道 #00A7C5、未走過 #E6E6E6、把手為同色圓球加白圈與陰影。
      原生 range 無法直接分段上色，改用 --brush-pct（由 editor.vue 綁入）畫漸層。 */
+  /* 滑桿與 undo/redo 同一列：undo/redo 從底部按鈕列移上來後的落點 */
+  &__brush-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+
+    .p-editor__brush-slider {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+  }
+
   &__brush-slider {
     width: 100%;
     height: 6px;
@@ -817,10 +801,10 @@ body.is-editor-page #app {
     border: none;
     border-radius: 0;
 
-    &.is-active {
-      .p-editor__shape-icon {
-        opacity: 0.5;
-      }
+    /* 選中＝整個造型變天藍，與 STEP 3 的對齊列同一套（兩者都是 mask 圖示）。
+       原本是變淡 0.5 加一個白勾，結果選中的反而是整排裡最不明顯的那個。 */
+    &.is-active .p-editor__shape-icon {
+      background-color: #00A7C5;
     }
   }
 
@@ -829,6 +813,7 @@ body.is-editor-page #app {
     width: 100%;
     height: 100%;
     background-color: #4B4B4B; /* 造型圖示：稿子畫板 08 實測色 */
+    transition: background-color ed.$editor-transition-duration ease-in-out;
     mask-image: var(--shape-svg);
     mask-size: contain;
     mask-repeat: no-repeat;
@@ -837,10 +822,6 @@ body.is-editor-page #app {
     -webkit-mask-size: contain;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
-  }
-
-  &__shape-check {
-    @include edm.editor-picker-check;
   }
 
   // Sticker Grid - 貼紙選擇器，撐滿 control-section，僅此處可上下捲動
@@ -858,10 +839,11 @@ body.is-editor-page #app {
     @include edm.editor-scrollbar-hidden;
   }
 
-  /* 稿子的貼圖直接放在面板上，沒有白色方格襯底與外框 */
   &__sticker-btn {
     @include btn.btn-square;
-    border: none;
+    /* 很細的一圈描邊，讓每一格的界線與可點範圍看得出來。
+       刻意壓到 1px 且低對比：貼圖庫一次會出現二十幾格，線一粗整片就變成表格。 */
+    border: 1px solid rgba(0, 0, 0, 0.12);
     background: transparent;
     padding: 0.5rem;
 
@@ -869,17 +851,18 @@ body.is-editor-page #app {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      /* 不少貼圖本身是白色或淺色描邊，直接放在淺灰面板上會看不清楚。
-         稿子沒有方框，所以改用貼合輪廓的陰影把它們墊出來，
-         比加外框乾淨，也不會讓面板變成 24 個格子。 */
+      /* 格線畫的是格子，解決不了「白色貼圖落在淺灰底上」看不見的問題，
+         所以貼合輪廓的陰影保留，兩者各管一件事。 */
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
     }
   }
 
   /* ========== 底部按鈕列 ========== */
   &__bottom-actions {
-    /* 左右與面板同為 6.48vw；下方稿子量到約 77/1080 = 7.1vw */
-    padding: 6.48vw 6.48vw 7.1vw;
+    /* 左右與面板同為 6.48vw；下方稿子量到約 77/1080 = 7.1vw。
+       上方扣掉 0.85rem，因為那一段已經由 tab-content 的下內距讓出來給陰影了，
+       兩者相加仍是原本的 6.48vw。 */
+    padding: calc(6.48vw - 0.85rem) 6.48vw 7.1vw;
     /* 不再自己上白底，讓 control-panel 的淺灰漸層貫穿到底，
        否則面板下半會出現一條與上半不同色的白帶 */
     background: transparent;
@@ -888,22 +871,8 @@ body.is-editor-page #app {
     gap: 0.5rem;
     flex-shrink: 0;
     z-index: 10;
-  }
 
-  /* 按鈕內的附註（如「長按解鎖」）：比主要動作小一級，
-     讓「鎖定」這個動作本身仍是視覺重點，也讓兩顆按鈕能等寬 */
-  &__btn-hint {
-    font-size: 0.78em;
-    font-weight: 700;
-    opacity: 0.9;
-  }
-
-  &__text-actions {
-    display: flex;
-    gap: 0.5rem;
-    width: 100%;
-
-    /* 稿子畫板 09：兩顆按鈕等寬 */
+    /* 上一步與下一步等寬；只有一顆時（STEP 1）就整列填滿 */
     .p-editor__action-btn {
       flex: 1 1 0;
       min-width: 0;
@@ -937,24 +906,9 @@ body.is-editor-page #app {
         transform: translateY(0);
       }
     }
-
-    &--share {
-      background: linear-gradient(to right, #F26A88 0%, #E5204D 100%);
-      color: white;
-    }
-
-    // 繪圖模式的完成按鈕（較寬）
-    &--complete {
-      flex-grow: 1;
-    }
-
-    // 一般模式的單個按鈕（全寬）
-    &--full {
-      flex-grow: 1;
-    }
   }
 
-  // 繪圖模式圓形按鈕（上一步/下一步）- 固定尺寸確保正圓，與其他次要按鈕同一套桃紅漸層
+  // 繪圖的復原／重做圓鈕：固定尺寸確保正圓，與其他次要按鈕同一套桃紅漸層
   &__draw-btn {
     @include btn.btn-reset;
     width: ed.$editor-draw-btn-size;

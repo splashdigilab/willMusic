@@ -75,6 +75,7 @@
 
     &__actions {
         display: flex;
+        flex-wrap: wrap;
         gap: 1rem;
 
         /* 將內部按鈕均分寬度 */
@@ -102,6 +103,20 @@
         /* 取消／次要動作，桃紅 */
         .c-button--secondary {
             background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
+        }
+
+        /* 附帶動作（例如確認上傳畫面裡的「分享便利貼」）：
+           order 讓它排到取消／確認之後，flex-basis 100% 讓它自己佔滿一列 ——
+           三顆實心藥丸擠一行在 iPhone SE 上放不下，語意上它也不是這個 modal 在問的問題。
+           改用描邊白底，不與確認上傳搶主要動作的位置。 */
+        .c-modal__side-btn {
+            order: 1;
+            flex: 1 0 100%;
+            background: transparent;
+            border: 2px solid #D0D0D0;
+            color: #6B6B6B;
+            font-size: 0.95rem;
+            box-shadow: none;
         }
     }
 }
