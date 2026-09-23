@@ -16,17 +16,22 @@
         </button>
       </div>
 
-      <!-- 全部重來：分頁列拿掉後失去了原本的位置，改放右上角與返回／說明對稱。
-           它現在全程可見，所以刻意用和返回／說明同一套低調圓鈕，不再是搶眼的桃紅實心鈕。 -->
+      <!-- 全部重來：分頁列拿掉後失去了原本的位置，改放右上角。
+           左邊兩顆是導覽、用慣用圓圖示就夠；這顆是畫面上唯一不可復原的動作，
+           所以做成帶字的藥丸，而且圖示是「重新開始」的繞圈箭頭，不是返回箭頭 ——
+           返回箭頭會被讀成「退回一步」，跟它實際做的事差太多。 -->
       <div class="p-editor__float-actions p-editor__float-actions--right">
         <button
           type="button"
-          class="p-index__icon-btn p-editor__reset-btn"
+          class="p-editor__reset-btn"
           :disabled="!hasAnyContent"
-          aria-label="全部重來"
           @click="handleClearAll"
         >
-          <img src="/undo.svg" alt="" class="p-editor__reset-btn-icon" />
+          <svg class="p-editor__reset-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.5 12a8.5 8.5 0 1 1 2.8 6.3" />
+            <path d="M3 6.5V12h5.5" />
+          </svg>
+          全部重來
         </button>
       </div>
 
@@ -400,7 +405,7 @@
                 :key="shapeItem.id"
                 class="p-editor__shape-btn"
                 :class="{ 'is-active': shape === shapeItem.id }"
-                :style="{ '--shape-svg': `url(${shapeItem.svg})` }"
+                :style="{ '--shape-svg': `url(${shapeItem.svg})`, '--shape-scale': shapeItem.previewScale ?? 1 }"
                 @click="shape = shapeItem.id"
               >
                 <!-- 選中不放打勾：勾是對齊按鈕正中央，愛心、爆炸星這種非滿版的輪廓
@@ -419,18 +424,38 @@
                面板高度也才不會在選取切換時上下跳。 -->
           <div class="p-editor__control-section">
             <h3 class="p-editor__control-title">STEP 3. 挑選文字顏色 &amp; 對齊</h3>
-            <div class="p-editor__control-row">
-              <div class="p-editor__color-grid p-editor__color-grid--text">
-                <button
-                  v-for="color in TEXT_COLORS"
-                  :key="color.value"
-                  class="p-editor__color-btn p-editor__color-btn--square"
-                  :class="{ 'is-active': selectedBlock?.color === color.value }"
-                  :style="{ '--btn-color': color.value }"
-                  :disabled="!selectedBlock"
-                  @click="() => { if (selectedBlock) { selectedBlock.color = color.value; saveDraftData() } }"
-                />
-              </div>
+            <div class="p-editor__color-grid p-editor__color-grid--text">
+              <button
+                v-for="color in TEXT_COLORS"
+                :key="color.value"
+                class="p-editor__color-btn p-editor__color-btn--square"
+                :class="{ 'is-active': selectedBlock?.color === color.value }"
+                :style="{ '--btn-color': color.value }"
+                :disabled="!selectedBlock"
+                @click="() => { if (selectedBlock) { selectedBlock.color = color.value; saveDraftData() } }"
+              />
+            </div>
+          </div>
+          <div class="p-editor__control-section">
+            <div class="p-editor__align-row">
+              <button
+                v-for="opt in TEXT_ALIGN_OPTIONS"
+                :key="opt.value"
+                type="button"
+                class="p-editor__align-btn"
+                :class="{ 'is-active': selectedBlock?.align === opt.value }"
+                :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
+                :disabled="!selectedBlock"
+                @click="() => { if (selectedBlock) { selectedBlock.align = opt.value; saveDraftData() } }"
+              >
+                <span class="p-editor__align-icon" :style="{ '--align-svg': `url(${opt.svg})` }" />
+              </button>
+            </div>
+          </div>
+          <!-- 兩顆開關自成一列：原本各自靠在色票／對齊那列的右端，中間空一大片，
+               也把寬度佔走讓對齊圖示放不大。移到這裡剛好用掉原本是空白的那段。 -->
+          <div class="p-editor__control-section">
+            <div class="p-editor__chip-row">
               <button
                 type="button"
                 class="p-editor__chip-btn"
@@ -442,24 +467,6 @@
                 </svg>
                 新增文字
               </button>
-            </div>
-          </div>
-          <div class="p-editor__control-section">
-            <div class="p-editor__control-row">
-              <div class="p-editor__align-row">
-                <button
-                  v-for="opt in TEXT_ALIGN_OPTIONS"
-                  :key="opt.value"
-                  type="button"
-                  class="p-editor__align-btn"
-                  :class="{ 'is-active': selectedBlock?.align === opt.value }"
-                  :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
-                  :disabled="!selectedBlock"
-                  @click="() => { if (selectedBlock) { selectedBlock.align = opt.value; saveDraftData() } }"
-                >
-                  <span class="p-editor__align-icon" :style="{ '--align-svg': `url(${opt.svg})` }" />
-                </button>
-              </div>
               <button
                 type="button"
                 class="p-editor__chip-btn p-editor__chip-btn--lock"
@@ -1261,18 +1268,6 @@ const goToStep = (index: number) => {
   const target = Math.min(Math.max(index, 0), EDITOR_STEPS.length - 1)
   if (target === step.value) return
 
-  // 要往後離開文字步驟，至少得有一段文字。
-  // 送出本來就擋沒有文字的便利貼（openSubmitModal），在這裡先講，
-  // 比讓人畫完圖、貼完貼紙、走到最後一步才被退回來好。
-  // 往前（上一步／點步驟點回頭）不擋，不然會被困在這一步。
-  if (activeTab.value === 'text' && target > step.value) {
-    commitComposingContent()
-    if (!textBlocks.value.some(b => b.content.trim())) {
-      showAlert('便利貼上還沒有文字，請先輸入想說的話再繼續。', '還差一段文字')
-      return
-    }
-  }
-
   // 離開文字步驟：清掉沒輸入內容的空白文字區塊並存檔
   if (activeTab.value === 'text') completeTextEditing()
   // 離開貼紙步驟：收起貼紙編輯框
@@ -1725,16 +1720,28 @@ const handleDraftDecision = async (useDraft: boolean) => {
 const isSubmitting = ref(false)
 
 /**
+ * 送得出去的最低條件：文字、繪圖、貼紙至少有一項。
+ *
+ * 不強制一定要有文字 —— 只用畫的或只用貼紙的便利貼一樣是完整的應援。
+ * 材質與造型刻意不算：只換了顏色、上面什麼都沒有的空白便利貼上牆沒有意義。
+ * （hasAnyContent 有把材質／造型算進去，那是給「全部重來」判斷用的，兩者不同。）
+ */
+const hasSubmittableContent = computed(() =>
+  textBlocks.value.some(b => b.content.trim()) ||
+  !!drawingData.value ||
+  stickers.value.length > 0
+)
+
+/**
  * 開啟確認 modal。
  *
- * 這裡只擋「沒有文字」—— 冷卻與 Token 的檢查移到 confirmSubmit（它本來就各做了一次），
+ * 這裡只擋「整張都是空的」—— 冷卻與 Token 的檢查移到 confirmSubmit（它本來就各做了一次），
  * 因為「分享便利貼」現在住在這個 modal 裡：把 Token／冷卻擋在開啟之前，
  * 等於讓沒有 QR Code 或在冷卻中的人連自己的便利貼都存不下來。
  */
 const openSubmitModal = () => {
-  const hasContent = textBlocks.value.some(b => b.content.trim())
-  if (!hasContent) {
-    showAlert('請輸入文字內容')
+  if (!hasSubmittableContent.value) {
+    showAlert('便利貼上還沒有任何內容，寫點字、畫張圖或貼個貼紙都可以。', '還是空白的')
     return
   }
 

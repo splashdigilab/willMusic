@@ -1,110 +1,133 @@
-@use '../mixins/fonts' as *;
+@use '../base/variables' as var;
 
 /*
-  Page: Queue Status Minimal
-  佇列狀態與等待時間頁面
+  Page: Queue Status
+  送出之後的佇列等待頁。
+
+  視覺沿用首頁與編輯器那一套：深灰底、WillMusic 字標、白色漸層卡片、天藍漸層藥丸。
+  改版前這頁是淡灰底 + POST BOARD 舊字標 + 純黑按鈕，與其他頁完全不同套。
 */
-.p-queue-status-minimal {
+.p-queue-status {
   position: fixed;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f8f9fa;
-  /* Very light gray/off-white background */
-  font-family: $font-sans;
-  color: #111;
+  background-color: var.$will-dark;
+  color: #fff;
+  /* 內容比畫面高時可捲動（小螢幕橫放） */
+  overflow-y: auto;
 }
 
-.p-queue-status-minimal__container {
+.p-queue-status__container {
   width: 100%;
-  max-width: 400px;
-  padding: 40px 32px;
+  max-width: 420px;
+  /* 上下留安全區，iPhone 的瀏海與 home indicator 都吃得到 */
+  padding:
+    calc(2rem + env(safe-area-inset-top, 0px))
+    6.48vw
+    calc(2rem + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
-  gap: 60px;
+  align-items: center;
+  gap: 2rem;
 }
 
-.p-queue-status-minimal__title {
-  font-size: 32px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 0 0 40px 0;
+.p-queue-status__logo {
+  width: 38vw;
+  max-width: 180px;
+  height: auto;
+}
+
+.p-queue-status__heading {
   text-align: center;
 }
 
-.p-queue-status-minimal__stats {
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-  border-radius: 20px;
-  padding: 30px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
-  border: 1px solid rgba(0, 0, 0, 0.05);
+.p-queue-status__title {
+  margin: 0;
+  font-size: clamp(1.75rem, 8.5vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
 }
 
-.p-queue-status-minimal__stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.p-queue-status-minimal__stat-label {
-  font-size: 14px;
-  color: #666;
+.p-queue-status__lead {
+  margin: 0.6rem 0 0;
+  font-size: clamp(0.8rem, 3.6vw, 0.95rem);
   font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  line-height: 1.6;
+  /* 說明字退一階，主標才是視線落點 */
+  color: rgba(255, 255, 255, 0.7);
 }
 
-.p-queue-status-minimal__stat-value {
-  font-size: 48px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-  /* Prevents jumping during countdown */
-}
-
-.p-queue-status-minimal__stat-value small {
-  font-size: 20px;
-  font-weight: 400;
-  color: #888;
-  margin-left: 4px;
-}
-
-.p-queue-status-minimal__stat-value.is-countdown {
-  color: #000;
-}
-
-.p-queue-status-minimal__stat-divider {
-  height: 1px;
-  background: rgba(0, 0, 0, 0.08);
-  margin: 24px 0;
+/* 數值卡：與編輯器面板同一組漸層與圓角 */
+.p-queue-status__stats {
   width: 100%;
+  box-sizing: border-box;
+  padding: 7.5vw 6.48vw;
+  border-radius: 1.4rem;
+  background: linear-gradient(to bottom left, #FFFFFF 0%, #ECECEC 100%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  color: #323232;
 }
 
-.p-queue-status-minimal__actions {
+.p-queue-status__stat {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.p-queue-status-minimal__btn-home {
-  display: inline-flex;
+.p-queue-status__stat-label {
+  font-size: clamp(0.75rem, 3.4vw, 0.9rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #7A7A7A;
+}
+
+.p-queue-status__stat-value {
+  font-size: clamp(1.9rem, 9vw, 2.6rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  /* 佇列數字會即時變動，等寬數字才不會讓整行左右跳動 */
+  font-variant-numeric: tabular-nums;
+
+  small {
+    font-size: 0.42em;
+    font-weight: 700;
+    color: #7A7A7A;
+    margin-left: 0.35rem;
+  }
+}
+
+.p-queue-status__stat-divider {
+  height: 1px;
+  width: 100%;
+  margin: 5.5vw 0;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* 回到首頁：與編輯器的主要按鈕同一組天藍漸層藥丸 */
+.p-queue-status__btn-home {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
   align-items: center;
   justify-content: center;
-  background: #111;
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  background: linear-gradient(to right, #66CADC 0%, #01A7C5 100%);
   color: #fff;
   text-decoration: none;
-  padding: 16px 32px;
-  border-radius: 100px;
-  font-size: 16px;
-  font-weight: 700;
-  transition: transform 0.2s ease, opacity 0.2s ease;
-}
+  font-size: clamp(0.95rem, 4.4vw, 1.15rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease;
 
-.p-queue-status-minimal__btn-home:active {
-  transform: scale(0.96);
-  opacity: 0.9;
+  &:active {
+    transform: scale(0.97);
+  }
 }

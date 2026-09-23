@@ -61,9 +61,10 @@
       </div>
     </TransitionGroup>
 
-    <!-- 浮動控制鈕：稿子沒有上方 header，說明入口改成貼在底部橫條上方 -->
+    <!-- 說明：頁面層級的資訊入口，放左上與編輯器同一角，使用者只要記一個位置。
+         原本它和「置中」排在右下，但那兩顆不是同一類東西，還剛好卡在主要按鈕上方。 -->
     <div
-      class="p-index__controls"
+      class="p-index__help"
       @pointerdown.stop
       @mousedown.stop
       @touchstart.stop
@@ -76,16 +77,30 @@
           <line x1="12" y1="17" x2="12.01" y2="17"></line>
         </svg>
       </button>
-      <button class="p-index__icon-btn" @click="centerContent" aria-label="置中">
-        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19 12h2"></path>
-          <path d="M3 12h2"></path>
-          <path d="M12 3v2"></path>
-          <path d="M12 19v2"></path>
-        </svg>
-      </button>
     </div>
+
+    <!-- 回到中央：畫布控制，留在右下（地圖類 app 的慣例，拇指構得到）。
+         只有畫面被拖走或縮放過才出現 —— 一進來本來就是置中的，那時按下去不會有任何事發生。 -->
+    <Transition name="recenter-pop">
+      <div
+        v-if="!isCentered"
+        class="p-index__controls"
+        @pointerdown.stop
+        @mousedown.stop
+        @touchstart.stop
+        @wheel.stop
+      >
+        <button class="p-index__icon-btn" @click="centerContent" aria-label="回到中央">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19 12h2"></path>
+            <path d="M3 12h2"></path>
+            <path d="M12 3v2"></path>
+            <path d="M12 19v2"></path>
+          </svg>
+        </button>
+      </div>
+    </Transition>
 
     <!-- 底部橫條：稿子畫板 02，左為字標、右為主要行動按鈕 -->
     <div class="p-index__bottom-bar">
@@ -166,7 +181,7 @@ const computedBounds = computed<PanZoomBounds | null>(() => {
 })
 
 // ====== Pan & Zoom ======
-const { centerContent } = usePanZoom(containerRef, canvasRef, {
+const { centerContent, isCentered } = usePanZoom(containerRef, canvasRef, {
   minScale: 0.5,
   maxScale: 3,
   initialScale: 1,

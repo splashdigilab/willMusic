@@ -1,36 +1,29 @@
 <template>
-  <div class="p-queue-status-minimal">
-    <AppHeader />
-    <div class="p-queue-status-minimal__container">
-      
-      <!-- Queue Info -->
-      <div class="p-queue-status-minimal__content">
-        <h1 class="p-queue-status-minimal__title">等待中</h1>
-        
-        <div class="p-queue-status-minimal__stats">
-          <div class="p-queue-status-minimal__stat-item">
-            <span class="p-queue-status-minimal__stat-label">目前佇列</span>
-            <span class="p-queue-status-minimal__stat-value">{{ queueCount }} <small>張</small></span>
-          </div>
+  <div class="p-queue-status">
+    <div class="p-queue-status__container">
+      <img src="/willMusicLogo.png" alt="WillMusic" class="p-queue-status__logo" />
 
-          <div class="p-queue-status-minimal__stat-divider"></div>
+      <div class="p-queue-status__heading">
+        <h1 class="p-queue-status__title">等待中</h1>
+        <p class="p-queue-status__lead">你的便利貼已經送出，排隊等著上大螢幕</p>
+      </div>
 
-          <div class="p-queue-status-minimal__stat-item">
-            <span class="p-queue-status-minimal__stat-label">預估時間</span>
-            <span class="p-queue-status-minimal__stat-value">
-              {{ formattedTime }}
-            </span>
-          </div>
+      <!-- 數值卡：沿用編輯器面板那套白色漸層與圓角 -->
+      <div class="p-queue-status__stats">
+        <div class="p-queue-status__stat">
+          <span class="p-queue-status__stat-label">目前佇列</span>
+          <span class="p-queue-status__stat-value">{{ queueCount }} <small>張</small></span>
+        </div>
+
+        <div class="p-queue-status__stat-divider" />
+
+        <div class="p-queue-status__stat">
+          <span class="p-queue-status__stat-label">預估時間</span>
+          <span class="p-queue-status__stat-value">{{ formattedTime }}</span>
         </div>
       </div>
 
-      <!-- Actions -->
-      <div class="p-queue-status-minimal__actions">
-        <NuxtLink to="/" class="p-queue-status-minimal__btn-home">
-          回到首頁
-        </NuxtLink>
-      </div>
-
+      <NuxtLink to="/" class="p-queue-status__btn-home">＼ 回到首頁 ／</NuxtLink>
     </div>
   </div>
 </template>

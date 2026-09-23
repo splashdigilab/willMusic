@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted, unref, type Ref } from 'vue'
+import { ref, computed, onMounted, onUnmounted, unref, type Ref } from 'vue'
 import { gsap } from 'gsap'
 
 export interface PanZoomState {
@@ -298,16 +298,37 @@ export function usePanZoom(
         }
     }
 
+    /** centerContent 的目標值。抽出來讓 isCentered 與它用同一條式子，不會各算各的 */
+    const centerTarget = () => {
+        const targetScale = options.initialScale ?? 1
+        // cachedRect 只在互動開始時更新，不是響應式的；scale 為 1 時 (1 - scale) = 0，
+        // 目標本來就是 (0, 0)，拿不到 rect 也不影響。
+        return {
+            x: ((cachedRect?.width ?? 0) / 2) * (1 - targetScale),
+            y: ((cachedRect?.height ?? 0) / 2) * (1 - targetScale),
+            scale: targetScale
+        }
+    }
+
+    /**
+     * 目前畫面是不是還停在正中央（沒被拖走也沒縮放過）。
+     * 用途是讓「回到中央」那顆按鈕只在有意義的時候出現 —— 已經置中時按下去不會有任何事發生。
+     * 門檻放寬到 8px / 0.02 倍，避免手指輕輕碰一下就讓按鈕閃出來。
+     */
+    const isCentered = computed(() => {
+        const t = centerTarget()
+        return Math.abs(state.value.x - t.x) < 8 &&
+            Math.abs(state.value.y - t.y) < 8 &&
+            Math.abs(state.value.scale - t.scale) < 0.02
+    })
+
     // 將中心點移至畫面中央
     const centerContent = () => {
         if (!containerRef.value) return
         cacheContainerRect()
         if (!cachedRect) return
-        const targetScale = options.initialScale ?? 1
         gsap.to(state.value, {
-            x: (cachedRect.width / 2) * (1 - targetScale),
-            y: (cachedRect.height / 2) * (1 - targetScale),
-            scale: targetScale,
+            ...centerTarget(),
             duration: 0.8,
             ease: 'power3.out',
             onUpdate: applyTransform
@@ -363,6 +384,7 @@ export function usePanZoom(
 
     return {
         state,
+        isCentered,
         centerContent,
         updateTransform
     }

@@ -446,14 +446,40 @@
 }
 
 /* 浮動圓鈕：貼在底部橫條上方右側 */
+/* 說明：左上角，與編輯器的說明同一個位置 */
+.p-index__help {
+    position: absolute;
+    top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    left: 0.75rem;
+    z-index: 100;
+    display: flex;
+    gap: 0.6rem;
+}
+
+/* 回到中央：右下角的畫布控制 */
 .p-index__controls {
     position: absolute;
     right: 1rem;
-    bottom: calc(22.1vw + env(safe-area-inset-bottom, 0px) + 0.75rem);
+    /* 底部橫條的高度是 max(22.1vw, 92px)（它有 min-height），
+       這裡只算 22.1vw 的話，390 寬時會少算 6px，0.75rem 的留白幾乎全被吃掉，
+       按鈕會貼在橫條上緣。用同一條式子算才對得起來。 */
+    bottom: calc(max(22.1vw, 92px) + env(safe-area-inset-bottom, 0px) + 0.75rem);
     z-index: 100;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
+}
+
+/* 回到中央的出現／消失：淡入加一點縮放，讓它是「浮出來」而不是突然貼上 */
+.recenter-pop-enter-active,
+.recenter-pop-leave-active {
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.recenter-pop-enter-from,
+.recenter-pop-leave-to {
+    opacity: 0;
+    transform: scale(0.8);
 }
 
 /* 浮動圓鈕：稿子沒有這兩顆，但功能要保留。

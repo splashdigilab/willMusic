@@ -7,6 +7,12 @@
 export interface StickyNoteShape {
   id: string
   svg: string // SVG 檔案路徑（預覽 + clip-path 共用）
+  /**
+   * 只影響 STEP 2 選單裡的預覽大小（1 = 撐滿格子），不影響便利貼實際的裁切形狀。
+   * 稿子上正方形刻意畫得比其他造型小 —— 外接框一樣大時，實心方塊看起來就是比圓形大，
+   * 這是視覺補正。其餘造型的輪廓本來就不會填滿外接框，不需要補。
+   */
+  previewScale?: number
 }
 
 /**
@@ -17,7 +23,7 @@ export interface StickyNoteShape {
  * 要下架某個造型，是從下面的 SELECTABLE_SHAPES 拿掉，不是從這裡。
  */
 export const STICKY_NOTE_SHAPES: StickyNoteShape[] = [
-  { id: 'square', svg: '/svg/shapes/square.svg' },
+  { id: 'square', svg: '/svg/shapes/square.svg', previewScale: 0.85 },
   { id: 'circle', svg: '/svg/shapes/circle.svg' },
   { id: 'star', svg: '/svg/shapes/star.svg' },
   { id: 'heart', svg: '/svg/shapes/heart.svg' },

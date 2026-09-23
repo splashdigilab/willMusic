@@ -49,12 +49,15 @@
           fetchpriority="low"
         />
       </div>
-      <!-- 手繪圖層 -->
+      <!-- 手繪圖層。疊放順序要跟編輯器一致：編輯器裡每回進繪圖步驟都會把它移到最上層，
+           所以它可能在文字與貼紙之上。這裡若寫死 z-index，回頭再畫一次的便利貼
+           在預覽與大螢幕上就會與畫布長得不一樣。 -->
       <img
         v-if="props.note.style?.drawing"
         :src="props.note.style.drawing"
         alt=""
         class="c-sticky-note__drawing"
+        :style="drawingStyle"
         loading="lazy"
         decoding="async"
         fetchpriority="low"
@@ -102,6 +105,12 @@ const getStickerWrapStyle = (sticker: StickerInstance) => {
   const z = objectLayerOrder.value[sticker.id] ?? 3
   return { ...base, zIndex: z }
 }
+
+/** 手繪層的疊放順序。編輯器把它記在 objectZOrder 的 'drawing-layer' 這個鍵上；
+    舊便利貼沒有這筆資料，退回 SCSS 原本的 2（文字 1、貼紙 3 之間）。 */
+const drawingStyle = computed(() => ({
+  zIndex: objectLayerOrder.value['drawing-layer'] ?? 2
+}))
 
 const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
   shape: props.note.style.shape || DEFAULT_SHAPE_ID,

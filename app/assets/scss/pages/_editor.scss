@@ -33,7 +33,23 @@ body.is-editor-page {
   }
 }
 
+/* 全部重來：帶字的藥丸，高度與左邊兩顆圓鈕一致（42px），視覺上仍是同一排 */
 .p-editor__reset-btn {
+  @include btn.btn-reset;
+  height: 42px;
+  gap: 0.35rem;
+  padding: 0 0.95rem;
+  border: none;
+  border-radius: 999px;
+  background: var.$will-dark;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+
   /* 破壞性動作而且全程可見，沒東西可清時就明確地停用，不要按了沒反應 */
   &:disabled {
     opacity: 0.35;
@@ -41,12 +57,10 @@ body.is-editor-page {
   }
 
   &-icon {
-    width: 20px;
-    height: 20px;
+    width: 17px;
+    height: 17px;
     display: block;
-    object-fit: contain;
-    /* undo.svg 是黑色的，圓鈕底是深灰，轉白才看得見 */
-    filter: brightness(0) invert(1);
+    flex-shrink: 0;
   }
 }
 
@@ -107,6 +121,11 @@ body.is-editor-page #app {
     align-items: center;
     justify-content: center;
     padding: 0.5rem;
+    /* 上方替浮動按鈕列留位：那排是 absolute，不佔版面高度，而便利貼是置中的，
+       面板一高（STEP 4 最高）加上瀏海的 safe-area，上方空隙就會小於按鈕高度，
+       便利貼會滑到按鈕底下。這裡把它們的高度算進來，任何機型都不會重疊。
+       0.75rem 起始位置 + 42px 按鈕 + 0.5rem 間隙。 */
+    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px) + 42px + 0.5rem);
     touch-action: pan-x pan-y;
     /* 允許 pan、禁用 pinch-zoom，讓 touchmove 能觸發且不縮放畫面 */
   }
@@ -463,7 +482,10 @@ body.is-editor-page #app {
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 6.48vw;
+    /* 區塊間距與左右內距不同值：稿子上「色票底到下一個 STEP 標題」量到 5.36%，
+       扣掉標題行高在字身上方留的空隙約 0.7%，CSS 的 gap 是 4.74%。
+       原本沿用 6.48vw（與左右內距同值），兩個區塊之間會多出約 7px。 */
+    gap: 4.74vw;
     box-sizing: border-box;
     /* 展開時給足夠 max-height，讓 leave 動畫能從此值過渡到 0（height: auto 無法過渡） */
     max-height: 70vh;
@@ -536,9 +558,11 @@ body.is-editor-page #app {
     }
   }
 
-  /* STEP 標題。稿子字色 #323232，字距較寬 */
+  /* STEP 標題。稿子字色 #323232，字距較寬。
+     字級對稿：稿子的字身高是面板寬的 3.11%，換算成 font-size 約 3.28vw
+     （原本 0.9rem 在 390 寬時偏大一級）。上下用 clamp 夾住，窄螢幕不會小到看不清。 */
   &__control-title {
-    font-size: 0.9rem;
+    font-size: clamp(0.72rem, 3.28vw, 0.95rem);
     font-weight: 800;
     color: #323232;
     letter-spacing: 0.06em;
@@ -547,24 +571,21 @@ body.is-editor-page #app {
     padding-right: 5.5rem;
   }
 
-  /* 控制項那一列：左邊是原本的色票／對齊，右邊靠齊一顆次要開關。
-     鎖定與「＋ 新增文字」是這樣塞進面板而不多佔一列的。 */
-  &__control-row {
+  /* 兩顆次要開關自成一列，等分寬度。
+     格距刻意與底部的上一步／下一步相同（0.5rem）而不是與上面的色票相同 ——
+     這兩列是上下相鄰的，中縫沒對齊會很明顯。 */
+  &__chip-row {
     display: flex;
-    align-items: center;
-    gap: 0.6rem;
+    gap: 0.5rem;
   }
 
-  /* 面板上的次要開關（＋ 新增文字／鎖定）。
-     兩顆固定同寬、右側對齊成一直行，各自帶一個圖示。
+  /* 面板上的次要開關（＋ 新增文字／鎖定圖層）。
      底色用實心淺灰而不是描邊 —— 描邊小藥丸在這個淺灰面板上會被誤讀成停用狀態，
      實心反而更清楚它可以按，同時又與底部的漸層主要按鈕拉開階層。 */
   &__chip-btn {
     @include btn.btn-reset;
-    margin-left: auto;
-    flex-shrink: 0;
-    /* 寬度取「新增文字」需要的長度，鎖定跟著它，兩列的右側才會切齊 */
-    width: 7.2rem;
+    flex: 1 1 0;
+    min-width: 0;
     gap: 0.35rem;
     padding: 0.5rem 0.6rem;
     border-radius: 999px;
@@ -682,8 +703,12 @@ body.is-editor-page #app {
     /* 文字顏色：稿子畫板 09 是較大的圓角方形色票，不是圓點，也沒有打勾，
        選中時改用外圈天藍描邊表示，避免像圓點那樣把顏色變半透明 */
     &--square {
-      width: 3.2rem;
-      height: 3.2rem;
+      /* 與 STEP 1 的材質色票同尺寸 —— 稿子上這兩處是一樣大的（面板寬的 11.27%）。
+         原本寫死 3.2rem，在 390 寬時是 13.13%，比稿子大了快兩成。 */
+      width: 11.27vw;
+      height: 11.27vw;
+      max-width: 68px;
+      max-height: 68px;
       border-radius: 0.6rem;
       border: 1px solid rgba(0, 0, 0, 0.12);
 
@@ -694,9 +719,9 @@ body.is-editor-page #app {
     }
   }
 
-  /* 文字色票只有兩個，間距放寬 */
+  /* 文字色票的間距與 STEP 1 的材質同一個值（稿子上兩處相同） */
   &__color-grid--text {
-    gap: 0.9rem;
+    gap: min(2.7vw, 16px);
   }
 
   &__color-check {
@@ -715,16 +740,20 @@ body.is-editor-page #app {
      彼此間距 62.9。選中為天藍，未選為淺灰。 */
   &__align-row {
     display: flex;
-    gap: 5.82vw;
+    /* 與色票同一個格距，兩列才會排成同一組模組 */
+    gap: min(2.7vw, 16px);
   }
 
   &__align-btn {
     @include btn.btn-reset;
     position: relative;
-    width: 9.49vw;
+    /* 與色票等寬的正方形格子：兩列的第一格、第二格左右對齊，讀起來是同一個網格。
+       圖示本身維持 102.5:56.18 的比例（由下面的 mask-size: contain 決定），
+       所以格子是正方形、圖示是橫長形置中 —— 順帶把觸控範圍從 23px 高補到 44px。 */
+    width: 11.27vw;
+    height: 11.27vw;
     max-width: 68px;
-    aspect-ratio: 102.5 / 56.18;
-    height: auto;
+    max-height: 68px;
     flex-shrink: 0;
     background: transparent;
     border: none;
@@ -754,11 +783,20 @@ body.is-editor-page #app {
   // 材質/背景圖片選擇器：超過寬度時換行，不左右滑動
   &__background-grid {
     @include edm.editor-grid-wrap;
+    /* 設計稿量到的格距是面板寬的 2.7%。$editor-grid-gap 是筆刷色與貼圖共用的，
+       那兩處不在這次對稿範圍內，所以只覆寫這裡而不動變數。 */
+    gap: min(2.7vw, 16px);
   }
 
   &__background-btn {
     @include btn.btn-square;
     position: relative;
+    /* 稿子裡材質與造型同尺寸，都是面板寬的 11.27%（原本寫死 40px，約只有 8 成大）。
+       改用 vw 才會跟著面板等比例縮放；上限 68px 與對齊圖示同一個天花板。 */
+    width: 11.27vw;
+    height: 11.27vw;
+    max-width: 68px;
+    max-height: 68px;
 
     &.is-active {
       .p-editor__background-img,
@@ -788,14 +826,17 @@ body.is-editor-page #app {
 
   // Shape Grid - 樣式/形狀選擇器（符合設計稿）
   &__shape-grid {
-    @include edm.editor-grid-scroll-x(ed.$editor-grid-gap);
+    @include edm.editor-grid-scroll-x(min(2.7vw, 16px));
   }
 
   &__shape-btn {
     @include btn.btn-reset;
     position: relative;
-    width: 32px;
-    height: 32px;
+    /* 與材質色票同尺寸 —— 稿子上這兩列是一樣大的 */
+    width: 11.27vw;
+    height: 11.27vw;
+    max-width: 68px;
+    max-height: 68px;
     flex-shrink: 0;
     background: transparent;
     border: none;
@@ -815,11 +856,13 @@ body.is-editor-page #app {
     background-color: #4B4B4B; /* 造型圖示：稿子畫板 08 實測色 */
     transition: background-color ed.$editor-transition-duration ease-in-out;
     mask-image: var(--shape-svg);
-    mask-size: contain;
+    /* --shape-scale 預設 1＝撐滿格子，正方形用 0.85 做視覺補正（見 shapes.ts）。
+       造型的 viewBox 都是正方形，所以寬高同比例等同於 contain 再乘上倍率。 */
+    mask-size: calc(var(--shape-scale, 1) * 100%) calc(var(--shape-scale, 1) * 100%);
     mask-repeat: no-repeat;
     mask-position: center;
     -webkit-mask-image: var(--shape-svg);
-    -webkit-mask-size: contain;
+    -webkit-mask-size: calc(var(--shape-scale, 1) * 100%) calc(var(--shape-scale, 1) * 100%);
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
   }
@@ -859,10 +902,11 @@ body.is-editor-page #app {
 
   /* ========== 底部按鈕列 ========== */
   &__bottom-actions {
-    /* 左右與面板同為 6.48vw；下方稿子量到約 77/1080 = 7.1vw。
-       上方扣掉 0.85rem，因為那一段已經由 tab-content 的下內距讓出來給陰影了，
-       兩者相加仍是原本的 6.48vw。 */
-    padding: calc(6.48vw - 0.85rem) 6.48vw 7.1vw;
+    /* 左右與面板同為 6.48vw。
+       上方：稿子「造型底到按鈕頂」是 5.25%，其中 0.85rem 已由 tab-content 的下內距
+       讓出來給陰影，所以這裡只補剩下的。
+       下方：稿子「按鈕底到面板底」量到 5.36%（舊稿是 7.1%，以這次的稿為準）。 */
+    padding: calc(5.25vw - 0.85rem) 6.48vw 5.36vw;
     /* 不再自己上白底，讓 control-panel 的淺灰漸層貫穿到底，
        否則面板下半會出現一條與上半不同色的白帶 */
     background: transparent;
