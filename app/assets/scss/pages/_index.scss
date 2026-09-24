@@ -193,12 +193,15 @@
     }
 }
 
-/* 同意勾選（只有編輯器的規範頁會用到） */
+/* 同意勾選（只有編輯器的規範頁會用到）。
+   它是卡片的直接子元素，與標題、START 一樣固定不捲動 —— flex: 0 0 auto 不可縮，
+   規範再長也只會讓上面那個捲動區變窄，不會把這一列擠掉。 */
 .p-index__intro-terms {
     display: flex;
     align-items: center;
+    flex: 0 0 auto;
     gap: 2.5cqw;
-    margin-top: 5cqw;
+    margin: 0 0 6cqw;
     font-size: 4.4cqw;
     font-weight: 700;
     color: #fff;
@@ -253,6 +256,7 @@
     }
 
     .p-index__intro-title,
+    .p-index__intro-terms,
     .p-index__intro-btn {
         flex-shrink: 0;
     }
@@ -267,7 +271,9 @@
         overflow-x: hidden;
         overflow-wrap: anywhere;
         -webkit-overflow-scrolling: touch;
-        margin-bottom: 8cqw;
+        /* 原本是 8cqw，那是規範直接接 START 時的間距；
+           現在中間多了一列同意勾選，這裡收窄，剩下的間距交給那一列的 margin */
+        margin-bottom: 4cqw;
         /* 捲動條低調一點，不要壓過視覺 */
         scrollbar-width: thin;
         scrollbar-color: rgba(255, 255, 255, 0.55) transparent;
@@ -483,17 +489,20 @@
     transform: scale(0.8);
 }
 
-/* 浮動圓鈕：稿子沒有這兩顆，但功能要保留。編輯器的返回／說明也共用這個 class。
-   底色與便利貼牆的底同為 $will-dark，所以在深色背景上只靠白圖示與陰影辨識；
-   會這樣是因為它原本只出現在畫面下方的白色漸層區。說明移到左上之後那裡沒有漸層，
-   對比會比原本弱 —— 之所以還是沿用同一顆，是為了與編輯器的說明長得一樣。 */
+/* 浮動圓鈕：稿子沒有這兩顆，但功能要保留。編輯器的返回／說明／全部重來也共用這套外觀。
+   原本底色與頁面底同為 $will-dark，圓鈕整個融進背景，只剩白圖示與一點陰影。
+   那時它只出現在畫面下方的白色漸層區上所以沒事，移到左上（純深灰）之後就看不出是按鈕。
+
+   單靠加深底色救不了：頁面底是 #404040，連純黑也只有 2:1。
+   所以改成「更深的底 ＋ 一圈細亮邊」，亮邊才拉得開對比（約 3.9:1）。
+   落在下方白色漸層區時，深底本身就夠明顯，亮邊看不見也無妨。 */
 .p-index__icon-btn {
     /* 尺寸與編輯器共用同一個變數：編輯器的畫布要靠它算出上方要讓出多少空間 */
     width: ed.$editor-float-btn-size;
     height: ed.$editor-float-btn-size;
     border-radius: 50%;
-    background: var.$will-dark;
-    border: none;
+    background: var.$will-dark-deep;
+    border: 1px solid rgba(255, 255, 255, 0.55);
     display: flex;
     align-items: center;
     justify-content: center;

@@ -62,11 +62,15 @@
                 <li>取得便利貼後，須於 30 分鐘內完成個人專屬內容製作並送出。（禁止任何敏感詞彙或圖像；如有違反，品牌有權不另行通知逕行撤下內容。若多次惡意違規，將依情節嚴重程度採取相應處置。微樂客對違規內容保有最終解釋之權利）</li>
                 <li>便利貼內容經審核通過後，將於 LED 牆輪播展示，並輪流放大顯示 15 秒。</li>
               </ol>
-              <label class="p-index__intro-terms">
-                <input type="checkbox" v-model="termsAccepted" />
-                <span>我已閱讀並同意上述活動規範</span>
-              </label>
             </div>
+
+            <!-- 同意勾選放在可捲動的規範之外：它管的是下面那顆 START，
+                 跟 START 一樣必須一直看得到。原本擺在規範裡面，規範一長就被捲到看不見，
+                 使用者只看得到 START，按了卻被擋下來，也不知道要勾什麼。 -->
+            <label class="p-index__intro-terms">
+              <input type="checkbox" v-model="termsAccepted" />
+              <span>我已閱讀並同意上述活動規範</span>
+            </label>
 
             <button
               type="button"
@@ -216,7 +220,8 @@
                 @compositionend="(e: Event) => handleCompositionEnd(e, block.id)"
                 @input="(e: Event) => handleTextInput(e, block.id)"
                 @click.stop="() => { if (!drawMode && !block.locked) selectTextBlock(block.id) }"
-                @focus="() => { if (!drawMode && !block.locked) selectTextBlock(block.id) }"
+                @focus="() => { isTextFieldFocused = true; if (!drawMode && !block.locked) selectTextBlock(block.id) }"
+                @blur="onTextFieldBlur"
                 data-placeholder="在這裡輸入文字..."
               />
             </div>
@@ -650,6 +655,9 @@ useHead({
     // 核心作用：防止鍵盤彈出 → body 100dvh 縮小 → canvas container 尺寸改變 → ResizeObserver 在
     // 300ms 鍵盤動畫期間觸發 ~18 次 → Vue 重新渲染整個編輯器 → 每次渲染分配虛擬 DOM 記憶體 →
     // 疊加鍵盤本身的 ~100MB → 超出 iOS Safari tab 上限 → 「重複發生問題」崩潰。
+    //
+    // 但 LINE、FB 這類內建瀏覽器（WKWebView）不認這個設定，鍵盤照樣壓縮 layout viewport。
+    // 所以另外在 JS 裡把頁面高度鎖住（見下方的 relockViewportHeight），兩道一起。
     { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content' }
   ],
   bodyAttrs: { class: 'is-editor-page' }
@@ -662,6 +670,37 @@ const db = $firestore as any
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
 
 const MAX_TEXT_BLOCKS = 3
+
+/**
+ * 把頁面高度鎖成「鍵盤出現前」量到的值，讓鍵盤只是蓋在頁面上，而不是把版面頂上去。
+ *
+ * 上面的 meta 已經要求瀏覽器這樣做，但 LINE、FB 這類內建瀏覽器不認，鍵盤一開
+ * layout viewport 就真的被砍掉。而面板是固定高度不會縮，損失全部由畫布吸收 ——
+ * 實測可用高剩 380 時便利貼只剩 17×17，使用者看不到自己在打什麼。
+ *
+ * 鎖住之後版面完全不動：鍵盤蓋住的是面板那一段，便利貼留在原位。
+ * 順帶也保住了 meta 原本要防的那件事 —— 畫布尺寸不變，ResizeObserver 不會在
+ * 鍵盤動畫的 300ms 內被觸發十幾次。
+ */
+const isTextFieldFocused = ref(false)
+
+const relockViewportHeight = () => {
+  if (typeof window === 'undefined') return
+  const height = window.innerHeight
+  const locked = parseFloat(document.documentElement.style.getPropertyValue('--editor-locked-h')) || 0
+
+  // 變高一定不是鍵盤造成的（鍵盤只會讓可用高度變小），直接更新。
+  // 這同時是保險：萬一某個瀏覽器收鍵盤時不發 blur，高度長回來也能自己解鎖。
+  if (height <= locked && isTextFieldFocused.value) return
+
+  document.documentElement.style.setProperty('--editor-locked-h', `${height}px`)
+}
+
+const onTextFieldBlur = () => {
+  isTextFieldFocused.value = false
+  // 鍵盤收起有動畫，等它跑完再量，否則量到的還是壓縮後的高度
+  setTimeout(relockViewportHeight, 350)
+}
 
 // Loading state
 const loading = ref(true)
@@ -2087,6 +2126,12 @@ const checkInitialModals = async () => {
 }
 
 onMounted(async () => {
+  // 先鎖高度，之後鍵盤造成的 resize 都會被 isTextFieldFocused 擋掉；
+  // 轉向或瀏覽器工具列收合造成的才會真的更新。
+  relockViewportHeight()
+  window.addEventListener('resize', relockViewportHeight)
+  window.addEventListener('orientationchange', relockViewportHeight)
+
   // 在背景預載 Fabric.js（不 await，讓它在使用者閱讀規範的期間下載完畢）
   if (import.meta.client) {
     import('fabric').catch(() => {})
@@ -2174,6 +2219,10 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', relockViewportHeight)
+  window.removeEventListener('orientationchange', relockViewportHeight)
+  // 這個變數掛在 <html> 上，離開編輯器要收掉，不要影響其他頁
+  document.documentElement.style.removeProperty('--editor-locked-h')
   if (resizeObserver) resizeObserver.disconnect()
   if (_clampRafId !== null) { cancelAnimationFrame(_clampRafId); _clampRafId = null }
   if (drawSaveTimer) { clearTimeout(drawSaveTimer); drawSaveTimer = null; saveDraftData() }

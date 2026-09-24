@@ -5,12 +5,15 @@
 @use '../mixins/editor' as edm;
 
 /* ========== 全域：編輯器頁面鎖定視窗 ========== */
+/* --editor-locked-h 由 editor.vue 在鍵盤出現前量好寫進 <html>，
+   讓鍵盤只是蓋在頁面上而不把版面頂上去（內建瀏覽器不認 meta 的 interactive-widget）。
+   JS 還沒跑到或不支援時退回 100dvh，行為與改版前相同。 */
 body.is-editor-page {
   overflow: hidden;
   position: fixed;
   width: 100%;
   height: 100%;
-  height: 100dvh;
+  height: var(--editor-locked-h, 100dvh);
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
   /* 新視覺：稿子的編輯器底是深灰純色，不再用紙紋貼圖 */
@@ -39,9 +42,11 @@ body.is-editor-page {
   height: ed.$editor-float-btn-size;
   gap: 0.35rem;
   padding: 0 0.95rem;
-  border: none;
+  /* 與左邊兩顆圓鈕同一套：更深的底加一圈細亮邊，才不會融進同色的頁面底。
+     說明見 _index.scss 的 .p-index__icon-btn。 */
+  border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 999px;
-  background: var.$will-dark;
+  background: var.$will-dark-deep;
   color: #fff;
   font-size: 0.82rem;
   font-weight: 800;
@@ -68,7 +73,7 @@ body.is-editor-page #__nuxt,
 body.is-editor-page #app {
   overflow: hidden;
   height: 100%;
-  height: 100dvh;
+  height: var(--editor-locked-h, 100dvh);
 }
 
 .p-editor__loading-overlay {
@@ -105,8 +110,8 @@ body.is-editor-page #app {
   position: relative;
   margin: 0 auto;
   max-width: 1024px;
-  min-height: 100dvh;
-  max-height: 100dvh;
+  min-height: var(--editor-locked-h, 100dvh);
+  max-height: var(--editor-locked-h, 100dvh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
