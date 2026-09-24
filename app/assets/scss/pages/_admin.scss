@@ -39,7 +39,13 @@
   }
 
   &__hero {
+    position: relative;
     margin-bottom: 1rem;
+    /* 標題與登出鈕同列，標題佔滿剩餘寬度 */
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.75rem;
   }
 
   &__hero-title {
@@ -50,9 +56,30 @@
   }
 
   &__hero-subtitle {
+    /* 100% 寬度讓它自己換到第二行，不跟標題與登出鈕擠 */
+    flex: 1 0 100%;
     margin: 0.4rem 0 0;
     font-size: 0.95rem;
     color: #666;
+  }
+
+  /* 登出：刻意做得低調，它不是後台的日常操作 */
+  &__logout {
+    margin-left: auto;
+    padding: 0.35rem 0.9rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    font-family: inherit;
+    font-size: 0.85rem;
+    color: #555;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+      background: #f3f4f6;
+      border-color: #9ca3af;
+    }
   }
 
   &__tabs {
@@ -343,6 +370,60 @@
   &__note-time {
     font-size: 0.75rem;
     color: #666;
+  }
+
+  /* ── 會員資料查詢結果 ─────────────────────────────── */
+  &__member-result {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  &__member-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  &__member-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #e5e7eb;
+  }
+
+  &__member-name {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #111;
+  }
+
+  &__member-uid {
+    margin: 0.15rem 0 0;
+    font-size: 0.75rem;
+    color: #888;
+    /* uid 是一長串沒有空白的字元，不換行會把卡片撐破 */
+    overflow-wrap: anywhere;
+  }
+
+  &__member-counts {
+    margin: 1rem 0 0;
+    font-size: 0.875rem;
+    color: #555;
+  }
+
+  /* 投稿者。LINE 暱稱長度沒有上限（雖然存進來時已截到 12 字），
+     這裡仍然限制成單行省略，避免一張卡片被名字撐高、整排跟著錯開。
+     完整 uid 在 title 屬性裡，滑鼠移上去可以看、也能複製去查。 */
+  &__note-submitter {
+    font-size: 0.75rem;
+    color: #888;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   &__btn-delete {

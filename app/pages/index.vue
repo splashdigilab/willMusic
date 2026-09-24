@@ -102,9 +102,22 @@
       </div>
     </Transition>
 
-    <!-- 底部橫條：稿子畫板 02，左為字標、右為主要行動按鈕 -->
-    <div class="p-index__bottom-bar">
-      <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__bottom-logo" />
+    <!-- 底部橫條：只放主要行動按鈕。
+         稿子畫板 02 在按鈕左邊還有一個字標，後來拿掉了 ——
+         開場卡片下方已經出現過同一個字標，這裡再放一次只是把按鈕的寬度佔走。
+
+         這一列必須擋掉指標事件，理由與左上的說明、右下的回到中央相同：
+         usePanZoom 的 pointerdown 會對 .p-index 呼叫 setPointerCapture，
+         捕獲之後 click 的目標會變成容器而不是這顆連結，NuxtLink 收不到 click
+         就整個沒反應（滑鼠上必現，因為觸控另有 touchstart 路徑）。
+         順帶也讓使用者不會因為按在橫條上而把整面牆拖走。 -->
+    <div
+      class="p-index__bottom-bar"
+      @pointerdown.stop
+      @mousedown.stop
+      @touchstart.stop
+      @wheel.stop
+    >
       <NuxtLink to="/editor" class="p-index__make-btn">製作便利貼</NuxtLink>
     </div>
   </div>

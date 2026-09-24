@@ -2,16 +2,17 @@ rules_version = '2';
 
 // WillMusic 數位應援便利貼 —— Firestore 安全規則
 //
-// 設計原則：前台是「公開投稿箱」，任何人都能投、也都能看牆上的內容，
-// 但**不能修改或刪除別人的東西**。所有破壞性操作一律要求登入。
+// 設計原則：牆上的內容任何人都能看、編輯器不登入也能玩，
+// 但**送出一定要 LINE 登入**，而且不能修改或刪除別人的東西。
+// 所有破壞性操作一律限後台。
 //
 // 規則是依照程式碼裡實際存在的每一個查詢寫的。改動任何 Firestore 操作時，
 // 記得回來確認這裡也要跟著調整，否則會在前台看到 permission-denied。
 //
 // ── 兩組資料集合 ────────────────────────────────────────────
 // 前端由 NUXT_PUBLIC_FIRESTORE_SUFFIX 決定連到哪一組（見 app/utils/collections.ts）：
-//   空值 = queue_pending / queue_history / tokens / stats_daily
-//   _dev = queue_pending_dev / queue_history_dev / tokens_dev / stats_daily_dev
+//   空值 = queue_pending / queue_history / tokens / stats_daily / users
+//   _dev = queue_pending_dev / queue_history_dev / tokens_dev / stats_daily_dev / users_dev
 // 規則語言沒有迴圈或巨集，所以 match 區塊只能一組組寫。判斷條件全部抽成下面的
 // function 共用，兩組 match 的差別只有「對應的 tokens 集合路徑」由呼叫端傳入。
 // 要再開第三組測試資料時，複製一組 match 區塊、把集合名稱與 tokens 路徑一起改掉即可。
@@ -22,9 +23,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 後台、大螢幕（/canvas）、掃碼頁都走 Firebase Auth 登入
+    // ── 兩種身分，絕對不能混為一談 ────────────────────────────
+    // 後台／大螢幕／掃碼頁是 Firebase Auth 的帳號密碼（sign_in_provider = password）。
+    // 前台顧客是 LINE Login 換來的 custom token（sign_in_provider = custom）。
+    //
+    // 這兩個一定要分開判斷。曾經 isStaff() 只寫 `request.auth != null`，
+    // 那是在「只有後台會登入」的前提下成立的；顧客一旦也能登入，那份規則等於
+    // 把清空佇列、發放憑證、改 system 設定、換掉大螢幕影片的權限一起送出去。
+    //
+    // sign_in_provider 是 Firebase 簽發 ID token 時自己填的，前端偽造不了，
+    // 所以不需要另外用 Admin SDK 補 custom claim，既有的後台帳號也不用動。
     function isStaff() {
-      return request.auth != null;
+      return request.auth != null
+             && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    // 前台會員（LINE 登入）。送出便利貼的最低門檻。
+    function isMember() {
+      return request.auth != null
+             && request.auth.token.firebase.sign_in_provider == 'custom';
     }
 
     function incoming() {
@@ -56,32 +73,140 @@ service cloud.firestore {
     }
 
     // ── queue_pending 的投稿條件 ────────────────────────────
-    // 前台未登入即可投稿，但：
+    // 瀏覽與編輯都不需要登入，但**送出一定要**：
+    //   0. 必須是 LINE 會員，而且 uid 要跟自己的 token 一致。這是前台唯一的
+    //      身分約束，後續的封鎖與限流都建立在它上面。只在前端擋是沒用的，
+    //      繞過 UI 直接用 Firebase SDK 打這個集合就進來了
+    //   0b. 必須先在 user_quota/{uid} 預約過這個 doc ID（見上面的「預約制」）
     //   1. doc ID 必須等於 token —— moveToHistory 與去重邏輯都依賴這個不變式，
     //      不強制的話可以建立 queue_pending/A 卻帶 token:'B'，歷史紀錄就會錯位
     //   2. 後台開啟 Token 驗證時，必須真的持有一張未使用且未過期的憑證。
-    //      前台的 checkTokenStatus() 只是體驗，繞過前端直接打 API 就失效了
+    //      前台的 checkTokenStatus() 只是體驗，繞過前端直接打 API 就失效了。
+    //      （QR token 機制目前停用中，LINE 登入上線後不再依賴它，但規則留著）
     //   3. 限制欄位與長度，避免被塞任意資料
-    function canCreateNote(noteId, tokenRef) {
-      return noteId == incoming().token
+    function canCreateNote(noteId, tokenRef, quotaRef) {
+      return isMember()
+             && incoming().uid == request.auth.uid
+             && hasFreshReservation(noteId, quotaRef)
+             && noteId == incoming().token
              && incoming().status == 'waiting'
              && incoming().content is string
              && incoming().content.size() <= 1000
              && incoming().style is map
              && incoming().token is string
+             && incoming().uid is string
              && incoming().keys().hasOnly(
-                  ['content', 'style', 'token', 'timestamp', 'status']
+                  ['content', 'style', 'token', 'timestamp', 'status', 'uid']
                 )
              && (!tokenRequired() || hasUsableToken(tokenRef));
     }
 
+    // ── users/{uid} 的寫入條件 ─────────────────────────────
+    // 會員資料由前端自己寫（server 只負責簽 custom token，不碰 Firestore，
+    // 這樣才不用把 service account 的寫入權限搬進 Nitro）。
+    //
+    // 之所以敢讓前端寫，是因為 displayName 必須跟 custom token 裡的 lineName
+    // claim 一字不差 —— 那個值是 server 從 LINE 的 id_token 取出、截斷後簽進去的，
+    // 前端改不了。頭貼是 base64，規則沒辦法驗內容，只能限大小；這與手繪圖
+    // 同樣沒有審核路徑，靠後台即時下架處理。
+    function canWriteUserProfile(uid) {
+      return isMember()
+             && request.auth.uid == uid
+             && incoming().displayName == request.auth.token.lineName
+             && incoming().keys().hasOnly(
+                  ['displayName', 'avatar', 'createdAt', 'updatedAt']
+                )
+             && (!incoming().keys().hasAll(['avatar'])
+                 || incoming().avatar.size() <= 30000);
+    }
+
+    // ══ 投稿配額 ═══════════════════════════════════════════
+    //
+    // 規則：每人每 N 分鐘最多 1 張、每天最多 M 張（預設 5 分鐘／3 張）。
+    // 設定放 system/editor_rate_limit，後台可改，見 adjustable 的三個欄位。
+    //
+    // ── 為什麼是「預約制」而不是「寫完再算」──────────────────
+    // 直覺的做法是在 canCreateNote 裡 get() 使用者的計數器來判斷。那行不通：
+    // 計數器是前端寫的，**攻擊者只要跳過那次寫入，計數就永遠不會前進**，
+    // 而規則沒有辦法要求「你必須同時也寫另一份文件」。
+    //
+    // 所以順序反過來：
+    //   1. 先寫 user_quota/{uid}（預約），這一步檢查冷卻與每日上限
+    //   2. 再建立便利貼，而 canCreateNote 要求「必須有一張剛發出、
+    //      而且指名這個 doc ID 的預約」
+    // 跳過第 1 步，第 2 步就過不了。預約指名 doc ID，所以一張預約只能換一張
+    // 便利貼；而 queue_pending 只開放 create 不開放 update，同一個 ID 也寫不了第二次。
+
+    function rateLimitConfig() {
+      return exists(/databases/$(database)/documents/system/editor_rate_limit)
+             ? get(/databases/$(database)/documents/system/editor_rate_limit).data
+             : {};
+    }
+
+    // request.time 是 UTC。直接取 day() 的話每日額度會在台灣時間早上 8 點重置，
+    // 那是營業時間正中間。加 8 小時之後取到的才是台灣當地日期。
+    // 沒有補零（"2026-9-5"），但這只是個比對用的鍵，前後端算法一致就好。
+    function taipeiDateKey() {
+      let local = request.time + duration.value(8, 'h');
+      return string(local.year()) + '-' + string(local.month()) + '-' + string(local.day());
+    }
+
+    // ── 預約的寫入條件 ────────────────────────────────────
+    function canWriteQuota(uid) {
+      let cfg = rateLimitConfig();
+      let today = taipeiDateKey();
+      let prev = resource == null ? {} : resource.data;
+      // 跨日就把今天的用量歸零，不管文件裡留著的是哪一天
+      let usedToday = prev.get('submitDate', '') == today ? prev.get('submitCount', 0) : 0;
+      // pendingNoteId 就是前端的 submissionId，跟著草稿走。
+      // 相同代表「同一張便利貼再試一次」——上傳失敗重按不該被冷卻鎖 5 分鐘。
+      let isRetry = incoming().pendingNoteId == prev.get('pendingNoteId', '');
+      let cooledDown = !prev.keys().hasAll(['lastSubmitAt'])
+                       || request.time >= prev.lastSubmitAt
+                                          + duration.value(cfg.get('cooldownMinutes', 5), 'm');
+
+      return isMember()
+             && request.auth.uid == uid
+             && incoming().keys().hasOnly(
+                  ['lastSubmitAt', 'submitDate', 'submitCount', 'pendingNoteId']
+                )
+             // 時間戳必須是伺服器時間，不能自己填一個過去的值把冷卻繞掉
+             && incoming().lastSubmitAt == request.time
+             && incoming().submitDate == today
+             && incoming().pendingNoteId is string
+             && incoming().pendingNoteId.size() > 0
+             && (
+               // 重試：不吃額度、不重置冷卻。跨日的重試才算進新的一天
+               (isRetry && incoming().submitCount == (usedToday == 0 ? 1 : usedToday))
+               ||
+               // 新的一張：要過冷卻，而且今天還有額度
+               (!isRetry
+                && incoming().submitCount == usedToday + 1
+                && (cfg.get('enabled', true) != true
+                    || (usedToday < cfg.get('dailyLimit', 3) && cooledDown)))
+             );
+    }
+
+    // ── 便利貼建立時要驗的預約 ──────────────────────────────
+    // 10 分鐘的有效期跟可調的冷卻無關，純粹是不讓一張很久以前的預約還能用。
+    // 前端是在手繪圖上傳完、真正要寫入的前一刻才預約，實際只會用到幾秒。
+    function hasFreshReservation(noteId, quotaRef) {
+      let q = exists(quotaRef) ? get(quotaRef).data : {};
+      return q.get('pendingNoteId', '') == noteId
+             && q.keys().hasAll(['lastSubmitAt'])
+             && request.time < q.lastSubmitAt + duration.value(10, 'm');
+    }
+
     // ── tokens 的更新條件 ──────────────────────────────────
     // 前台送出成功時要把 unused 改成 used —— 只允許這一種轉換、
-    // 只能動 status 這個欄位，而且憑證必須還在 30 分鐘有效期內
+    // 只能動 status 這個欄位，而且憑證必須還在 30 分鐘有效期內。
+    // 這個 update 與 queue_pending 的 create 在同一個 transaction 裡，
+    // 所以一樣要求會員身分，否則未登入者可以把別人的憑證燒掉。
     function canUpdateToken() {
       return isStaff()
              || (
-               resource.data.status == 'unused'
+               isMember()
+               && resource.data.status == 'unused'
                && incoming().status == 'used'
                && incoming().diff(resource.data).affectedKeys().hasOnly(['status'])
                && tokenUnexpired(resource.data)
@@ -89,13 +214,15 @@ service cloud.firestore {
     }
 
     // ── stats_daily 的寫入條件 ─────────────────────────────
-    // 前台上傳成功後要累加計數（未登入狀態），所以必須開放寫入。
+    // 前台上傳成功後由使用者端累加計數，所以必須開放寫入。送出已經要求登入，
+    // 這裡跟著收斂成會員限定，順便把匿名灌水的路堵掉。
     // 限制欄位並要求 date 與 doc ID 一致，避免被塞入任意資料；
-    // 計數本身仍可能被灌水，但這只是營運數字，沒有安全影響。
+    // 計數本身仍可能被會員灌水，但這只是營運數字，沒有安全影響。
     function canWriteDailyStat(dateKey) {
-      return incoming().keys().hasOnly(
-               ['date', 'total', 'hours', 'updatedAt']
-             )
+      return isMember()
+             && incoming().keys().hasOnly(
+                  ['date', 'total', 'hours', 'updatedAt']
+                )
              && incoming().date == dateKey;
     }
 
@@ -108,7 +235,8 @@ service cloud.firestore {
 
       allow create: if canCreateNote(
                          noteId,
-                         /databases/$(database)/documents/tokens/$(noteId)
+                         /databases/$(database)/documents/tokens/$(noteId),
+                         /databases/$(database)/documents/user_quota/$(request.auth.uid)
                        );
 
       // 送出後就不能再改；只有大螢幕播完或後台管理才會刪
@@ -144,6 +272,27 @@ service cloud.firestore {
       allow create, update: if canWriteDailyStat(dateKey);
     }
 
+    // LINE 會員資料。doc ID 就是 Firebase uid（= line:<LINE userId>）。
+    // 只有本人與後台讀得到 —— 這裡放的是暱稱與頭貼，不該像便利貼那樣公開。
+    // 便利貼上要顯示的名牌是送出時複製一份進 style，不是渲染時回來讀這裡，
+    // 否則首頁 100 張就是 100 次額外讀取，而且使用者改暱稱會連帶改掉舊便利貼。
+    match /users/{uid} {
+      allow read: if isStaff() || (isMember() && request.auth.uid == uid);
+      allow create, update: if canWriteUserProfile(uid);
+      allow delete: if isStaff();
+    }
+
+    // 投稿配額。與 users 分開存，是因為兩者的寫入條件完全不同：
+    // 個人資料隨時可以更新，配額只能照規則往前推。混在一份文件裡的話，
+    // 每一次寫入都得先分辨「這是在改暱稱還是在預約」，規則會變得很難讀。
+    match /user_quota/{uid} {
+      // 前端要先讀目前用量才算得出下一個 submitCount；後台要看有沒有人在灌
+      allow read: if isStaff() || (isMember() && request.auth.uid == uid);
+      allow create, update: if canWriteQuota(uid);
+      // 使用者不能自己清掉配額；後台刪除個資時會一起清
+      allow delete: if isStaff();
+    }
+
     // ══ 測試資料（NUXT_PUBLIC_FIRESTORE_SUFFIX=_dev）══════════
     // 條件與正式組完全相同，只有集合名稱與 tokens 路徑帶了 _dev。
 
@@ -152,7 +301,8 @@ service cloud.firestore {
 
       allow create: if canCreateNote(
                          noteId,
-                         /databases/$(database)/documents/tokens_dev/$(noteId)
+                         /databases/$(database)/documents/tokens_dev/$(noteId),
+                         /databases/$(database)/documents/user_quota_dev/$(request.auth.uid)
                        );
 
       allow update: if false;
@@ -175,6 +325,18 @@ service cloud.firestore {
     match /stats_daily_dev/{dateKey} {
       allow read: if isStaff();
       allow create, update: if canWriteDailyStat(dateKey);
+    }
+
+    match /users_dev/{uid} {
+      allow read: if isStaff() || (isMember() && request.auth.uid == uid);
+      allow create, update: if canWriteUserProfile(uid);
+      allow delete: if isStaff();
+    }
+
+    match /user_quota_dev/{uid} {
+      allow read: if isStaff() || (isMember() && request.auth.uid == uid);
+      allow create, update: if canWriteQuota(uid);
+      allow delete: if isStaff();
     }
 
     // ── system/*：設定文件（正式與測試共用）────────────────────

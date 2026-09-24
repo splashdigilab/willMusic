@@ -31,7 +31,24 @@
   width: ed.$editor-picker-check-size;
   height: ed.$editor-picker-check-size;
   object-fit: contain;
-  filter: drop-shadow(var(--shadow-soft));
+  /* check.svg 是白色的，落在白材質或白筆刷的色票上會整個消失
+     （原本只有 --shadow-soft，2px/0.15 的柔和投影撐不住）。
+     第一層是貼著輪廓的深色描邊，負責讓勾在淺色票上顯形；第二層維持原本的落下陰影。 */
+  filter:
+    drop-shadow(0 0 1px rgba(0, 0, 0, 0.7))
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+/// 被選取物件的編輯框外框：一條細線，顏色由 --editor-selection-line 決定。
+///
+/// 線色不能寫死 —— 原本是天藍 rgba(76,193,214,.8)，與天藍材質 #4CC1D6 同一個顏色，
+/// 選了天藍便利貼整個框就消失。現在預設白線，只有白材質換成天藍
+/// （editor.vue 的 selectionLineColor 負責挑，其他地方不給值就是白線）。
+///
+/// 就是一條線，沒有陰影也沒有第二條邊。
+@mixin editor-selection-outline {
+  outline: 1.5px solid var(--editor-selection-line, #fff);
+  outline-offset: 3px;
 }
 
 /// 選項網格：換行、間距、陰影（材質、顏色等）

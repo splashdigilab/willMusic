@@ -4,11 +4,32 @@
   版面依「(Final) Will Music - 應援便利貼.ai」畫板 01。
 
   換算基準：稿子卡片外框 892×1228，白框 8，框內 876，左右內距 56，
-  所以內容區寬 764。cqw 是以容器內容區為基準（不是外框），
+  所以內容區寬 764。卡片「子元素」的 cqw 是以卡片內容區為基準（不是外框），
   因此所有字級與間距都除以 764，不是除以 876。
+  但卡片「自己」的 border / padding 不適用這條 —— 見 .p-index__intro-card。
 */
 @use '../base/variables' as var;
 @use '../base/editor-variables' as ed;
+@use '../mixins/breakpoints' as bp;
+
+/* 底部橫條的高度上限。稿子畫板 02：橫條可見高 239、按鈕高 132.4（1080 基準），
+   比例 1.805。按鈕已經封頂在 92px，橫條要照同一個比例封頂 ——
+   不封頂的話 22.1vw 在 1440 是 318px、1920 是 424px，一片藍底裡只有 92px 高的內容。
+   .p-index__controls 也要靠它算出離底部多遠，改值時兩邊會一起動。 */
+$bottom-bar-h: min(22.1vw, 166px);
+
+/* 桌機再收一階。上面那組上限是在 750px 寬（平板）達成的，直接帶到 1400+ 的
+   桌機上會佔掉將近兩成的畫面高度，橫條比它要引導的那面牆還搶眼。
+   1024 以上整組乘 0.675（112/166），稿子內部的比例原封不動，只是整體變小。 */
+$bottom-bar-h-desktop: 112px;
+$bottom-bar-desktop-scale: 0.675;
+
+/* 橫條為了圓角往左右各溢出畫面的量（稿子上是 15.5/1080）。 */
+$bottom-bar-overflow: min(1.43vw, 11px);
+
+/* 浮在牆上的控制項離畫面邊緣的距離。「回到中央」圓鈕與底部按鈕共用 ——
+   兩者上下相鄰，右緣差一點就看得出來沒對齊。 */
+$edge-inset: 1rem;
 
 .p-index {
     position: relative;
@@ -77,15 +98,25 @@
     flex-direction: column;
     justify-content: flex-start;
 
-    /* 白框緊貼卡緣，沒有間隔 */
+    /* 白框緊貼卡緣，沒有間隔。
+
+       這裡固定 px，不能用 cqw：container-type 宣告在卡片自己身上，
+       而元素自己的 border / padding 裡的 cqw 找的是「上層」的 container，
+       不是自己 —— 這裡沒有上層 container，於是退回視窗寬。
+       卡片寬度在視窗 594px 就封頂 490px，白框卻還跟著視窗長：
+       1024→10px、1440→15px、1920→20px，內容區被擠到只剩卡片的 64%（稿子是 85.7%），
+       連帶 START 按鈕愈大螢幕愈小（594 時 259px，1920 時只剩 187px）。
+       子元素的 cqw 才是以卡片內容區為基準，不受這條影響。
+
+       稿子白框 8 / 卡片 892：封頂後的 490px 卡片應為 4.4px，390 手機上是 2.9px，
+       取 4px —— 與現行手機端算出來的 4.095px 同一個整數，手機端維持原樣。 */
     background: rgba(255, 255, 255, 0.35);
-    border: 1.05cqw solid #fff;
+    border: 4px solid #fff;
     border-radius: 0;
     box-sizing: border-box;
-    /* 左右用 cqw 跟著卡片縮放；上下直接指定 px。
-       注意：cqw 用在容器自己的 padding 上，基準是卡片自身寬度，
-       用在子元素上則是內容區寬度，兩者不同，所以上下不走 cqw 以免誤算。 */
-    padding: 120px 3.5cqw 90px;
+    /* 左右同理，改走視窗寬並封頂：手機仍是 3.5vw（與原本的 3.5cqw 同值），
+       桌機停在 26px，卡片封頂後內容區才不會繼續被吃掉。上下本來就是固定 px。 */
+    padding: 120px min(3.5vw, 26px) 90px;
 }
 
 /* 四角裝飾方塊：左上直排三個、右下橫排三個。稿子 30.5 見方 */
@@ -208,14 +239,27 @@
     cursor: pointer;
     user-select: none;
 
+    /* 隱私權政策連結。整列是白字，所以用底線而不是換顏色來表示可點，
+       點擊區也要夠大——手指點在底線上時不該只是把勾選切掉。 */
+    .p-index__intro-terms-link {
+        color: inherit;
+        text-decoration: underline;
+        text-underline-offset: 0.5cqw;
+        /* 上下各撐一點，讓實際可點高度接近 44px 的建議值 */
+        padding: 0.8cqw 0;
+    }
+
     input[type="checkbox"] {
         appearance: none;
         -webkit-appearance: none;
         flex-shrink: 0;
         width: 5.5cqw;
         height: 5.5cqw;
-        border: 0.55cqw solid #fff;
-        border-radius: 1cqw;
+        /* 細框一律 px：Chrome 的 border-width 會往下取整到整數 px，
+           原本的 0.55cqw 算出來是 1.58（手機）到 1.97（桌機），一路被畫成 1px，
+           比稿子意圖的粗細細了一半，而且只要寬度跨過 2.0 就會突然跳成 2px。 */
+        border: 2px solid #fff;
+        border-radius: 3px;
         background: transparent;
         cursor: pointer;
         display: flex;
@@ -231,7 +275,9 @@
                 width: 1.4cqw;
                 height: 2.8cqw;
                 border: solid var.$will-blue;
-                border-width: 0 0.7cqw 0.7cqw 0;
+                /* 勾的大小仍隨卡片走（上面的 width / height 是 cqw），
+                   只有筆畫固定 px，理由同外框 */
+                border-width: 0 2px 2px 0;
                 transform: rotate(45deg) translate(-0.1cqw, -0.35cqw);
             }
         }
@@ -257,6 +303,7 @@
 
     .p-index__intro-title,
     .p-index__intro-terms,
+    .p-index__intro-line,
     .p-index__intro-btn {
         flex-shrink: 0;
     }
@@ -289,6 +336,63 @@
     }
 }
 
+/* 規範頁的 LINE 登入那一列。
+   刻意做得比 START 低調：登入在這裡是選填的，主要動作仍然是 START。
+   已登入與未登入共用同一個 class，高度一致，狀態切換時版面不會跳。 */
+.p-index__intro-line {
+    display: block;
+    width: 100%;
+    /* 排在 START 底下，所以間距給上面那一邊。
+       下面不留 —— 卡片本身的 padding-bottom 已經是留白。 */
+    margin: 5cqw 0 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    font-size: 3.6cqw;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.85);
+
+    &--action {
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 0.6cqw;
+
+        &:active {
+            opacity: 0.6;
+        }
+    }
+
+    &--done {
+        /* 已登入是狀態不是動作，拿掉底線並降低存在感 */
+        color: rgba(255, 255, 255, 0.65);
+        overflow-wrap: anywhere;
+    }
+}
+
+/* 登出：接在「已用 LINE 登入：某某」後面的小字。
+   用 inline 讓它跟著名字走，名字長到換行時不會被孤立在下一行的行首。 */
+.p-index__intro-line-logout {
+    display: inline;
+    margin-left: 1.5cqw;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: underline;
+    text-underline-offset: 0.6cqw;
+    cursor: pointer;
+
+    &:active {
+        opacity: 0.6;
+    }
+}
+
 /* START：白框膠囊、透明底。稿子 453×115，字 95pt。
    固定高度，讓「載入中…」與 START 兩種狀態尺寸完全一致。 */
 .p-index__intro-btn {
@@ -303,7 +407,8 @@
     height: 15cqw;
     padding: 0;
     background: transparent;
-    border: 0.9cqw solid #fff;
+    /* 稿子 0.9%：封頂後的卡片算出來是 3.9px，390 手機上是 2.6px，取 3px */
+    border: 3px solid #fff;
     border-radius: 999px;
     color: #fff;
     font-size: 12.43cqw;
@@ -333,7 +438,7 @@
 .p-index__intro-spinner {
     width: 7cqw;
     height: 7cqw;
-    border: 1cqw solid rgba(255, 255, 255, 0.35);
+    border: 3px solid rgba(255, 255, 255, 0.35);
     border-top-color: #fff;
     border-radius: 50%;
     animation: p-index-spin 0.8s linear infinite;
@@ -400,11 +505,12 @@
    → 兩者都在可見橫條區域垂直置中，左右內距各 98.7 (9.14vw) */
 .p-index__bottom-bar {
     position: absolute;
-    left: -1.43vw;
-    right: -1.43vw;
+    /* 左右各溢出畫面一點，圓角才不會在畫面內側露出一段直角 */
+    left: calc(-1 * #{$bottom-bar-overflow});
+    right: calc(-1 * #{$bottom-bar-overflow});
     bottom: 0;
     z-index: 100;
-    height: calc(22.1vw + env(safe-area-inset-bottom, 0px));
+    height: calc(#{$bottom-bar-h} + env(safe-area-inset-bottom, 0px));
     min-height: 92px;
     padding: 0;
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -414,16 +520,12 @@
     align-items: center;
 
     background: var.$will-blue;
-    border-radius: 3.7vw 3.7vw 0 0;
-}
+    border-radius: min(3.7vw, 28px) min(3.7vw, 28px) 0 0;
 
-.p-index__bottom-logo {
-    /* 稿子左邊距 98.7/1080；橫條本身往左溢出 15.5，所以要補回來 */
-    margin-left: 10.57vw;
-    width: 25.17vw;
-    max-width: 200px;
-    height: auto;
-    flex-shrink: 0;
+    @include bp.respond-from('tablet-lg') {
+        height: calc(#{$bottom-bar-h-desktop} + env(safe-area-inset-bottom, 0px));
+        border-radius: 19px 19px 0 0;
+    }
 }
 
 /* 「製作便利貼」按鈕。稿子畫板 02 逐像素量測：
@@ -431,25 +533,44 @@
    - 文字 #323232，字高約 75/1080 = 6.94vw，五字寬 373 佔按鈕寬 78%
    - 下方有陰影：黑 28%、下偏約 6、模糊約 18（1080 基準） */
 .p-index__make-btn {
-    margin-left: auto;
-    margin-right: 10.57vw;
+    /* 字標拿掉後這顆自己撐滿橫條，左右對齊上方的「回到中央」圓鈕（$edge-inset）——
+       兩者上下相鄰，右緣沒對齊很明顯。
+       margin 是相對橫條算的，而橫條本身往左右各溢出 $bottom-bar-overflow，
+       所以要把那一段加回來，離畫面邊緣才剛好是 $edge-inset。 */
+    margin-left: calc(#{$edge-inset} + #{$bottom-bar-overflow});
+    margin-right: calc(#{$edge-inset} + #{$bottom-bar-overflow});
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-    width: 44.31vw;
-    max-width: 330px;
+    flex: 1 1 auto;
+    min-width: 0;
     height: 12.26vw;
     max-height: 92px;
     min-height: 44px;
     background: linear-gradient(to right, #FFEA59 0%, #FADD05 100%);
     color: #323232;
     border-radius: 999px;
-    box-shadow: 0 0.56vw 1.67vw rgba(0, 0, 0, 0.28);
+    /* 陰影與按鈕高度照同一個比例封頂（按鈕本身已封頂 92px） */
+    box-shadow: 0 min(0.56vw, 4px) min(1.67vw, 13px) rgba(0, 0, 0, 0.28);
     font-size: clamp(20px, 6.94vw, 52px);
     font-weight: 800;
     text-decoration: none;
     white-space: nowrap;
+
+    /* 桌機整組乘 $bottom-bar-desktop-scale，稿子的內部比例不變。
+       這裡不跟著撐滿：橫條是整個視窗寬，1400 的螢幕上會變成一顆一公尺長的黃藥丸。
+       固定寬度置中就好。 */
+    @include bp.respond-from('tablet-lg') {
+        margin-left: auto;
+        margin-right: auto;
+        flex: 0 0 auto;
+        width: 223px;
+        max-width: 223px;
+        height: 62px;
+        max-height: 62px;
+        box-shadow: 0 3px 9px rgba(0, 0, 0, 0.28);
+        font-size: 35px;
+    }
 }
 
 /* 說明：左上角，與編輯器的說明同一個位置 */
@@ -465,12 +586,18 @@
 /* 回到中央：右下角的畫布控制 */
 .p-index__controls {
     position: absolute;
-    right: 1rem;
-    /* 橫條實際佔的高度是 max(22.1vw + safe-area, 92px)：height 本身含 safe-area，
+    right: $edge-inset;
+    /* 橫條實際佔的高度是 max($bottom-bar-h + safe-area, 92px)：height 本身含 safe-area，
        min-height 再把它托到 92px。safe-area 要寫在 max() 裡面 ——
        寫在外面的話，有 home indicator 又偏窄的機型（min-height 生效時）
        會多算掉那段 safe-area，留白從 12px 變成 18px。 */
-    bottom: calc(max(22.1vw + env(safe-area-inset-bottom, 0px), 92px) + 0.75rem);
+    bottom: calc(max(#{$bottom-bar-h} + env(safe-area-inset-bottom, 0px), 92px) + 0.75rem);
+
+    /* 桌機的橫條矮一階，這裡跟著走，否則圓鈕會浮在橫條上方一大段空白裡 */
+    @include bp.respond-from('tablet-lg') {
+        bottom: calc(#{$bottom-bar-h-desktop} + env(safe-area-inset-bottom, 0px) + 0.75rem);
+    }
+
     z-index: 100;
     display: flex;
     flex-direction: column;

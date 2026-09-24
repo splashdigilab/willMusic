@@ -15,6 +15,7 @@
         <section class="p-admin__hero">
           <h1 class="p-admin__hero-title">後台管理</h1>
           <p class="p-admin__hero-subtitle">依照工作內容切換頁籤，快速完成日常設定與管理。</p>
+          <button type="button" class="p-admin__logout" @click="handleLogout">登出</button>
         </section>
 
         <div class="p-admin__tabs" role="tablist" aria-label="後台功能分頁">
@@ -284,6 +285,78 @@
           </div>
         </section>
 
+        <!-- 投稿頻率限制 -->
+        <section v-show="activeAdminTab === 'uploadGate'" class="p-admin__card">
+          <h2 class="p-admin__card-title">投稿頻率限制</h2>
+          <p class="p-admin__video-hint">
+            限制每位 LINE 會員的投稿頻率。額度是綁在 LINE 帳號上的，清除瀏覽器資料或改用無痕視窗都繞不過。
+          </p>
+          <p class="p-admin__video-hint p-admin__video-hint--compact">
+            每日額度以台灣時間的午夜為界重置。修改後請按下方「儲存頻率設定」。
+          </p>
+
+          <label class="p-admin__switch-label p-admin__switch-label--block">
+            <input
+              v-model="rateLimitEnabled"
+              type="checkbox"
+              class="p-admin__switch-input"
+              :disabled="isSavingRateLimit"
+            />
+            <span class="p-admin__switch-ui" aria-hidden="true" />
+            <span class="p-admin__switch-text">啟用投稿頻率限制</span>
+          </label>
+
+          <div class="p-admin__gps-grid">
+            <div class="p-admin__form-group">
+              <label class="p-admin__form-label" for="rate-cooldown-input">間隔時間（分鐘）</label>
+              <input
+                id="rate-cooldown-input"
+                v-model.trim="rateCooldownInput"
+                type="number"
+                min="0"
+                step="1"
+                inputmode="numeric"
+                class="p-admin__form-input"
+                placeholder="例如 5"
+                :disabled="isSavingRateLimit"
+              />
+            </div>
+            <div class="p-admin__form-group">
+              <label class="p-admin__form-label" for="rate-daily-input">每人每日上限（張）</label>
+              <input
+                id="rate-daily-input"
+                v-model.trim="rateDailyLimitInput"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                class="p-admin__form-input"
+                placeholder="例如 3"
+                :disabled="isSavingRateLimit"
+              />
+            </div>
+          </div>
+
+          <div class="p-admin__btn-row">
+            <button
+              type="button"
+              class="p-admin__btn p-admin__btn--primary p-admin__btn--inline"
+              :disabled="isSavingRateLimit"
+              @click="saveRateLimitSettings"
+            >
+              {{ isSavingRateLimit ? '儲存中…' : '儲存頻率設定' }}
+            </button>
+            <button
+              type="button"
+              class="p-admin__btn p-admin__btn--secondary p-admin__btn--inline"
+              :disabled="isSavingRateLimit"
+              @click="resetRateLimitToDefaults"
+            >
+              回到預設（{{ DEFAULT_RATE_LIMIT.cooldownMinutes }} 分鐘／{{ DEFAULT_RATE_LIMIT.dailyLimit }} 張）
+            </button>
+          </div>
+        </section>
+
         <!-- 插播影片 -->
         <section v-show="activeAdminTab === 'display'" class="p-admin__card">
           <h2 class="p-admin__card-title">插播影片</h2>
@@ -394,8 +467,11 @@
                   </div>
                   <div class="p-admin__note-meta">
                     <span class="p-admin__note-time">{{ formatTime(note.timestamp) }}</span>
-                    <button 
-                      @click="openDeleteModal(note.id, true)" 
+                    <span class="p-admin__note-submitter" :title="note.uid || ''">
+                      {{ submitterLabel(note) }}
+                    </span>
+                    <button
+                      @click="openDeleteModal(note.id, true)"
                       class="p-admin__btn-delete"
                     >
                       刪除
@@ -452,8 +528,11 @@
                   </div>
                   <div class="p-admin__note-meta">
                     <span class="p-admin__note-time">{{ formatTime(note.playedAt || note.timestamp) }}</span>
-                    <button 
-                      @click="openDeleteModal(note.id, false)" 
+                    <span class="p-admin__note-submitter" :title="note.uid || ''">
+                      {{ submitterLabel(note) }}
+                    </span>
+                    <button
+                      @click="openDeleteModal(note.id, false)"
                       class="p-admin__btn-delete"
                     >
                       刪除
@@ -501,8 +580,100 @@
 
           </div>
         </section>
+
+        <!-- 會員資料：個資查詢與刪除 -->
+        <section v-show="activeAdminTab === 'members'" class="p-admin__card">
+          <h2 class="p-admin__card-title">會員資料查詢與刪除</h2>
+          <p class="p-admin__video-hint">
+            供處理個資查詢與刪除請求之用。便利貼管理裡每張卡片的投稿者欄位，
+            滑鼠移上去就能看到完整的使用者編號，複製到這裡查詢。
+          </p>
+          <p class="p-admin__video-hint p-admin__video-hint--compact">
+            「刪除個人資料」只清掉暱稱、頭貼與投稿額度紀錄，便利貼會留著（但就此無法追溯投稿者）。
+            要連便利貼一起撤下請用下面那顆。
+          </p>
+
+          <div class="p-admin__form-group">
+            <label class="p-admin__form-label" for="member-uid-input">使用者編號（uid）</label>
+            <input
+              id="member-uid-input"
+              v-model.trim="memberUidInput"
+              type="text"
+              class="p-admin__form-input"
+              placeholder="line:U xxxxxxxx…"
+              :disabled="isMemberBusy"
+              @keyup.enter="lookupMember"
+            />
+          </div>
+
+          <div class="p-admin__btn-row">
+            <button
+              type="button"
+              class="p-admin__btn p-admin__btn--primary p-admin__btn--inline"
+              :disabled="isMemberBusy || !memberUidInput"
+              @click="lookupMember"
+            >
+              {{ isMemberBusy ? '處理中…' : '查詢' }}
+            </button>
+          </div>
+
+          <div v-if="memberLookupDone" class="p-admin__member-result">
+            <p v-if="!memberRecord" class="p-admin__empty-state">
+              查無這個編號的會員資料。便利貼可能仍存在（下方的張數會顯示）。
+            </p>
+            <template v-else>
+              <div class="p-admin__member-identity">
+                <img
+                  v-if="memberRecord.avatar"
+                  :src="memberRecord.avatar"
+                  alt=""
+                  class="p-admin__member-avatar"
+                />
+                <div>
+                  <p class="p-admin__member-name">{{ memberRecord.displayName || '（沒有暱稱）' }}</p>
+                  <p class="p-admin__member-uid">{{ memberUidInput }}</p>
+                </div>
+              </div>
+            </template>
+
+            <p class="p-admin__member-counts">
+              便利貼：待處理 {{ memberNoteCounts.pending }} 張、歷史 {{ memberNoteCounts.history }} 張
+            </p>
+
+            <div class="p-admin__btn-row">
+              <button
+                type="button"
+                class="p-admin__btn p-admin__btn--danger p-admin__btn--inline"
+                :disabled="isMemberBusy"
+                @click="openMemberDeleteModal(false)"
+              >
+                刪除個人資料
+              </button>
+              <button
+                type="button"
+                class="p-admin__btn p-admin__btn--danger p-admin__btn--inline"
+                :disabled="isMemberBusy"
+                @click="openMemberDeleteModal(true)"
+              >
+                刪除個人資料與所有便利貼
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
+
+    <AppModal
+      v-model="memberDeleteModalOpen"
+      title="確認刪除個人資料"
+      :message="memberDeleteMessage"
+      confirmText="確定刪除"
+      cancelText="取消"
+      confirmButtonClass="c-button--danger"
+      :loading="isMemberBusy"
+      @confirm="confirmMemberDelete"
+      @cancel="memberDeleteModalOpen = false"
+    />
 
     <AppModal
       v-model="deleteModalOpen"
@@ -522,6 +693,7 @@
 import {
   collection,
   getCountFromServer,
+  getDoc,
   getDocs,
   doc,
   deleteDoc,
@@ -530,9 +702,11 @@ import {
   onSnapshot,
   setDoc,
   startAfter,
+  where,
   limit,
   Timestamp
 } from 'firebase/firestore'
+import { DEFAULT_RATE_LIMIT, type RateLimitConfig, type UserProfile } from '~/types'
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import QRCode from 'qrcode'
 import { use } from 'echarts/core'
@@ -555,6 +729,19 @@ definePageMeta({
 
 const { $firestore, $storage } = useNuxtApp()
 const { createToken } = useFirestore()
+const { logout } = useAdminAuth()
+const router = useRouter()
+
+/**
+ * 登出後主動導回 /login。
+ *
+ * 不倚賴 middleware 把人踢走：它只在「切換路由」時跑，登出後留在原地是不會觸發的，
+ * 畫面會停在後台版面上（資料讀不到，但看起來像壞掉）。
+ */
+const handleLogout = async () => {
+  await logout()
+  await router.replace('/login')
+}
 use([
   CanvasRenderer,
   LineChart,
@@ -592,13 +779,14 @@ const showAdminToast = (type: 'success' | 'error', message: string) => {
   }, 4200)
 }
 
-type AdminTabKey = 'overview' | 'uploadGate' | 'display' | 'notes'
+type AdminTabKey = 'overview' | 'uploadGate' | 'display' | 'notes' | 'members'
 
 const adminTabs: Array<{ key: AdminTabKey; label: string }> = [
   { key: 'overview', label: '營運總覽' },
   { key: 'uploadGate', label: '上傳控管' },
   { key: 'display', label: '播放設定' },
-  { key: 'notes', label: '便利貼管理' }
+  { key: 'notes', label: '便利貼管理' },
+  { key: 'members', label: '會員資料' }
 ]
 const activeAdminTab = ref<AdminTabKey>('overview')
 const setActiveAdminTab = (tab: AdminTabKey) => {
@@ -767,6 +955,48 @@ const {
 const NOTES_PAGE_SIZE = 20
 const pendingNotes = ref<any[]>([])
 const historyNotes = ref<any[]>([])
+
+// ── 投稿者 ────────────────────────────────────────────────
+// 便利貼只存 uid，暱稱在 users/{uid}。渲染時逐筆去讀的話一頁 20 張就是
+// 20 次讀取，所以查過的放進快取——同一個人翻再多頁也只讀一次。
+// 空字串代表「查過了但沒有名字」，與「還沒查」（undefined）要分得開。
+const submitterNames = ref<Record<string, string>>({})
+
+const loadSubmitterNames = async (notes: Array<{ uid?: string }>) => {
+  const missing = [...new Set(
+    notes
+      .map(note => note.uid)
+      .filter((uid): uid is string => !!uid && submitterNames.value[uid] === undefined)
+  )]
+  if (missing.length === 0) return
+
+  await Promise.all(missing.map(async (uid) => {
+    try {
+      const snap = await getDoc(doc(db, cols.users, uid))
+      submitterNames.value[uid] = snap.exists() ? (snap.get('displayName') || '') : ''
+    } catch (e) {
+      console.warn('[admin] 讀取投稿者失敗', uid, e)
+      submitterNames.value[uid] = ''
+    }
+  }))
+}
+
+/**
+ * 沒有 uid 的是 LINE 登入上線之前送出的便利貼——那批刻意不回填，
+ * 所以這在後台是正常狀態，不是資料壞掉。
+ */
+const submitterLabel = (note: { uid?: string }): string => {
+  if (!note.uid) return '舊資料'
+  const name = submitterNames.value[note.uid]
+  if (name === undefined) return '載入中…'
+  // 同名的人不少，末四碼讓店員分得出來；完整 uid 放在 title 供複製
+  const shortId = note.uid.replace(/^line:/, '').slice(-4)
+  return name ? `${name}（…${shortId}）` : `未命名（…${shortId}）`
+}
+
+watch([pendingNotes, historyNotes], ([pending, history]) => {
+  void loadSubmitterNames([...pending, ...history])
+})
 const pendingNotesTotal = ref(0)
 const historyNotesTotal = ref(0)
 const pendingNotesPage = ref(1)
@@ -1223,6 +1453,158 @@ const saveGpsFenceSettings = async () => {
   }
 }
 
+// ── 投稿頻率限制 ──────────────────────────────────────────
+// 寫入 system/editor_rate_limit。**文件不存在時規則會套用預設值而不是放行**
+// ——這與 GPS 圍籬相反，理由寫在 firestore.rules。所以這裡顯示的預設值
+// 與規則裡寫死的那一組必須一致，兩邊都引用 DEFAULT_RATE_LIMIT。
+const rateLimitEnabled = ref(DEFAULT_RATE_LIMIT.enabled)
+const rateCooldownInput = ref(String(DEFAULT_RATE_LIMIT.cooldownMinutes))
+const rateDailyLimitInput = ref(String(DEFAULT_RATE_LIMIT.dailyLimit))
+const isSavingRateLimit = ref(false)
+let unsubRateLimit: (() => void) | null = null
+
+const startRateLimitListener = () => {
+  unsubRateLimit = onSnapshot(doc(db, 'system', 'editor_rate_limit'), (snap) => {
+    if (!snap.exists()) {
+      rateLimitEnabled.value = DEFAULT_RATE_LIMIT.enabled
+      rateCooldownInput.value = String(DEFAULT_RATE_LIMIT.cooldownMinutes)
+      rateDailyLimitInput.value = String(DEFAULT_RATE_LIMIT.dailyLimit)
+      return
+    }
+    const data = snap.data() as Partial<RateLimitConfig>
+    rateLimitEnabled.value = data.enabled !== false
+    rateCooldownInput.value = String(
+      Number.isFinite(data.cooldownMinutes) ? data.cooldownMinutes : DEFAULT_RATE_LIMIT.cooldownMinutes
+    )
+    rateDailyLimitInput.value = String(
+      Number.isFinite(data.dailyLimit) ? data.dailyLimit : DEFAULT_RATE_LIMIT.dailyLimit
+    )
+  })
+}
+
+const resetRateLimitToDefaults = () => {
+  rateLimitEnabled.value = DEFAULT_RATE_LIMIT.enabled
+  rateCooldownInput.value = String(DEFAULT_RATE_LIMIT.cooldownMinutes)
+  rateDailyLimitInput.value = String(DEFAULT_RATE_LIMIT.dailyLimit)
+  showAdminToast('success', '已套用預設值，記得按「儲存頻率設定」')
+}
+
+const saveRateLimitSettings = async () => {
+  const cooldownMinutes = Number(rateCooldownInput.value)
+  const dailyLimit = Number(rateDailyLimitInput.value)
+
+  if (!Number.isInteger(cooldownMinutes) || cooldownMinutes < 0) {
+    showAdminToast('error', '間隔時間需為 0 或正整數（分鐘）')
+    return
+  }
+  if (!Number.isInteger(dailyLimit) || dailyLimit < 1) {
+    showAdminToast('error', '每日上限需為大於 0 的整數')
+    return
+  }
+
+  isSavingRateLimit.value = true
+  try {
+    await setDoc(
+      doc(db, 'system', 'editor_rate_limit'),
+      { enabled: rateLimitEnabled.value, cooldownMinutes, dailyLimit },
+      { merge: true }
+    )
+    showAdminToast('success', '投稿頻率設定已儲存')
+  } catch (err) {
+    console.error('[admin] 儲存頻率設定失敗', err)
+    showAdminToast('error', '儲存頻率設定失敗，請稍後再試')
+  } finally {
+    isSavingRateLimit.value = false
+  }
+}
+
+// ── 會員資料查詢與刪除（處理個資請求用）──────────────────────
+const memberUidInput = ref('')
+const memberLookupDone = ref(false)
+const memberRecord = ref<UserProfile | null>(null)
+const memberNoteCounts = ref({ pending: 0, history: 0 })
+const isMemberBusy = ref(false)
+const memberDeleteModalOpen = ref(false)
+const memberDeleteIncludesNotes = ref(false)
+
+const memberDeleteMessage = computed(() => {
+  const total = memberNoteCounts.value.pending + memberNoteCounts.value.history
+  return memberDeleteIncludesNotes.value
+    ? `將刪除這位會員的暱稱、頭貼、投稿額度紀錄，以及他的 ${total} 張便利貼。此操作無法復原。`
+    : '將刪除這位會員的暱稱、頭貼與投稿額度紀錄。便利貼會保留，但之後無法再追溯投稿者。此操作無法復原。'
+})
+
+/** 找出這個 uid 的所有便利貼。單一欄位等值查詢，Firestore 會自動建索引 */
+const findMemberNotes = async (uid: string) => {
+  const [pendingSnap, historySnap] = await Promise.all([
+    getDocs(query(collection(db, cols.queuePending), where('uid', '==', uid))),
+    getDocs(query(collection(db, cols.queueHistory), where('uid', '==', uid)))
+  ])
+  return { pending: pendingSnap.docs, history: historySnap.docs }
+}
+
+const lookupMember = async () => {
+  const uid = memberUidInput.value.trim()
+  if (!uid) return
+
+  isMemberBusy.value = true
+  memberLookupDone.value = false
+  try {
+    const [profileSnap, notes] = await Promise.all([
+      getDoc(doc(db, cols.users, uid)),
+      findMemberNotes(uid)
+    ])
+    memberRecord.value = profileSnap.exists() ? (profileSnap.data() as UserProfile) : null
+    memberNoteCounts.value = { pending: notes.pending.length, history: notes.history.length }
+    memberLookupDone.value = true
+  } catch (err) {
+    console.error('[admin] 查詢會員失敗', err)
+    showAdminToast('error', '查詢失敗，請確認編號是否正確')
+  } finally {
+    isMemberBusy.value = false
+  }
+}
+
+const openMemberDeleteModal = (includeNotes: boolean) => {
+  memberDeleteIncludesNotes.value = includeNotes
+  memberDeleteModalOpen.value = true
+}
+
+const confirmMemberDelete = async () => {
+  const uid = memberUidInput.value.trim()
+  if (!uid) return
+
+  isMemberBusy.value = true
+  try {
+    if (memberDeleteIncludesNotes.value) {
+      // 先刪便利貼再刪個資：反過來的話中途失敗會留下「查不到人的便利貼」，
+      // 而那時已經沒有 users 文件可以再找到它們了
+      const notes = await findMemberNotes(uid)
+      await Promise.all([
+        ...notes.pending.map(d => deleteDoc(doc(db, cols.queuePending, d.id))),
+        ...notes.history.map(d => deleteDoc(doc(db, cols.queueHistory, d.id)))
+      ])
+    }
+
+    // 額度紀錄也是個資（記錄了這個人什麼時候投過稿），一起刪。
+    // 副作用是刪完之後這個人的當日額度會重置——處理個資請求本來就不常發生，
+    // 可以接受。
+    await Promise.all([
+      deleteDoc(doc(db, cols.users, uid)),
+      deleteDoc(doc(db, cols.userQuota, uid))
+    ])
+
+    showAdminToast('success', '已刪除該會員的個人資料')
+    memberDeleteModalOpen.value = false
+    await lookupMember()
+  } catch (err) {
+    console.error('[admin] 刪除會員資料失敗', err)
+    showAdminToast('error', '刪除失敗，請稍後再試')
+  } finally {
+    isMemberBusy.value = false
+  }
+}
+
 const startCanvasVideoListener = () => {
   unsubCanvasVideo = onSnapshot(doc(db, 'system', 'canvas_video'), (snap) => {
     if (!snap.exists()) {
@@ -1393,6 +1775,7 @@ onMounted(() => {
   startNotesListeners()
   startTokenRequirementListener()
   startGpsFenceListener()
+  startRateLimitListener()
   startCanvasVideoListener()
 })
 
@@ -1407,6 +1790,8 @@ onUnmounted(() => {
   unsubCanvasVideo = null
   unsubGpsFence?.()
   unsubGpsFence = null
+  unsubRateLimit?.()
+  unsubRateLimit = null
   clearQrCode()
 })
 </script>

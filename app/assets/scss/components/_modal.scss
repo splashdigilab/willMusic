@@ -61,7 +61,11 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        overflow: hidden;
+        /* 這裡不能 overflow: hidden —— 便利貼的投影掛在 __scaler 上，會落在
+           .c-sticky-note 的框外（drop-shadow 7px 7px 13px，右下最多溢出 20px），
+           裁掉的話預覽的陰影會被切成一條直線。
+           下面的 :deep 已經把便利貼鎖成 100%×100%，本來也沒有別的東西需要裁。
+           溢出的那點陰影落在上下的 margin 與卡片的內距裡，不會壓到文字或按鈕。 */
 
         :deep(.c-sticky-note) {
             position: relative !important;

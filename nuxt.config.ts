@@ -38,6 +38,15 @@ export default defineNuxtConfig({
 
   srcDir: 'app',
 
+  // 開發用的 port 明寫出來，因為它是 LINE 登入的一部分：
+  // LINE Developers 登記的 Callback URL 是 http://localhost:3000/api/auth/line/callback，
+  // 而 redirect_uri 是從請求推導的，port 一變就對不起來。
+  //
+  // **Nuxt 遇到 port 被佔用會靜默退讓**到 3001、3002…，這時 LINE 只會回一個
+  // 看不出原因的 400 Invalid redirect_uri。啟動時看到「alternative port」就是
+  // 這個狀況 —— 去把佔用 3000 的程序關掉，不要改登記另一個 port。
+  devServer: { port: 3000 },
+
   css: [
     '~/assets/scss/main.scss'
   ],
@@ -123,6 +132,17 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
+
+    // ── LINE 登入與 Firebase custom token 簽章 ──────────────────
+    // 這四個全部是機密，**絕對不能加 NUXT_PUBLIC_ 前綴**：那個前綴會讓 Nuxt
+    // 把值打包進前端 bundle，channel secret 與 service account 私鑰進了瀏覽器
+    // 等於直接公開，而且私鑰可以繞過所有 Firestore 規則讀寫整個資料庫。
+    // 放在這一層（public 之外）的值只會留在 server bundle。
+    lineChannelId: process.env.LINE_CHANNEL_ID || '',
+    lineChannelSecret: process.env.LINE_CHANNEL_SECRET || '',
+    firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
+    firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY || '',
+
     public: {
       gtmId: gtmId,
       // 便利貼資料集合的後綴。空值或 none ＝正式環境；設為 _dev 等值可切到獨立的測試資料。

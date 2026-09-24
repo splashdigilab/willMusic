@@ -1,6 +1,6 @@
 /**
  * Editor 頁面專用變數（版面、尺寸、動畫）
- * 與 base/variables 的 $editor-selection-* 區分：此處為控制面板、編輯框尺寸等
+ * 這裡只放尺寸與時間；顏色在 base/variables，選取框的畫法在 mixins/editor
  */
 $editor-transition-duration: 0.3s;
 $editor-control-max-width: 600px;
@@ -18,6 +18,17 @@ $editor-grid-gap: 0.5rem;
 $editor-swatch-size: 11.27vw;
 $editor-swatch-max: 68px;
 $editor-swatch-gap: min(2.7vw, 16px);
+
+/// 控制面板的內距、區塊間距與按鈕列上下內距。
+/// 稿子畫板 09 是以「面板寬 = 螢幕寬」量的：四邊 70/1080 = 6.48%、區塊間距 4.74%、
+/// 按鈕列上 5.25% 下 5.36%。但面板的內容欄封頂在 $editor-control-max-width，
+/// 所以這幾個 vw 也要照同一個比例封頂 —— 不封頂的話 6.48vw 在 1440 是 93px，
+/// 左右加起來吃掉 600px 欄位的三分之一。上限 = 該比例 × $editor-control-max-width。
+/// step-nav 與 bottom-actions 都要對齊這組值，改的時候一起改。
+$editor-panel-pad: min(6.48vw, 39px);
+$editor-panel-gap: min(4.74vw, 28px);
+$editor-panel-pad-top: min(5.25vw, 32px);
+$editor-panel-pad-bottom: min(5.36vw, 32px);
 
 /// 畫面四角的浮動圓鈕（返回／說明／全部重來）。
 /// 編輯器的畫布要靠這兩個值替它們讓出上方空間，改尺寸時這裡一起改。

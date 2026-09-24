@@ -1,4 +1,5 @@
 @use '../base/variables' as var;
+@use '../mixins/editor' as edm;
 @use '../mixins/fonts' as *;
 
 /* 稿子畫板 05~07 實測：
@@ -80,8 +81,7 @@
   word-break: break-word;
   // border-radius: 4px;
   /* 與 editor is-selected 同款 */
-  outline: 2px solid var.$editor-selection-outline;
-  outline-offset: 4px;
+  @include edm.editor-selection-outline;
   pointer-events: none;
 }
 

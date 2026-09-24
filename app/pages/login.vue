@@ -48,7 +48,7 @@ definePageMeta({
 
 const route = useRoute()
 const router = useRouter()
-const { login, loggedIn } = useAdminAuth()
+const { login, isStaff, ensureInitialized } = useAdminAuth()
 
 const username = ref('')
 const password = ref('')
@@ -73,7 +73,10 @@ const handleSubmit = async () => {
 }
 
 onMounted(async () => {
-  if (loggedIn.value) {
+  // 等身分解析完再判斷，否則已登入的後台使用者在 onAuthStateChanged 回來之前
+  // isStaff 還是 false，就不會被導走，會停在登入畫面
+  await ensureInitialized()
+  if (isStaff.value) {
     await router.replace(redirectTo.value)
   }
 })

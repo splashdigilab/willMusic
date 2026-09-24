@@ -109,7 +109,11 @@ body.is-editor-page #app {
 .p-editor {
   position: relative;
   margin: 0 auto;
-  max-width: 1024px;
+  /* 外框寬度＝內容欄寬度。原本是 1024px，但面板裡的 tab-content 與按鈕列都封頂在
+     $editor-control-max-width，桌機上就變成「外框 1024、內容 600」兩層寬度，
+     漸層面板左右各空一大塊，看起來像沒對齊而不像留白。
+     直接引用同一個變數，兩者不可能再各走各的。 */
+  max-width: ed.$editor-control-max-width;
   min-height: var(--editor-locked-h, 100dvh);
   max-height: var(--editor-locked-h, 100dvh);
   display: flex;
@@ -245,7 +249,7 @@ body.is-editor-page #app {
     position: absolute;
     pointer-events: none;
 
-    /* 便利貼/文字 tab 時可點擊進入貼紙編輯 */
+    /* 只有 STEP 5（貼圖）能點貼紙，其他步驟讓點擊穿過去落到畫布上 */
     &.is-sticker-clickable {
       pointer-events: auto;
       cursor: pointer;
@@ -347,8 +351,7 @@ body.is-editor-page #app {
     }
 
     &.is-selected {
-      outline: 2px solid var.$editor-selection-outline;
-      outline-offset: 4px;
+      @include edm.editor-selection-outline;
       border-radius: 0;
     }
 
@@ -364,9 +367,10 @@ body.is-editor-page #app {
 
   &__edit-frame-delete {
     position: absolute;
-    /* 對齊紫色框左上角：outline 2px + outline-offset 4px，左上外角在 (-4px,-4px) */
-    top: -4px;
-    left: -4px;
+    /* 圓心對準白線本身：outline-offset 3px，白線的內緣就在 (-3px,-3px)。
+       跟著 editor-selection-outline 的數字走，改框線時這裡要一起調。 */
+    top: -3px;
+    left: -3px;
     width: ed.$editor-edit-frame-delete-size;
     height: ed.$editor-edit-frame-delete-size;
     background: #E5204D; /* 刪除鈕：改用新色票的桃紅 */
@@ -381,6 +385,10 @@ body.is-editor-page #app {
     transform: translate(-50%, -50%) scale(var(--inverse-scale, 1));
     transform-origin: center center;
     backface-visibility: hidden;
+    /* 疊在框線之上，框線才不會從圓鈕中間穿過去。
+       outline 排在一般子元素之後才畫，只有拉 z-index 壓得過它
+       （縮放把手也是同一個理由，值刻意取一樣）。 */
+    z-index: 2;
   }
 
   &__edit-frame-transform-handle {
@@ -435,8 +443,14 @@ body.is-editor-page #app {
      top 的 -0.22rem 是把按鈕（含觸控用的上下內距，約 27px）對齊標題那行（約 20px）的中線。 */
   &__step-nav {
     position: absolute;
-    top: calc(6.48vw - 0.22rem);
-    right: 6.48vw;
+    top: calc(#{ed.$editor-panel-pad} - 0.22rem);
+    /* 它是 absolute，定位基準是 panel-wrap（桌機上 1024px），
+       但要對齊的是置中、封頂 600px 的內容欄右緣。
+       前半段補上內容欄左右各自的留白，欄位比面板窄時才會對得上；
+       手機上面板本來就窄於 600，max() 取 0，等於只剩 $editor-panel-pad。 */
+    right: calc(
+      max(0px, (100% - #{ed.$editor-control-max-width}) / 2) + #{ed.$editor-panel-pad}
+    );
     display: flex;
     align-items: center;
     z-index: 6;
@@ -480,11 +494,11 @@ body.is-editor-page #app {
     grid-area: 1 / 1;
     width: 100%;
 
-    /* 稿子畫板 09 實測：面板四邊內距與區塊間距都是 70/1080 = 6.48vw。
+    /* 稿子畫板 09 實測：面板四邊內距與區塊間距都是 70/1080 = 6.48vw（已封頂，見 ed 變數）。
        下方原本是 0，但這裡是 overflow:hidden，最後一列若有陰影（STEP 4 的 undo/redo
        是 0 3px 10px）就會被貼著容器底邊切掉。留 0.85rem 給陰影，
        同樣的量從 bottom-actions 的上內距扣回去，面板總高不變。 */
-    padding: 6.48vw 6.48vw 0.85rem;
+    padding: ed.$editor-panel-pad ed.$editor-panel-pad 0.85rem;
     max-width: ed.$editor-control-max-width;
     margin: 0 auto;
     min-height: 0;
@@ -494,7 +508,7 @@ body.is-editor-page #app {
     /* 區塊間距與左右內距不同值：稿子上「色票底到下一個 STEP 標題」量到 5.36%，
        扣掉標題行高在字身上方留的空隙約 0.7%，CSS 的 gap 是 4.74%。
        原本沿用 6.48vw（與左右內距同值），兩個區塊之間會多出約 7px。 */
-    gap: 4.74vw;
+    gap: ed.$editor-panel-gap;
     box-sizing: border-box;
     /* 展開時給足夠 max-height，讓 leave 動畫能從此值過渡到 0（height: auto 無法過渡） */
     max-height: 70vh;
@@ -580,7 +594,7 @@ body.is-editor-page #app {
     padding-right: 5.5rem;
   }
 
-  /* 兩顆次要開關自成一列，等分寬度。
+  /* 次要開關自成一列，等分寬度。
      格距刻意與底部的上一步／下一步相同（0.5rem）而不是與上面的色票相同 ——
      這兩列是上下相鄰的，中縫沒對齊會很明顯。 */
   &__chip-row {
@@ -588,7 +602,7 @@ body.is-editor-page #app {
     gap: 0.5rem;
   }
 
-  /* 面板上的次要開關（＋ 新增文字／鎖定圖層）。
+  /* 面板上的次要開關（目前只有「＋ 新增文字」）。
      底色用實心淺灰而不是描邊 —— 描邊小藥丸在這個淺灰面板上會被誤讀成停用狀態，
      實心反而更清楚它可以按，同時又與底部的漸層主要按鈕拉開階層。 */
   &__chip-btn {
@@ -613,12 +627,6 @@ body.is-editor-page #app {
     &:disabled {
       opacity: 0.45;
       cursor: not-allowed;
-    }
-
-    /* 鎖定中：填滿桃紅，狀態一眼看得出來，再按一次就解鎖 */
-    &.is-active {
-      background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
-      color: #fff;
     }
   }
 
@@ -699,6 +707,13 @@ body.is-editor-page #app {
 
     &.is-active {
       background: color-mix(in srgb, var(--btn-color) 50%, transparent);
+    }
+
+    /* 停用：在目前的材質上看不到這個顏色（見 utils/color-contrast.ts），
+       或是 STEP 3 還沒選到文字區塊。 */
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.35;
     }
 
     &--eraser {
@@ -813,11 +828,15 @@ body.is-editor-page #app {
     display: block;
   }
 
-  /* 純色材質的色票（新視覺前三個選項）。圖片材質仍走 __background-img */
+  /* 純色材質的色票（除了鐳射以外都是）。圖片材質仍走 __background-img */
   &__background-swatch {
     width: 100%;
     height: 100%;
     display: block;
+    /* 白材質的色票與淺灰面板幾乎同色，沒有這圈細內描邊就看不出格子在哪
+       （--shadow-soft 只有 2px/0.15，撐不起白對淺灰）。
+       用 inset shadow 而不是 border —— border 會把色塊向內縮，其他色票就不等大了。 */
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
   }
 
   &__background-check {
@@ -899,11 +918,19 @@ body.is-editor-page #app {
 
   /* ========== 底部按鈕列 ========== */
   &__bottom-actions {
-    /* 左右與面板同為 6.48vw。
+    /* 寬度與上方的 tab-content 對齊：兩者都封頂 600px 並置中。
+       原本這一列跟著面板走滿 1024px，桌機上按鈕列會比上面的選項欄寬 236px，
+       左右邊緣對不齊。
+       width: 100% 不能省 —— panel-wrap 是直向 flex，橫向的 auto margin 會讓
+       stretch 失效，這一列會縮成內容寬（按鈕只剩 135px）。 */
+    width: 100%;
+    max-width: ed.$editor-control-max-width;
+    margin: 0 auto;
+    /* 左右與面板同為 6.48vw（已封頂）。
        上方：稿子「造型底到按鈕頂」是 5.25%，其中 0.85rem 已由 tab-content 的下內距
        讓出來給陰影，所以這裡只補剩下的。
        下方：稿子「按鈕底到面板底」量到 5.36%（舊稿是 7.1%，以這次的稿為準）。 */
-    padding: calc(5.25vw - 0.85rem) 6.48vw 5.36vw;
+    padding: calc(#{ed.$editor-panel-pad-top} - 0.85rem) ed.$editor-panel-pad ed.$editor-panel-pad-bottom;
     /* 不再自己上白底，讓 control-panel 的淺灰漸層貫穿到底，
        否則面板下半會出現一條與上半不同色的白帶 */
     background: transparent;

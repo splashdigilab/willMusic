@@ -29,10 +29,11 @@ import { recordUploadStat } from '~/composables/useUploadStats'
 export const NOTE_DRAWING_PATH = 'note_drawings'
 
 export const useFirestore = () => {
-  const { $firestore, $storage } = useNuxtApp()
+  const { $firestore, $storage, $auth } = useNuxtApp() as any
   const db = $firestore as any
   const cols = useCollections()
   const storage = $storage as any
+  const { reserve } = useSubmissionQuota()
 
   /**
    * 移除物件中的 undefined 欄位（Firestore 不接受 undefined）
@@ -98,21 +99,45 @@ export const useFirestore = () => {
    * 建立新的便利貼並加入待處理佇列
    * - 有 token：使用 token 作為 queue_pending 的 doc ID，並在 transaction 內將 token 標記為 used
    * - 無 token：直接建立 queue_pending 文件（給後台關閉 token 驗證時使用）
+   *
+   * 兩條路都要求已經 LINE 登入 —— 這是 firestore.rules 強制的，前端先擋只是
+   * 為了給得出看得懂的訊息。
+   *
+   * @param noteId 指定 doc ID。送出流程會帶一個跟著草稿走的固定值，
+   *               這樣「登入往返後重新送出」或使用者連按兩次都只會產生同一筆
+   *               （規則只開放 create，第二次寫同一個 ID 會被擋下）。
+   *               不帶就用隨機 ID，重送會變成兩張便利貼。
    */
-  const createNoteInternal = async (form: CreateNoteForm, token?: string): Promise<string> => {
+  const createNoteInternal = async (
+    form: CreateNoteForm,
+    token?: string,
+    noteId?: string
+  ): Promise<string> => {
+    const uid = ($auth?.currentUser?.uid as string | undefined) ?? ''
+    if (!uid) throw new Error('NOT_LOGGED_IN')
+
     try {
       // 先決定 doc ID，手繪圖才能用同一個 ID 當檔名。
       // 上傳 Storage 必須在 transaction 之外完成（transaction 內不能做非 Firestore 的非同步工作）。
       const pendingRef = token
         ? doc(db, cols.queuePending, token)
-        : doc(collection(db, cols.queuePending))
+        : (noteId
+            ? doc(db, cols.queuePending, noteId)
+            : doc(collection(db, cols.queuePending)))
       const sanitizedStyle = await persistDrawing(removeUndefined(form.style), pendingRef.id)
+
+      // 預約必須在寫入的前一刻、手繪圖上傳完之後才發出：
+      // 規則要求預約是「新鮮的」，先預約再去傳一張 3MB 的圖會把時間花在有效期上。
+      // 放在這裡而不是讓呼叫端自己記得，是因為漏掉預約的症狀是 permission-denied，
+      // 看起來像權限設錯，很難聯想到是少了一步。
+      await reserve(pendingRef.id)
 
       const createNoteWithToken = async (resolvedToken: string): Promise<string> => {
         const noteData = {
           content: form.content,
           style: sanitizedStyle,
           token: resolvedToken,
+          uid,
           timestamp: serverTimestamp(),
           status: 'waiting'
         }
@@ -149,6 +174,7 @@ export const useFirestore = () => {
           content: form.content,
           style: sanitizedStyle,
           token: pendingRef.id,
+          uid,
           timestamp: serverTimestamp(),
           status: 'waiting'
         })
@@ -159,23 +185,14 @@ export const useFirestore = () => {
           String(error?.message || '').includes('Missing or insufficient permissions')
         if (!denied) throw error
 
-        // 當後端 Rules 仍強制 token 寫入時，自動建立內部 token 後重送，
-        // 讓前端在「不需 token」模式下仍可正常上傳。
-        try {
-          const autoTokenRef = await addDoc(collection(db, cols.tokens), {
-            status: 'unused',
-            createdAt: serverTimestamp()
-          })
-          return await createNoteWithToken(autoTokenRef.id)
-        } catch (autoTokenError: any) {
-          const autoDenied =
-            autoTokenError?.code === 'permission-denied' ||
-            String(autoTokenError?.message || '').includes('Missing or insufficient permissions')
-          if (autoDenied) {
-            throw new Error('目前後端權限設定不允許無 Token 上傳，請先開啟後台 Token 驗證或調整 Firestore 規則。')
-          }
-          throw autoTokenError
-        }
+        // 這裡原本會「自動發一張 token 再重送」，那是為了相容『規則仍強制
+        // 帶 token、但後台已關閉驗證』的過渡狀態。tokens 的 create 現在限後台，
+        // 這條路必然再被拒一次，只會把真正的原因蓋成一段看不懂的訊息。
+        //
+        // 規則收斂之後，未登入者根本走不到這裡（前面的 uid 檢查就擋了），
+        // 所以剩下的 permission-denied 幾乎都是「後台開著 Token 驗證，
+        // 但這次送出沒帶憑證」。
+        throw new Error('NOTE_CREATE_DENIED')
       }
     } catch (error) {
       console.error('Error creating note:', error)
@@ -187,12 +204,16 @@ export const useFirestore = () => {
    * 建立便利貼，並累加後台營運總覽用的每日／每小時計數。
    * 統計是 fire-and-forget：寫入失敗（例如 Rules 未開放 stats_daily）不影響上傳結果。
    */
-  const createNote = async (form: CreateNoteForm, token?: string): Promise<string> => {
-    const noteId = await createNoteInternal(form, token)
+  const createNote = async (
+    form: CreateNoteForm,
+    token?: string,
+    noteId?: string
+  ): Promise<string> => {
+    const createdId = await createNoteInternal(form, token, noteId)
     void recordUploadStat(db).catch((error) => {
       console.warn('[stats] 累加每日上傳統計失敗', error)
     })
-    return noteId
+    return createdId
   }
 
   /**
@@ -306,10 +327,18 @@ export const useFirestore = () => {
         }
 
         const pendingData = pendingSnap.data()
+        // 這裡是明列欄位而不是整份複製，所以**每次 queue_pending 多一個欄位，
+        // 這份清單就要跟著加**，否則便利貼一上牆該欄位就靜靜消失了。
+        //
+        // uid 是 optional（LINE 登入之前的舊便利貼沒有），用條件展開帶進來。
+        // 不能套 removeUndefined：它會遞迴重建物件，把 serverTimestamp() 的
+        // sentinel 與 Timestamp 拆成普通的 plain object，寫進去就不是時間了。
+        const uid = pendingData.uid ?? item.uid
         const historyData = {
           content: pendingData.content ?? item.content,
           style: pendingData.style ?? item.style,
           token: pendingData.token ?? token,
+          ...(uid ? { uid } : {}),
           timestamp: pendingData.timestamp ?? item.timestamp,
           status: 'played',
           playedAt: serverTimestamp()

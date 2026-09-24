@@ -21,6 +21,8 @@ export interface FirestoreCollections {
   queueHistory: string
   tokens: string
   statsDaily: string
+  users: string
+  userQuota: string
 }
 
 export const useCollections = (): FirestoreCollections => {
@@ -37,6 +39,11 @@ export const useCollections = (): FirestoreCollections => {
     queuePending: `queue_pending${suffix}`,
     queueHistory: `queue_history${suffix}`,
     tokens: `tokens${suffix}`,
-    statsDaily: `stats_daily${suffix}`
+    statsDaily: `stats_daily${suffix}`,
+    // LINE 會員資料也分組。Firebase Auth 的帳號本身兩站共用（uid 相同，
+    // 不會重複建），但測試站的登入不該把暱稱與頭貼寫進正式站的資料。
+    users: `users${suffix}`,
+    // 投稿配額同樣分組——不分的話在測試站測限流會吃掉正式站的每日額度
+    userQuota: `user_quota${suffix}`
   }
 }

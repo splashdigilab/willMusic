@@ -56,20 +56,38 @@
               <span>RULES</span>
             </h1>
 
+            <!-- 規範文字來自 ~/data/terms（與 /terms 頁同一份），
+                 不要在這裡寫死：兩邊各改各的話，客戶看到的規範與 LINE 後台
+                 登記的那一頁就會不一致。這裡顯示的是摘要，完整版在 /terms。 -->
             <div class="p-index__intro-desc p-index__intro-rules">
               <ol>
-                <li>於南西旗艦店消費達 599 元，即可獲得一張數位應援便利貼。</li>
-                <li>取得便利貼後，須於 30 分鐘內完成個人專屬內容製作並送出。（禁止任何敏感詞彙或圖像；如有違反，品牌有權不另行通知逕行撤下內容。若多次惡意違規，將依情節嚴重程度採取相應處置。微樂客對違規內容保有最終解釋之權利）</li>
-                <li>便利貼內容經審核通過後，將於 LED 牆輪播展示，並輪流放大顯示 15 秒。</li>
+                <li v-for="(rule, i) in TERMS_RULES" :key="i">{{ rule }}</li>
               </ol>
             </div>
 
             <!-- 同意勾選放在可捲動的規範之外：它管的是下面那顆 START，
                  跟 START 一樣必須一直看得到。原本擺在規範裡面，規範一長就被捲到看不見，
                  使用者只看得到 START，按了卻被擋下來，也不知道要勾什麼。 -->
+            <!-- 隱私權政策開新分頁：在同一個分頁導過去會讓編輯器整個重載，
+                 使用者回來時得重走一次規範頁。連結本身要能獨立點擊，
+                 所以 @click.stop 擋掉 label 冒泡，不要順手把勾選切掉。 -->
             <label class="p-index__intro-terms">
               <input type="checkbox" v-model="termsAccepted" />
-              <span>我已閱讀並同意上述活動規範</span>
+              <span>
+                我已閱讀並同意<a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener"
+                  class="p-index__intro-terms-link"
+                  @click.stop
+                >活動規範</a>與<a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener"
+                  class="p-index__intro-terms-link"
+                  @click.stop
+                >隱私權政策</a>
+              </span>
             </label>
 
             <button
@@ -83,6 +101,24 @@
                 載入中...
               </span>
               <span v-else>START</span>
+            </button>
+
+            <!-- 選填的提前登入。送出那一刻才登入是一定成立的路徑（見 confirmSubmit），
+                 但那時使用者已經畫了十分鐘，被導去 LINE 再回來的風險比較大 ——
+                 願意先登入的人在這裡一鍵解決，回程只是重載一次空白的編輯器。
+                 排在 START 下面：START 才是這頁的主要動作，登入是可以略過的補充，
+                 擺在上面會先把人攔下來做一個他其實不必現在做的決定。 -->
+            <p v-if="isMember" class="p-index__intro-line p-index__intro-line--done">
+              已用 LINE 登入{{ profile?.lineName ? `：${profile.lineName}` : '' }}
+              <button type="button" class="p-index__intro-line-logout" @click="logout">登出</button>
+            </p>
+            <button
+              v-else
+              type="button"
+              class="p-index__intro-line p-index__intro-line--action"
+              @click="startLogin(route.fullPath)"
+            >
+              先用 LINE 登入（送出時才需要，也可以稍後再登）
             </button>
           </div>
 
@@ -197,8 +233,8 @@
             :key="block.id"
             :data-text-block-id="block.id"
             class="p-editor__text-content"
-            :style="[getTextBlockStyleComputed(block), drawMode ? STYLE_POINTER_NONE : STYLE_EMPTY, { zIndex: NOTE_LAYER_Z.text }]"
-            @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
+            :style="[getTextBlockStyleComputed(block), activeTab === 'text' ? STYLE_EMPTY : STYLE_POINTER_NONE, { zIndex: NOTE_LAYER_Z.text }]"
+            @click.stop="selectTextBlock(block.id)"
           >
             <!-- 外層包裹器：接收 padding，點擊時觸發拖曳 -->
             <div
@@ -219,20 +255,21 @@
                 @compositionstart="() => { isComposing = true }"
                 @compositionend="(e: Event) => handleCompositionEnd(e, block.id)"
                 @input="(e: Event) => handleTextInput(e, block.id)"
-                @click.stop="() => { if (!drawMode && !block.locked) selectTextBlock(block.id) }"
-                @focus="() => { isTextFieldFocused = true; if (!drawMode && !block.locked) selectTextBlock(block.id) }"
+                @click.stop="() => { if (!block.locked) selectTextBlock(block.id) }"
+                @focus="() => { isTextFieldFocused = true; if (!block.locked) selectTextBlock(block.id) }"
                 @blur="onTextFieldBlur"
                 data-placeholder="在這裡輸入文字..."
               />
             </div>
           </div>
 
-          <!-- 貼紙圖片（可裁切）；便利貼/文字 tab 時點擊可進入貼紙編輯 -->
+          <!-- 貼紙圖片（可裁切）。只在 STEP 5 可點：其他步驟點了也只是跳出一個
+               當下沒有任何控制項可用的編輯框，反而擋住底下的東西。 -->
           <div
             v-for="sticker in stickers"
             :key="sticker.id"
             class="p-editor__sticker-content"
-            :class="{ 'is-sticker-clickable': !drawMode }"
+            :class="{ 'is-sticker-clickable': activeTab === 'sticker' }"
             :style="[getStickerStyle(sticker), { zIndex: NOTE_LAYER_Z.sticker }]"
             @click.stop="selectSticker(sticker.id)"
             @touchstart.stop="() => { if (!isTwoFingerGesture) selectSticker(sticker.id) }"
@@ -268,8 +305,12 @@
           </div>
         </div>
 
-        <!-- UI 層：編輯框置頂，不被裁切（繪圖模式時隱藏以便手繪） -->
-        <div class="p-editor__canvas-ui" :style="{ pointerEvents: drawMode ? 'none' : undefined }">
+        <!-- UI 層：編輯框置頂，不被裁切（繪圖模式時隱藏以便手繪）。
+             --editor-selection-line 掛在這裡就好，編輯框全都在這一層底下。 -->
+        <div
+          class="p-editor__canvas-ui"
+          :style="{ pointerEvents: drawMode ? 'none' : undefined, '--editor-selection-line': selectionLineColor }"
+        >
           <!-- 中心對齊參考線 -->
           <div
             v-if="showVerticalCenterGuide"
@@ -285,7 +326,7 @@
           <div
             v-for="block in textBlocks"
             :key="`ui-text-${block.id}`"
-            v-show="!drawMode && selectedTextBlockId === block.id"
+            v-show="activeTab === 'text' && selectedTextBlockId === block.id"
             :data-text-block-id="block.id"
             class="p-editor__edit-frame p-editor__edit-frame--text"
             :class="{ 
@@ -436,7 +477,8 @@
                 class="p-editor__color-btn p-editor__color-btn--square"
                 :class="{ 'is-active': selectedBlock?.color === color.value }"
                 :style="{ '--btn-color': color.value }"
-                :disabled="!selectedBlock"
+                :disabled="!selectedBlock || !isSwatchUsable(color.value)"
+                :title="isSwatchUsable(color.value) ? undefined : '這個顏色在目前的材質上看不到'"
                 @click="() => { if (selectedBlock) { selectedBlock.color = color.value; saveDraftData() } }"
               />
             </div>
@@ -457,8 +499,9 @@
               </button>
             </div>
           </div>
-          <!-- 兩顆開關自成一列：原本各自靠在色票／對齊那列的右端，中間空一大片，
-               也把寬度佔走讓對齊圖示放不大。移到這裡剛好用掉原本是空白的那段。 -->
+          <!-- 「＋ 新增文字」自成一列：原本靠在色票／對齊那列的右端，中間空一大片，
+               也把寬度佔走讓對齊圖示放不大。移到這裡剛好用掉原本是空白的那段。
+               旁邊原本還有一顆「鎖定圖層」，功能已隱藏（見 toggleLockSelectedTextBlock）。 -->
           <div class="p-editor__control-section">
             <div class="p-editor__chip-row">
               <button
@@ -471,21 +514,6 @@
                   <path d="M12 5v14M5 12h14" />
                 </svg>
                 新增文字
-              </button>
-              <button
-                type="button"
-                class="p-editor__chip-btn p-editor__chip-btn--lock"
-                :class="{ 'is-active': selectedBlock?.locked }"
-                :disabled="!selectedBlock || !selectedBlock.content.trim()"
-                @click="toggleLockSelectedTextBlock"
-              >
-                <svg class="p-editor__chip-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <rect x="4" y="10.5" width="16" height="10.5" rx="2.4" />
-                  <!-- 鎖環：鎖定時閉合，未鎖定時往右上翻開 -->
-                  <path v-if="selectedBlock?.locked" d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
-                  <path v-else d="M8 10.5V7a4 4 0 0 1 7.7-1.4" />
-                </svg>
-                {{ selectedBlock?.locked ? '已鎖定' : '鎖定圖層' }}
               </button>
             </div>
           </div>
@@ -512,6 +540,8 @@
                 class="p-editor__color-btn"
                 :class="{ 'is-active': !eraserMode && brushColor === c.value }"
                 :style="{ '--btn-color': c.value }"
+                :disabled="!isSwatchUsable(c.value)"
+                :title="isSwatchUsable(c.value) ? undefined : '這個顏色在目前的材質上看不到'"
                 @click="() => { brushColor = c.value; eraserMode = false }"
               >
                 <img v-if="!eraserMode && brushColor === c.value" src="/check.svg" alt="" class="p-editor__color-check" />
@@ -631,8 +661,10 @@ import type { StickerInstance, DraftData, StickyNoteStyle, TextBlockInstance } f
 import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
 import { BACKGROUND_IMAGES, isColorMaterial } from '~/data/backgrounds'
 import { SELECTABLE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
-import { EDITOR_STEPS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH, type EditorStepId } from '~/data/editor-config'
+import { EDITOR_STEPS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
+import { TERMS_RULES } from '~/data/terms'
 import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z } from '~/utils/sticky-note-style'
+import { isSwatchVisibleOn } from '~/utils/color-contrast'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
 import { useCanvasPinch } from '~/composables/useCanvasPinch'
@@ -668,8 +700,30 @@ const router = useRouter()
 const { $firestore } = useNuxtApp()
 const db = $firestore as any
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
+const { isMember, profile, startLogin, completeLogin, takePendingAction, logout } = useMemberAuth()
+const { syncProfile } = useMemberProfile()
 
 const MAX_TEXT_BLOCKS = 3
+
+/**
+ * 這次送出要用的 queue_pending doc ID，跟著草稿一起存。
+ *
+ * 目的是讓送出變成冪等的：登入往返後重送、或使用者連按兩下，都會寫到同一個 ID，
+ * 而規則只開放 create，第二次會被 Firestore 擋掉。沒有它的話，無 token 模式下
+ * doc ID 是隨機的，重送就是實實在在的兩張便利貼。
+ *
+ * 只在真的要用到時才產生，避免每個逛進編輯器的人都佔一個 ID。
+ */
+const submissionId = ref<string | undefined>(undefined)
+
+const ensureSubmissionId = (): string => {
+  if (!submissionId.value) {
+    submissionId.value = globalThis.crypto?.randomUUID
+      ? globalThis.crypto.randomUUID().replace(/-/g, '')
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`
+  }
+  return submissionId.value
+}
 
 /**
  * 把頁面高度鎖成「鍵盤出現前」量到的值，讓鍵盤只是蓋在頁面上，而不是把版面頂上去。
@@ -722,6 +776,25 @@ const onStartClick = () => {
 
 // Editor State
 const backgroundImage = ref(BACKGROUND_IMAGES?.[0]?.url ?? '') // 預設第一張背景
+
+/**
+ * 這個色票在目前的材質上看不看得到 —— STEP 3 的文字色與 STEP 4 的筆刷色都用它決定要不要停用。
+ * 白底的白字、天藍底的天藍筆刷這類組合選了等於沒選，不如直接不給選。
+ *
+ * 只擋色票，不動已經存在的內容：回頭換材質不會改寫使用者做好的文字或畫好的筆畫。
+ * 判斷標準與門檻見 utils/color-contrast.ts。
+ */
+const isSwatchUsable = (color: string) => isSwatchVisibleOn(backgroundImage.value, color)
+
+/**
+ * 選取編輯框的線色：白線，白便利貼上改成 UI 的天藍。
+ *
+ * 判斷沿用色票那套而不是寫死「材質 === #FFFFFF」，日後加了米白之類的淺材質會自己跟著換。
+ * 只有兩種顏色可挑，所以這裡不再往下找第三個 —— 現有六個材質裡，
+ * 白線看不到的只有白材質，而天藍在白底上非常清楚。
+ */
+const selectionLineColor = computed(() => (isSwatchUsable('#ffffff') ? '#fff' : '#00A7C5'))
+
 const shape = ref(DEFAULT_SHAPE_ID)
 const stickers = ref<StickerInstance[]>([])
 const selectedStickerId = ref<string | null>(null)
@@ -812,9 +885,8 @@ const showHorizontalCenterGuide = ref(false)
 // 之所以保留 activeTab，是因為畫布、編輯框、繪圖模式都以「目前在哪個工具」來判斷，
 // 讓它由 step 推導出來，這些地方就不用跟著改。
 //
-// 只有兩條路能改 step，都集中在一處以免各處各自寫：
-//   goToStep       —— 上一步／下一步／步驟點，會套用「還沒輸入文字不能往後」的關卡
-//   revealStepFor  —— 在畫布上選到物件，面板跟著切到那個物件的控制項，不套用關卡
+// 只有 goToStep 能改 step（上一步／下一步／步驟點），會套用「還沒輸入文字不能往後」的關卡。
+// 在畫布上點物件不會換步驟 —— 只改變選取，面板留在使用者自己切到的那一步。
 const step = ref(0)
 const activeTab = computed(() => EDITOR_STEPS[step.value]?.id ?? 'note')
 
@@ -863,23 +935,15 @@ const TOKEN_ALERT_ICON = '🛍️'
 const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
 const GPS_DENIED_MESSAGE = '需要開啟定位權限才能上傳大螢幕。<br><br>iPhone（Safari）：到「設定 > Safari > 定位」改為「允許」。<br>Android（Chrome）：到「瀏覽器網址列左側鎖頭/網站設定 > 位置」改為「允許」。<br><br>完成後回到此頁，點擊「重新詢問定位」再試一次。'
 const GPS_OUTSIDE_MESSAGE = '您目前不在合法上傳區域內，請移動到店內指定範圍後再試。'
-const TOKEN_DISABLED_SUBMIT_COOLDOWN_MS = 3 * 60 * 1000
-const TOKEN_DISABLED_LAST_SUBMIT_AT_KEY = 'willmusic_token_disabled_last_submit_at'
 const tokenRequiredForSubmit = ref(false)
 let unsubTokenRequirement: (() => void) | null = null
 
-const getTokenDisabledRemainingCooldownMs = (): number => {
-  if (typeof window === 'undefined') return 0
-  try {
-    const raw = localStorage.getItem(TOKEN_DISABLED_LAST_SUBMIT_AT_KEY)
-    const lastSubmitAt = Number(raw)
-    if (!Number.isFinite(lastSubmitAt) || lastSubmitAt <= 0) return 0
-    const elapsed = Date.now() - lastSubmitAt
-    return Math.max(0, TOKEN_DISABLED_SUBMIT_COOLDOWN_MS - elapsed)
-  } catch {
-    return 0
-  }
-}
+// 投稿配額（每人每 N 分鐘 1 張、每天 M 張）。
+//
+// 這裡取代了原本的 localStorage 冷卻——那個綁在裝置上，清一下瀏覽器資料、
+// 換個無痕視窗就沒了。有了 LINE 身分之後改成綁在人身上，而且是規則在擋，
+// 不是前端在擋。實作與「為什麼是預約制」見 useSubmissionQuota。
+const { check: checkQuota } = useSubmissionQuota()
 
 const formatCooldownRemaining = (remainingMs: number): string => {
   const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000))
@@ -888,15 +952,6 @@ const formatCooldownRemaining = (remainingMs: number): string => {
   if (minutes <= 0) return `${seconds} 秒`
   if (seconds <= 0) return `${minutes} 分鐘`
   return `${minutes} 分 ${seconds} 秒`
-}
-
-const saveTokenDisabledSubmitTimestamp = () => {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(TOKEN_DISABLED_LAST_SUBMIT_AT_KEY, String(Date.now()))
-  } catch {
-    // ignore storage write errors
-  }
 }
 
 const exportNodeRef = ref<HTMLElement | null>(null)
@@ -919,10 +974,10 @@ const drawingData = ref<string | null>(null)
 const backgrounds = BACKGROUND_IMAGES
 const shapes = SELECTABLE_SHAPES
 
-// 編輯框跟著「有沒有被選取」，不跟著目前在第幾步。
-// 拖曳（revealStep: false）時步驟不會跟著切，編輯框若綁在步驟上就會中途消失。
-// 繪圖時例外：畫布要讓給筆刷，所有編輯框都收起來。
-const showStickerEditFrame = computed(() => !!selectedStickerId.value && !drawMode.value)
+// 編輯框要「在自己那一步」而且「被選取」才出現。
+// 只看選取不行：點畫布不會換步驟，在 STEP 1 點到貼紙就會冒出一個沒有控制項可用的框
+// （文字框同理，見上面 v-show="activeTab === 'text' && ..."）。
+const showStickerEditFrame = computed(() => activeTab.value === 'sticker' && !!selectedStickerId.value)
 
 // Sticker Management
 
@@ -1227,6 +1282,20 @@ const syncContentToDom = () => {
 }
 
 // 文字區塊管理
+/**
+ * 新文字區塊的預設色。
+ *
+ * 一律從第一個顏色（白）開始，白在目前材質上看不到才往後找 ——
+ * 也就是只有白便利貼會退成深灰。
+ * 寫死白色不行：進 STEP 3 時系統會自動開一個文字區塊，在白便利貼上
+ * 連提示字「在這裡輸入文字…」都是隱形的，而白色色票這時又是停用的，
+ * 使用者會以為編輯器壞了。
+ *
+ * 這是「新建時的預設」，不是回頭改寫使用者已經挑好的顏色 —— 既有的文字區塊不動。
+ */
+const defaultTextColor = () =>
+  TEXT_COLORS.find(c => isSwatchUsable(c.value))?.value ?? TEXT_COLORS[0]?.value ?? '#ffffff'
+
 const addTextBlock = (): TextBlockInstance => {
   const newBlock: TextBlockInstance = {
     id: `text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1235,7 +1304,7 @@ const addTextBlock = (): TextBlockInstance => {
     y: 50 + (Math.random() - 0.5) * 20,
     scale: 2,
     rotation: 0,
-    color: '#ffffff',
+    color: defaultTextColor(),
     align: 'center',
     locked: false
   }
@@ -1315,19 +1384,6 @@ const goToStep = (index: number) => {
 const goNextStep = () => goToStep(step.value + 1)
 const goPrevStep = () => goToStep(step.value - 1)
 
-/**
- * 在畫布上選到某個物件時，面板跟著切到那個物件的控制項。
- *
- * 刻意不走 goToStep：這不是「往下一步」，而是跳到被選物件的介面，所以
- *   - 不套用「還沒輸入文字不能往後」的關卡（選貼紙只是想搬它，不該被攔下來問文字）
- *   - 不重複做離開步驟的收尾，呼叫端的 selectTextBlock / selectSticker 已經處理過
- *     舊文字的提交或還原了。
- */
-const revealStepFor = (tabId: EditorStepId) => {
-  const index = EDITOR_STEPS.findIndex(s => s.id === tabId)
-  if (index >= 0) step.value = index
-}
-
 // 文字「取消」：新增未輸入時 = 刪除；編輯時 = 還原到編輯前內容。
 // 與 completeTextEditing 一樣不負責換步驟 —— 呼叫它的是「改點另一個物件」。
 const cancelTextEditing = () => {
@@ -1384,34 +1440,25 @@ const addSticker = (stickerType: string) => {
   selectedTextBlockId.value = null
 }
 
+/**
+ * 貼紙只有在 STEP 5 才選得到。
+ *
+ * 點畫布不會換步驟（見 step 的說明），所以「在別的步驟也選得到」等於跳出一個
+ * 當下沒有任何控制項可用的編輯框。守在這裡而不是各個事件上：
+ * 入口有畫布上的貼紙、編輯框本身、useStickerInteraction 三處，逐一擋容易漏。
+ */
 const selectSticker = (id: string) => {
-  // 若正在文字編輯模式，先提交 IME 並自動完成之前的編輯
-  if (activeTab.value === 'text' && selectedTextBlockId.value) {
-    commitComposingContent()
-    if (hasCurrentTextEdits()) {
-      completeTextEditing()
-    } else {
-      cancelTextEditing()
-    }
-  }
-
+  if (activeTab.value !== 'sticker') return
   selectedStickerId.value = id
   selectedTextBlockId.value = null
-  // 面板切到貼圖那一步，被選中的貼紙才有對應的控制項可用
-  revealStepFor('sticker')
 }
 
-/**
- * @param options.revealStep 預設 true＝面板跟著切到文字步驟。
- *   拖曳時要傳 false：文字的 onTextDragStart 是「手指移動超過門檻」才觸發的，
- *   這時切步驟會在拖到一半改變面板高度，畫布跟著縮放，物件就會在手指底下跳掉。
- *   （貼紙不受影響，它的 selectSticker 是在 touchstart 就呼叫，還沒開始移動。）
- */
-const selectTextBlock = (blockId: string, options?: { revealStep?: boolean }) => {
-  const isCurrentlyEditing = selectedTextBlockId.value === blockId && activeTab.value === 'text'
+/** 文字區塊只有在 STEP 3 才選得到，理由與 selectSticker 相同。 */
+const selectTextBlock = (blockId: string) => {
+  if (activeTab.value !== 'text') return
 
-  if (isCurrentlyEditing) {
-    // 已經在文字模式下再次點擊同一個文字區塊：確保重新聚焦並叫出鍵盤
+  if (selectedTextBlockId.value === blockId) {
+    // 再次點擊同一個文字區塊：確保重新聚焦並叫出鍵盤
     focusSelectedTextBlock()
     return
   }
@@ -1429,12 +1476,6 @@ const selectTextBlock = (blockId: string, options?: { revealStep?: boolean }) =>
   snapshotTextBlockInitial(blockId)
   selectedTextBlockId.value = blockId
   selectedStickerId.value = null
-  // 面板切到文字那一步。順序很重要：contenteditable 綁在 activeTab === 'text'，
-  // 要先切步驟，下面的 focus 才有東西可以聚焦。
-  if (options?.revealStep !== false) revealStepFor('text')
-
-  // 沒切到文字步驟就不要聚焦叫鍵盤（拖曳中）
-  if (activeTab.value !== 'text') return
 
   nextTick(() => {
     const el = contentEditableRefs.get(blockId)
@@ -1457,6 +1498,14 @@ const focusSelectedTextBlock = () => {
   })
 }
 
+/**
+ * 鎖定／解鎖選取中的文字區塊。
+ *
+ * 目前沒有入口 —— 面板上那顆「鎖定圖層」已經拿掉，這個函式與 locked 相關的判斷
+ * （contenteditable、useCanvasPinch、長按解鎖）一併留著：舊草稿可能已經存了
+ * locked: true 的文字區塊，判斷拆掉的話那些草稿會變成完全動不了。
+ * 要恢復功能只需把按鈕接回這裡。
+ */
 const toggleLockSelectedTextBlock = () => {
   const id = selectedTextBlockId.value
   if (!id) return
@@ -1539,6 +1588,7 @@ const saveDraftData = () => {
     textTransform: nonEmptyTextBlocks[0] ? { x: nonEmptyTextBlocks[0].x, y: nonEmptyTextBlocks[0].y, scale: nonEmptyTextBlocks[0].scale, rotation: nonEmptyTextBlocks[0].rotation } : undefined,
     textBlocks: nonEmptyTextBlocks,
     drawing: drawingData.value ?? undefined,
+    submissionId: submissionId.value,
     timestamp: Date.now()
   }
   saveDraft(draft)
@@ -1580,7 +1630,7 @@ const {
     }
     // 已選取的文字區塊：不做任何操作，瀏覽器已在 touchstart 自然定位游標
   },
-  onTextDragStart: (blockId: string) => selectTextBlock(blockId, { revealStep: false }),
+  onTextDragStart: (blockId: string) => selectTextBlock(blockId),
   showVerticalCenterGuide,
   showHorizontalCenterGuide
 })
@@ -1614,6 +1664,9 @@ const loadDraftData = async (draft: DraftData) => {
   shape.value = draft.shape
   stickers.value = draft.stickers
   drawingData.value = draft.drawing ?? null
+  // 還原送出用的 ID —— 被導去 LINE 登入再回來時，就是靠這個值讓重送
+  // 寫到同一筆，而不是多出一張便利貼
+  submissionId.value = draft.submissionId
 
   // 多文字區塊：優先使用 textBlocks，否則從舊格式轉換
   if (draft.textBlocks && draft.textBlocks.length > 0) {
@@ -1739,6 +1792,21 @@ const previewNoteData = computed(() => {
     status: 'waiting'
   } as any
 })
+
+/**
+ * 要送去 `/api/moderation` 的文字。
+ *
+ * 定義是「這張便利貼上所有**由使用者控制、而且會公開展示**的文字」，
+ * 不是「content 欄位」。兩者現在剛好相同，但**只要多出一種會上牆的使用者文字，
+ * 就必須加進這裡**——審核是照這個值做的，沒加進來就等於沒審。
+ *
+ * 目前已知的下一個：名牌貼紙的 LINE 暱稱。它不在 content 裡（會存進 style），
+ * 忘了加就是一條「把 LINE 暱稱改成髒話就能直接上 LED 牆」的路。
+ *
+ * 這個檢查是 fail-open 而且只在前端做（沒金鑰、OpenAI 掛掉、或直接繞過 UI
+ * 都會放行），真正的防線仍是後台即時下架——見 README 的「已知問題」。
+ */
+const moderatableText = computed(() => previewNoteData.value.content)
 
 const toRadians = (deg: number) => deg * (Math.PI / 180)
 
@@ -1893,20 +1961,49 @@ const validateGeoFenceBeforeSubmit = async (): Promise<boolean> => {
   return distance <= radiusMeters
 }
 
+/**
+ * 未登入時把人送去 LINE，回來之後接著送出。
+ *
+ * 導向之前必須**同步**把草稿寫完 —— 呼叫 startLogin 之後頁面就離開了，
+ * 平常那些 `setTimeout(saveDraftData, 0)` 的防抖存檔根本來不及跑，
+ * 使用者辛苦畫的東西會直接消失。
+ */
+const redirectToLogin = () => {
+  ensureSubmissionId()
+  saveDraftData()
+  showSubmitModal.value = false
+  startLogin(route.fullPath, 'submit')
+}
+
 const confirmSubmit = async () => {
   if (isSubmitting.value) return
 
-  if (!tokenRequiredForSubmit.value) {
-    const remainingCooldownMs = getTokenDisabledRemainingCooldownMs()
-    if (remainingCooldownMs > 0) {
-      showSubmitModal.value = false
+  // 送出是整個網站唯一需要身分的動作。瀏覽、編輯、預覽都不必登入，
+  // 所以這個檢查刻意放在這裡，而不是頁面層的 middleware。
+  if (!isMember.value) {
+    redirectToLogin()
+    return
+  }
+
+  // 配額的體驗性檢查。真正的強制在 firestore.rules，這裡是為了讓使用者
+  // 在按下送出的當下就知道原因，而不是等一輪上傳流程跑完才被拒絕。
+  const quota = await checkQuota(ensureSubmissionId())
+  if (!quota.allowed) {
+    showSubmitModal.value = false
+    if (quota.reason === 'daily') {
       showAlert(
-        `每次上傳後需等待 3 分鐘。請於 ${formatCooldownRemaining(remainingCooldownMs)} 後再試。`,
-        '上傳冷卻中',
+        `每人每天最多只能送出 ${quota.dailyLimit} 張便利貼，今天的份額已經用完了。明天再來吧！`,
+        '今天的額度用完了',
+        '📅'
+      )
+    } else {
+      showAlert(
+        `每次送出後需要間隔一段時間。請於 ${formatCooldownRemaining(quota.retryAfterMs ?? 0)} 後再試。`,
+        '請稍候',
         '⏱️'
       )
-      return
     }
+    return
   }
 
   const tokenForSubmit = tokenRequiredForSubmit.value ? (loadToken() || undefined) : undefined
@@ -1967,7 +2064,7 @@ const confirmSubmit = async () => {
       : 'valid'
     
     // 中介檢查：OpenAI Moderation API 擋下不好的文字
-    const allText = previewNoteData.value.content;
+    const allText = moderatableText.value;
     if (allText.trim()) {
       try {
         const modRes: any = await $fetch('/api/moderation', {
@@ -2022,14 +2119,16 @@ const confirmSubmit = async () => {
     // 2. 狀態正確(valid)或無法判別時，嘗試正式送出
     await createNote(
       { content: previewNoteData.value.content, style: previewNoteData.value.style },
-      tokenForSubmit
+      tokenForSubmit,
+      ensureSubmissionId()
     )
 
-    // 上傳成功：清除草稿與快取的 Token
+    // 上傳成功：清除草稿與快取的 Token。
+    // 用量不需要在這裡記——預約在 createNote 裡就已經寫進 user_quota 了。
     clearDraft()
-    if (!tokenRequiredForSubmit.value) {
-      saveTokenDisabledSubmitTimestamp()
-    }
+    // 草稿清掉了，下一張要用新的 submissionId，否則會被當成「同一張的重試」
+    // 而不吃額度
+    submissionId.value = undefined
     if (tokenRequiredForSubmit.value && tokenForSubmit) {
       clearToken() // 將 SessionStorage 中的 Token 刪除
     }
@@ -2047,9 +2146,34 @@ const confirmSubmit = async () => {
   } catch (e: any) {
     showSubmitModal.value = false // 關閉「確認上傳」的 Modal，讓錯誤提示能正常顯示在最上層
     console.error('提交失敗:', e)
-    
-    // 如果因為 Firebase Rules 阻擋讀取 token 而拋錯，退回到這裡用泛用的錯誤提示
-    if (
+
+    // 送出中途登入狀態失效（token 過期、使用者在別的分頁登出）。
+    // 直接把人再送去登入一次，草稿還在，回來接著送。
+    if (e?.message === 'NOT_LOGGED_IN') {
+      showAlert(
+        '登入狀態已失效，請重新用 LINE 登入後再送出。你的便利貼已經幫你留著了。',
+        '需要重新登入',
+        '🔑',
+        { confirmText: '重新登入', onConfirm: redirectToLogin }
+      )
+    } else if (e?.message === 'QUOTA_EXCEEDED') {
+      // 前面的 checkQuota 已經先擋過一次，走到這裡代表兩者判斷不一致：
+      // 多半是在別的分頁／裝置上剛送出一張，或是裝置時鐘與伺服器差太多
+      // （submitDate 對不上）。訊息保持籠統，不要猜原因。
+      showAlert(
+        '目前無法送出，可能是剛剛已經送過一張、或是今天的額度用完了。請稍後再試。',
+        '送出次數已達上限',
+        '⏱️'
+      )
+    } else if (e?.message === 'NOTE_CREATE_DENIED') {
+      // 已經登入卻還是被規則擋下，實務上幾乎只剩「後台開著 Token 驗證
+      // 但這次沒帶憑證」這一種
+      showAlert(
+        '目前送出需要店員提供的 QR Code，請向店員索取後再試一次。',
+        '無法送出',
+        '🚫'
+      )
+    } else if (
       tokenRequiredForSubmit.value &&
       (e?.code === 'permission-denied' || e?.message?.includes('Missing or insufficient permissions'))
     ) {
@@ -2120,9 +2244,84 @@ const checkInitialModals = async () => {
       showTutorialModal.value = true
     }
   }
-  
+
   // 初始化 Fabric 手繪
   initFabricBrush()
+}
+
+/** LINE 登入失敗的原因對應到使用者看得懂的說法 */
+const LOGIN_ERROR_MESSAGES: Record<string, string> = {
+  unconfigured: '登入服務尚未設定完成，請聯絡店員。',
+  state_missing: '登入逾時了，請再試一次。',
+  state_mismatch: '登入逾時了，請再試一次。',
+  token_exchange_failed: '與 LINE 連線失敗，請稍後再試。',
+  id_token_invalid: '無法驗證你的 LINE 身分，請再試一次。'
+}
+
+/**
+ * 從 LINE 回來之後接續原本的動作。
+ *
+ * 認得出「這次載入是登入往返」時，會跳過一般的開場流程
+ * （活動規範 → START → 問要不要用草稿）並直接還原草稿 ——
+ * 使用者幾秒前才剛按下送出，再讓他把那一串重看一次是很奇怪的。
+ * 網址上沒有 login 參數就什麼都不做。
+ */
+const handleLoginReturn = async (): Promise<void> => {
+  const outcome = route.query.login
+  if (typeof outcome !== 'string') return
+
+  const reason = typeof route.query.reason === 'string' ? route.query.reason : ''
+  const pendingAction = takePendingAction()
+
+  // 網址上的登入結果讀完就清掉：重新整理不該再觸發一次，
+  // 也不該把它連同 token 一起分享出去
+  const query = { ...route.query }
+  delete query.login
+  delete query.reason
+  await router.replace({ query })
+
+  // 跳過開場：規範在按送出之前就已經同意過了
+  showIntroOverlay.value = false
+  termsAccepted.value = true
+  await nextTick()
+  initFabricBrush()
+
+  const draft = loadDraft()
+  if (draft) {
+    await nextTick()
+    await new Promise<void>(r => requestAnimationFrame(() => r()))
+    await loadDraftData(draft)
+  }
+
+  if (outcome === 'cancelled') {
+    showAlert('送出便利貼需要用 LINE 登入。你做的內容都還在，登入後就能送出。', '還沒完成登入', '🔑')
+    return
+  }
+
+  if (outcome !== 'ok') {
+    showAlert(
+      LOGIN_ERROR_MESSAGES[reason] || '登入時發生問題，請再試一次。',
+      '登入失敗',
+      '⚠️'
+    )
+    return
+  }
+
+  const signedIn = await completeLogin()
+  if (!signedIn) {
+    showAlert('登入沒有完成，請再試一次。', '登入失敗', '⚠️')
+    return
+  }
+
+  // 會員資料寫入是背景工作，寫失敗不影響送出
+  void syncProfile(profile.value?.lineName ?? '', profile.value?.linePicture ?? null)
+
+  // 刻意只開回確認畫面，**不自動送出**。
+  // 自動送的話，使用者在這一刻按上一頁或重新整理都可能再觸發一次；
+  // submissionId 擋得住重複建立，但讓人搞不清楚到底送出了沒更糟。
+  if (pendingAction === 'submit' && hasSubmittableContent.value) {
+    showSubmitModal.value = true
+  }
 }
 
 onMounted(async () => {
@@ -2216,6 +2415,10 @@ onMounted(async () => {
     })
     resizeObserver.observe(canvasRef.value)
   }
+
+  // 放在最後：從 LINE 回來時要還原草稿並開回確認畫面，
+  // 那需要畫布與 scaler 都已經就緒
+  await handleLoginReturn()
 })
 
 onUnmounted(() => {

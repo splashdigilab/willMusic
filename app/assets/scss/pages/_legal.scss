@@ -1,0 +1,234 @@
+/*
+  Page: Privacy Policy
+
+  一份要捲著看的長文件，與站上其他頁（滿版、鎖高度、深色）的規則完全不同：
+  這裡只要好讀。白底黑字、單欄、限制行寬，字級用 rem 而不是 cqw ——
+  cqw 是為了對設計稿，這一頁沒有稿，跟著使用者的瀏覽器字級走才對。
+*/
+@use '../base/variables' as var;
+
+.p-legal {
+    min-height: 100dvh;
+    background: #fff;
+    color: #222;
+    /* viewport-fit=cover 之下瀏海機的左右安全區要自己補 */
+    padding:
+        2.5rem
+        max(1.25rem, env(safe-area-inset-right))
+        max(3rem, env(safe-area-inset-bottom))
+        max(1.25rem, env(safe-area-inset-left));
+
+    &__container {
+        /* 約 38 個中文字一行。再寬眼睛要回行就會找不到位置 */
+        max-width: 42rem;
+        margin: 0 auto;
+    }
+
+    /* ── 未定稿警告 ─────────────────────────────────────
+       只在文案還有【】時出現，見 pages/privacy.vue 的 unfilledCount */
+    &__draft {
+        margin-bottom: 2rem;
+        padding: 1rem 1.25rem;
+        border: 2px solid #b45309;
+        border-radius: 8px;
+        background: #fffbeb;
+    }
+
+    &__draft-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #b45309;
+    }
+
+    &__draft-body {
+        margin: 0.5rem 0 0;
+        font-size: 0.875rem;
+        line-height: 1.7;
+        color: #78350f;
+
+        code {
+            padding: 0.1em 0.35em;
+            border-radius: 4px;
+            background: rgba(180, 83, 9, 0.12);
+            font-size: 0.95em;
+        }
+    }
+
+    /* ── 頁首 ───────────────────────────────────────── */
+    &__header {
+        margin-bottom: 2rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 2px solid #eee;
+    }
+
+    &__title {
+        margin: 0;
+        font-size: 1.625rem;
+        font-weight: 800;
+        line-height: 1.4;
+    }
+
+    &__updated {
+        margin: 0.75rem 0 0;
+        font-size: 0.875rem;
+        color: #777;
+    }
+
+    &__intro {
+        margin-bottom: 2rem;
+    }
+
+    /* ── 目錄 ───────────────────────────────────────── */
+    &__toc {
+        margin-bottom: 2.5rem;
+        padding: 1.25rem 1.5rem;
+        border-radius: 8px;
+        background: #f6f7f8;
+    }
+
+    &__toc-title {
+        margin: 0 0 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: #555;
+    }
+
+    &__toc-list {
+        margin: 0;
+        padding-left: 1.2em;
+        font-size: 0.9375rem;
+        line-height: 2;
+
+        a {
+            color: var.$will-blue;
+            text-decoration: none;
+
+            &:hover {
+                text-decoration: underline;
+            }
+        }
+    }
+
+    /* ── 章節 ───────────────────────────────────────── */
+    &__section {
+        margin-bottom: 2.5rem;
+        /* 從目錄點過來時標題不要貼在視窗最上緣 */
+        scroll-margin-top: 1.5rem;
+    }
+
+    &__heading {
+        margin: 0 0 1rem;
+        font-size: 1.25rem;
+        font-weight: 700;
+        line-height: 1.5;
+    }
+
+    &__subheading {
+        margin: 1.75rem 0 0.75rem;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #333;
+    }
+
+    &__text {
+        margin: 0 0 1rem;
+        font-size: 1rem;
+        line-height: 1.9;
+        /* 中英數混排時讓長網址或編號有地方斷 */
+        overflow-wrap: anywhere;
+    }
+
+    &__list {
+        margin: 0 0 1rem;
+        padding-left: 1.4em;
+        font-size: 1rem;
+        line-height: 1.9;
+
+        li {
+            margin-bottom: 0.6em;
+
+            &:last-child {
+                margin-bottom: 0;
+            }
+        }
+    }
+
+    /* 需要讀者停下來看的段落。用左側粗線而不是整塊底色，
+       連續出現好幾個時比較不會變成一片色塊 */
+    &__note {
+        margin: 0 0 1rem;
+        padding: 0.875rem 1.125rem;
+        border-left: 4px solid var.$will-blue;
+        background: #f2f6fb;
+        font-size: 0.9375rem;
+        font-weight: 700;
+        line-height: 1.8;
+    }
+
+    /* ── 表格 ───────────────────────────────────────── */
+    &__table-scroll {
+        margin: 0 0 1.25rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    &__table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9375rem;
+        line-height: 1.7;
+        /* 手機上三欄會擠成一團，給個最小寬度讓它改成橫向捲 */
+        min-width: 22rem;
+
+        th,
+        td {
+            padding: 0.625rem 0.75rem;
+            border: 1px solid #e3e5e8;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            background: #f6f7f8;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+    }
+
+    /* ── 頁尾 ───────────────────────────────────────── */
+    &__footer {
+        margin-top: 3rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #eee;
+        /* 兩份文件互相連結 + 回首頁。窄螢幕上讓它們換行而不是擠在一起 */
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1.25rem;
+    }
+
+    &__link {
+        font-size: 0.9375rem;
+        font-weight: 700;
+        color: var.$will-blue;
+        text-decoration: underline;
+        text-underline-offset: 0.2em;
+    }
+
+    &__back {
+        display: inline-block;
+        padding: 0.625rem 1.5rem;
+        border: 1px solid #111;
+        border-radius: 999px;
+        font-size: 0.9375rem;
+        font-weight: 700;
+        color: #111;
+        text-decoration: none;
+
+        &:hover {
+            background: #111;
+            color: #fff;
+        }
+    }
+}

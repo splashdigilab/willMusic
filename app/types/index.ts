@@ -24,7 +24,10 @@ export interface TextBlockInstance {
   rotation: number
   color: string
   align: TextAlign
-  /** 鎖定圖層：無法被點擊選取，只能長按解鎖 */
+  /**
+   * 鎖定圖層：無法被點擊選取，只能長按解鎖。
+   * 上鎖的入口已從編輯器面板拿掉，這個欄位留著讓舊草稿裡已鎖定的區塊還能長按解開。
+   */
   locked?: boolean
 }
 
@@ -45,6 +48,14 @@ export interface DraftData {
   drawing?: string // 手繪內容 data URL
   /** 各物件 id 的疊放順序（與編輯器 objectZOrder 一致）；載入草稿時還原 */
   objectLayerOrder?: Record<string, number>
+  /**
+   * 這份草稿送出時要用的 queue_pending doc ID。
+   *
+   * 跟著草稿走，所以「按送出 → 被導去 LINE 登入 → 回來再送一次」與
+   * 「使用者連按兩下」都會寫到同一個 ID。規則只開放 create（update 是 false），
+   * 第二次寫同一個 ID 會被 Firestore 擋下來，不會變成兩張便利貼。
+   */
+  submissionId?: string
   timestamp: number
 }
 
@@ -87,12 +98,21 @@ export type TokenStatus = 'unused' | 'used'
 
 /**
  * 待處理佇列項目
+ *
+ * `uid` 是 LINE 登入上線後才有的欄位，所以是 optional：在那之前送出的便利貼
+ * 沒有這個欄位，而且刻意不回填（規則只管 create，舊文件不受影響；
+ * 回填要對整個 queue_history 逐筆寫入，成本與風險都不划算）。
+ * 顯示端遇到沒有 uid 的資料一律當成匿名處理。
+ *
+ * 注意 uid 只用於身分追溯與封鎖，**不會顯示在 LED 牆上**。
+ * 牆上要不要出現暱稱與頭貼由使用者自己決定，那份資料在 style 裡。
  */
 export interface QueuePendingItem {
   id?: string // Firestore document ID
   content: string
   style: StickyNoteStyle
   token: string
+  uid?: string // 投稿者的 Firebase uid（= line:<LINE userId>）
   timestamp: Timestamp
   status: 'waiting'
 }
@@ -105,9 +125,56 @@ export interface QueueHistoryItem {
   content: string
   style: StickyNoteStyle
   token: string
+  uid?: string
   timestamp: Timestamp
   status: 'played'
   playedAt: Timestamp
+}
+
+/**
+ * LINE 會員資料（users/{uid}）
+ *
+ * 由前端在登入後自己寫入，`displayName` 必須與 custom token 的 lineName claim
+ * 一致才寫得進去（見 firestore.rules 的 canWriteUserProfile）。
+ */
+export interface UserProfile {
+  displayName: string
+  /** 頭貼的 base64 data URL。沒抓到就沒有這個欄位 */
+  avatar?: string
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
+/**
+ * 投稿配額（user_quota/{uid}）—— 每人每 N 分鐘 1 張、每天 M 張。
+ *
+ * 這是「預約」：前端在真正寫入便利貼之前先寫這一份，規則在這一步檢查冷卻與
+ * 每日上限；便利貼的 create 則要求存在一張指名該 doc ID 的新鮮預約。
+ * 詳見 firestore.rules 的「投稿配額」段落。
+ */
+export interface UserQuota {
+  /** 一律是 serverTimestamp()，規則會驗它等於 request.time */
+  lastSubmitAt: Timestamp
+  /** 台灣當地日期鍵，沒有補零（例：2026-9-5）。算法要與規則的 taipeiDateKey 一致 */
+  submitDate: string
+  /** submitDate 那一天已經用掉幾張 */
+  submitCount: number
+  /** 這張預約對應的 queue_pending doc ID（= 編輯器的 submissionId） */
+  pendingNoteId: string
+}
+
+/** system/editor_rate_limit —— 後台可調的投稿頻率限制 */
+export interface RateLimitConfig {
+  enabled: boolean
+  cooldownMinutes: number
+  dailyLimit: number
+}
+
+/** 規則裡寫死的預設值，文件不存在時生效。兩邊要一致 */
+export const DEFAULT_RATE_LIMIT: RateLimitConfig = {
+  enabled: true,
+  cooldownMinutes: 5,
+  dailyLimit: 3
 }
 
 /**

@@ -19,9 +19,8 @@ $will-dark-deep: #282828;
 // 文字灰（沿用舊值，全站字色與陰影都以此為基準）
 $color-grey: #241F20;
 
-/* Editor 選取狀態（編輯框 outline、拖曳條背景，與 tutorial 示意一致） */
-$editor-selection-outline: rgba(76, 193, 214, 0.8);
-$editor-selection-bar-bg: rgba(76, 193, 214, 0.9);
+/* 編輯器的選取外框不在這裡：單色會與天藍／白／黑材質撞色，
+   改由 mixins/editor 的 editor-selection-outline 畫成雙色。 */
 
 :root {
   // Colors
