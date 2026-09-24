@@ -71,7 +71,7 @@
 import type { QueuePendingItem, QueueHistoryItem, StickerInstance, TextBlockInstance } from '~/types'
 import { STICKER_LIBRARY } from '~/data/stickers'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
-import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
+import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z, DRAWING_LAYER_ID } from '~/utils/sticky-note-style'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 
 interface Props {
@@ -91,25 +91,26 @@ const stickers = computed(() => {
 
 const textBlocks = computed<TextBlockInstance[]>(() => props.note.style?.textBlocks ?? [])
 
-/** 預覽/上傳/display 與編輯器疊放順序一致；無則沿用預設（文字 1、貼紙 3） */
+/**
+ * 疊放順序。新的便利貼不再存這份記錄，一律走 NOTE_LAYER_Z 的固定順序；
+ * 舊的便利貼存過，就以它自己的記錄為準，這次改動不會讓已經上牆的內容變樣。
+ */
 const objectLayerOrder = computed(() => props.note.style?.objectLayerOrder ?? {})
 
 const getBlockWrapStyle = (block: TextBlockInstance) => {
   const base = getTextBlockStyle(block.x, block.y, block.scale, block.rotation)
-  const z = objectLayerOrder.value[block.id] ?? 1
+  const z = objectLayerOrder.value[block.id] ?? NOTE_LAYER_Z.text
   return { ...base, zIndex: z }
 }
 
 const getStickerWrapStyle = (sticker: StickerInstance) => {
   const base = getStickerStyle(sticker)
-  const z = objectLayerOrder.value[sticker.id] ?? 3
+  const z = objectLayerOrder.value[sticker.id] ?? NOTE_LAYER_Z.sticker
   return { ...base, zIndex: z }
 }
 
-/** 手繪層的疊放順序。編輯器把它記在 objectZOrder 的 'drawing-layer' 這個鍵上；
-    舊便利貼沒有這筆資料，退回 SCSS 原本的 2（文字 1、貼紙 3 之間）。 */
 const drawingStyle = computed(() => ({
-  zIndex: objectLayerOrder.value['drawing-layer'] ?? 2
+  zIndex: objectLayerOrder.value[DRAWING_LAYER_ID] ?? NOTE_LAYER_Z.drawing
 }))
 
 const noteStyleProps = computed<StickyNoteStyleProps>(() => ({

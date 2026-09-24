@@ -193,7 +193,7 @@
             :key="block.id"
             :data-text-block-id="block.id"
             class="p-editor__text-content"
-            :style="[getTextBlockStyleComputed(block), drawMode ? STYLE_POINTER_NONE : STYLE_EMPTY, { zIndex: getObjectZIndex(block.id) }]"
+            :style="[getTextBlockStyleComputed(block), drawMode ? STYLE_POINTER_NONE : STYLE_EMPTY, { zIndex: NOTE_LAYER_Z.text }]"
             @click.stop="() => { if (!drawMode) selectTextBlock(block.id) }"
           >
             <!-- 外層包裹器：接收 padding，點擊時觸發拖曳 -->
@@ -228,7 +228,7 @@
             :key="sticker.id"
             class="p-editor__sticker-content"
             :class="{ 'is-sticker-clickable': !drawMode }"
-            :style="[getStickerStyle(sticker), { zIndex: getObjectZIndex(sticker.id) }]"
+            :style="[getStickerStyle(sticker), { zIndex: NOTE_LAYER_Z.sticker }]"
             @click.stop="selectSticker(sticker.id)"
             @touchstart.stop="() => { if (!isTwoFingerGesture) selectSticker(sticker.id) }"
           >
@@ -247,7 +247,7 @@
             :class="{ 'is-active': drawMode }"
             :style="{ 
               pointerEvents: drawMode ? 'auto' : 'none',
-              zIndex: getObjectZIndex(DRAWING_LAYER_ID)
+              zIndex: drawMode ? DRAW_MODE_LAYER_Z : NOTE_LAYER_Z.drawing
             }"
           >
             <!-- Fabric.js canvas：始終留在 DOM（init 需要），縮小後視覺空白 -->
@@ -288,7 +288,7 @@
               'is-dragging': textBlockDragging && selectedTextBlockId === block.id,
               'is-transforming': textBlockTransforming && selectedTextBlockId === block.id
             }"
-            :style="[getTextBlockStyleComputed(block), { zIndex: getObjectZIndex(block.id) }]"
+            :style="[getTextBlockStyleComputed(block), { zIndex: NOTE_LAYER_Z.text }]"
             @mousedown="() => selectTextBlock(block.id)"
             @touchstart="() => { if (!isTwoFingerGesture) selectTextBlock(block.id) }"
           >
@@ -322,7 +322,7 @@
               'is-dragging': draggingStickerId === sticker.id,
               'is-transforming': transformingStickerId === sticker.id
             }"
-            :style="[getStickerStyle(sticker), { zIndex: getObjectZIndex(sticker.id) }]"
+            :style="[getStickerStyle(sticker), { zIndex: NOTE_LAYER_Z.sticker }]"
             @mousedown="onStickerMouseDown($event, sticker)"
             @touchstart="onStickerTouchStart($event, sticker)"
             @click.stop="onStickerClick(sticker.id)"
@@ -627,7 +627,7 @@ import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
 import { BACKGROUND_IMAGES, isColorMaterial } from '~/data/backgrounds'
 import { SELECTABLE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_STEPS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH, type EditorStepId } from '~/data/editor-config'
-import { getTextBlockStyle, getStickerStyle } from '~/utils/sticky-note-style'
+import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z } from '~/utils/sticky-note-style'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
 import { useCanvasPinch } from '~/composables/useCanvasPinch'
@@ -694,16 +694,10 @@ const selectedTextBlockId = ref<string | null>(null)
 const textBlockDragging = ref(false)
 const textBlockTransforming = ref(false)
 
-// 每個物件（文字區塊 / 貼紙）各自疊放順序：點選時 bringToFront，完成後該物件維持最頂層。
-// 手繪層沒有實體 id，用這個固定鍵混在同一張表裡排序；顯示端（StickyNote）也讀同一個鍵。
-const DRAWING_LAYER_ID = 'drawing-layer'
-const objectZOrder = ref<Record<string, number>>({})
-let zOrderCounter = 0
-const getObjectZIndex = (id: string) => objectZOrder.value[id] ?? 1
-const bringToFront = (id: string) => {
-  zOrderCounter += 1
-  objectZOrder.value = { ...objectZOrder.value, [id]: zOrderCounter }
-}
+// 疊放順序是固定的（NOTE_LAYER_Z：貼紙最上、手繪中間、文字最下），編輯器與顯示端共用同一組值。
+// 繪圖時手繪層暫時蓋在所有東西上面，筆畫才看得見 —— 那只是「正在畫」的臨時狀態，
+// 不會被記錄下來，也不是便利貼本身的順序。
+const DRAW_MODE_LAYER_Z = 9999
 
 // 文字編輯時的原始內容快照（用於取消還原）
 const textBlockInitialContents = new Map<string, string>()
@@ -933,7 +927,6 @@ watch(activeTab, (tab) => {
     // 恢復畫布尺寸（從 1×1 最小化還原為 600×600，重新分配 GPU backing store）
     fabricBrush.restoreCanvas()
     fabricBrush.setDrawingMode(true)
-    bringToFront(DRAWING_LAYER_ID)
   } else {
     if (drawMode.value) {
       // 離開繪圖模式：立即存檔（saveImmediately=true），不用防抖，避免資料遺失
@@ -947,8 +940,8 @@ watch(activeTab, (tab) => {
     }
     drawMode.value = false
   }
-  // 離開文字步驟就收起文字選取與鍵盤。疊放順序存在 objectZOrder，不靠選取維持，
-  // 所以清掉選取不會讓文字掉到底層。
+  // 離開文字步驟就收起文字選取與鍵盤。疊放順序是固定的、與選取無關，
+  // 所以清掉選取不會影響文字在第幾層。
   if (tab !== 'text') {
     selectedTextBlockId.value = null
     nextTick(() => {
@@ -1239,7 +1232,6 @@ const enterTextStep = () => {
   }
   selectedTextBlockId.value = target.id
   selectedStickerId.value = null
-  bringToFront(target.id)
   if (!target.locked) focusSelectedTextBlock()
 }
 
@@ -1261,7 +1253,6 @@ const addTextBlockFromPanel = () => {
   const newBlock = addTextBlock()
   selectedTextBlockId.value = newBlock.id
   selectedStickerId.value = null
-  bringToFront(newBlock.id)
   focusSelectedTextBlock()
 }
 
@@ -1352,7 +1343,6 @@ const addSticker = (stickerType: string) => {
   // 選取新貼紙讓編輯框出現（貼紙只能從 STEP 5 的貼圖庫加，本來就在這一步）
   selectedStickerId.value = newSticker.id
   selectedTextBlockId.value = null
-  bringToFront(newSticker.id)
 }
 
 const selectSticker = (id: string) => {
@@ -1368,7 +1358,6 @@ const selectSticker = (id: string) => {
 
   selectedStickerId.value = id
   selectedTextBlockId.value = null
-  bringToFront(id)
   // 面板切到貼圖那一步，被選中的貼紙才有對應的控制項可用
   revealStepFor('sticker')
 }
@@ -1383,7 +1372,6 @@ const selectTextBlock = (blockId: string, options?: { revealStep?: boolean }) =>
   const isCurrentlyEditing = selectedTextBlockId.value === blockId && activeTab.value === 'text'
 
   if (isCurrentlyEditing) {
-    bringToFront(blockId)
     // 已經在文字模式下再次點擊同一個文字區塊：確保重新聚焦並叫出鍵盤
     focusSelectedTextBlock()
     return
@@ -1402,7 +1390,6 @@ const selectTextBlock = (blockId: string, options?: { revealStep?: boolean }) =>
   snapshotTextBlockInitial(blockId)
   selectedTextBlockId.value = blockId
   selectedStickerId.value = null
-  bringToFront(blockId)
   // 面板切到文字那一步。順序很重要：contenteditable 綁在 activeTab === 'text'，
   // 要先切步驟，下面的 focus 才有東西可以聚焦。
   if (options?.revealStep !== false) revealStepFor('text')
@@ -1513,7 +1500,6 @@ const saveDraftData = () => {
     textTransform: nonEmptyTextBlocks[0] ? { x: nonEmptyTextBlocks[0].x, y: nonEmptyTextBlocks[0].y, scale: nonEmptyTextBlocks[0].scale, rotation: nonEmptyTextBlocks[0].rotation } : undefined,
     textBlocks: nonEmptyTextBlocks,
     drawing: drawingData.value ?? undefined,
-    objectLayerOrder: { ...objectZOrder.value },
     timestamp: Date.now()
   }
   saveDraft(draft)
@@ -1616,69 +1602,9 @@ const loadDraftData = async (draft: DraftData) => {
     await nextTick()
     fabricBrush.loadFromDataURL(draft.drawing)
   }
-  // 還原物件前後順序：與編輯時一致；保證唯一 z 且強制更新視圖
-  const textIds = textBlocks.value.map(b => b.id)
-  const stickerIds = stickers.value.map(s => s.id)
-  const orderFromDraft = draft.objectLayerOrder && Object.keys(draft.objectLayerOrder).length > 0
-    ? { ...draft.objectLayerOrder }
-    : null
-  const allIds = new Set([...textIds, ...stickerIds])
-  // 手繪層的順序也記在 objectZOrder 裡（鍵是 DRAWING_LAYER_ID），但它不是 textBlocks
-  // 也不是 stickers，上面兩行掃不到。不補進來的話，回復草稿後手繪會掉到最底層 ——
-  // 存檔前明明蓋在貼紙上，回來就跑到底下，而且送出的 objectLayerOrder 也會少這一筆，
-  // 顯示端只能退回預設值，畫布、預覽、大螢幕三邊各長一個樣。
-  // 舊草稿沒存過這一筆時不補，維持原本的預設行為，不去猜它當初在第幾層。
-  if (orderFromDraft?.[DRAWING_LAYER_ID] != null) allIds.add(DRAWING_LAYER_ID)
-
-  if (orderFromDraft) {
-    const restored: Record<string, number> = {}
-    for (const id of allIds) {
-      const v = orderFromDraft[id]
-      const n = typeof v === 'number' && !Number.isNaN(v) ? v : Number(v)
-      if (!Number.isNaN(n)) restored[id] = n
-    }
-    if (Object.keys(restored).length > 0) {
-      const textOrders = textIds.map(id => restored[id]).filter((n): n is number => n != null)
-      const stickerOrders = stickerIds.map(id => restored[id]).filter((n): n is number => n != null)
-      const legacyWrongOrder =
-        textOrders.length > 0 &&
-        stickerOrders.length > 0 &&
-        Math.max(...textOrders) < Math.min(...stickerOrders)
-      if (legacyWrongOrder) {
-        const maxOrder = Math.max(...Object.values(restored))
-        textIds.forEach(id => {
-          if (restored[id] != null) restored[id] = (restored[id] as number) + maxOrder + 1
-        })
-      }
-      for (const id of allIds) {
-        if (restored[id] == null) {
-          const maxVal = Math.max(0, ...Object.values(restored))
-          restored[id] = maxVal + 1
-        }
-      }
-      // 依數值升序重排為 1,2,3,…（同值時依 id 穩定排序），保證唯一且還原疊放
-      const sorted = Object.entries(restored).sort(
-        ([idA, a], [idB, b]) => (a !== b ? a - b : idA.localeCompare(idB))
-      )
-      const normalized: Record<string, number> = {}
-      sorted.forEach(([id], i) => { normalized[id] = i + 1 })
-      objectZOrder.value = { ...normalized }
-      zOrderCounter = sorted.length
-      await nextTick()
-    } else {
-      applyDefaultLayerOrder(textIds, stickerIds)
-    }
-  } else {
-    applyDefaultLayerOrder(textIds, stickerIds)
-  }
-}
-
-function applyDefaultLayerOrder(textIds: string[], stickerIds: string[]) {
-  const ids = [...stickerIds, ...textIds]
-  const next: Record<string, number> = {}
-  ids.forEach((id, i) => { next[id] = i + 1 })
-  objectZOrder.value = next
-  zOrderCounter = ids.length
+  // 疊放順序不用還原了：現在是固定的（NOTE_LAYER_Z），草稿裡的 objectLayerOrder
+  // 只有舊版寫過，讀了也不會用到。這裡原本有一整段「把存下來的順序重新編號」的程式，
+  // 正是它造成了「回復草稿後東西自己換位」的兩個問題。
 }
 
 const resetEditorToInitial = () => {
@@ -1690,8 +1616,6 @@ const resetEditorToInitial = () => {
   selectedStickerId.value = null
   step.value = 0
   drawingData.value = null
-  objectZOrder.value = {}
-  zOrderCounter = 0
   fabricBrush.clear()
   syncContentToDom()
 }
@@ -1764,8 +1688,7 @@ const previewNoteData = computed(() => {
     textAlign: textBlocks.value[0]?.align ?? 'center',
     stickers: stickers.value,
     textTransform: textBlocks.value[0] ? { x: textBlocks.value[0].x, y: textBlocks.value[0].y, scale: textBlocks.value[0].scale, rotation: textBlocks.value[0].rotation } : undefined,
-    textBlocks: textBlocks.value,
-    objectLayerOrder: { ...objectZOrder.value }
+    textBlocks: textBlocks.value
   }
   if (drawingData.value) style.drawing = drawingData.value
 
