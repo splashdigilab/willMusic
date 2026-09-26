@@ -111,10 +111,21 @@
             </ul>
           </section>
         </template>
+      </template>
 
+      <!-- 左上的圓鈕長得像「上一頁」，使用者認不出它會回首頁，所以頁尾再放一顆寫明的。
+           未登入、空狀態也都要有：這頁本身沒有其他出口 -->
+      <footer class="p-my-notes__footer">
+        <NuxtLink to="/" class="p-my-notes__btn p-my-notes__btn--home">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 10.5L12 3l9 7.5"></path>
+            <path d="M5 9v11a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9"></path>
+          </svg>
+          回到首頁
+        </NuxtLink>
         <!-- 還沒送過的人不需要先讀到「會被撤下」 -->
         <p v-if="myIds.length" class="p-my-notes__footnote">不符合活動規範的便利貼會被撤下，不會出現在這裡。</p>
-      </template>
+      </footer>
     </div>
   </div>
 </template>

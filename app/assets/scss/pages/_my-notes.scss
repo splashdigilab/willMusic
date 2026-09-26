@@ -7,7 +7,7 @@
   視覺與送出後的等待頁（_queue-status.scss）同一套：深灰底、白色漸層卡片、
   天藍漸層藥丸。這兩頁是同一件事的前後 —— 送出、然後等它上牆。
 
-  由上而下：額度卡（今天還能送幾張 + 製作按鈕）→ 排隊中 → 已上牆。
+  由上而下：額度卡（今天還能送幾張 + 製作按鈕）→ 排隊中 → 已上牆 → 頁尾（回到首頁）。
   排隊中做成一列一張、字放大，因為要讀的是「前面還有幾張」；
   已上牆做成兩欄的牆，那時候要看的是便利貼本身。
 */
@@ -213,6 +213,20 @@ $ink-red: #D6335A;
     margin-top: 1.75rem;
     background: var.$line-green;
   }
+
+  /* 回到首頁：導覽不是主要動作，不能跟額度卡裡的天藍「製作便利貼」搶。
+     外觀取左上圓鈕那一套（更深的底 ＋ 細亮邊），兩顆看起來是同一類東西 */
+  &--home {
+    gap: 0.45rem;
+    /* 跟著字的寬度，不撐滿：撐滿的深色藥丸在頁底份量太重 */
+    width: auto;
+    margin-top: 0;
+    padding: 0.65rem 1.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: var.$will-dark-deep;
+    font-size: 0.95rem;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  }
 }
 
 /* ── 區塊標題：「排隊中 2」「已上牆 5」 ── */
@@ -315,21 +329,19 @@ $ink-red: #D6335A;
   font-weight: 700;
 }
 
-/* ── 已上牆：兩欄 ── */
+/* ── 已上牆：兩欄 ──
+   便利貼直接貼在頁面上，不再包灰框：便利貼本身已經有陰影，框中框很重；
+   只有一張的時候右邊空一格，看起來像少了什麼。 */
 .p-my-notes__gallery {
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 1.25rem 1rem;
 }
 
 .p-my-notes__tile {
-  padding: 0.9rem 0.9rem 0.7rem;
-  border-radius: $tile-radius;
-  border: $tile-border;
-  background: $tile-bg;
   text-align: center;
 
   .p-my-notes__thumb {
@@ -337,7 +349,7 @@ $ink-red: #D6335A;
   }
 
   .p-my-notes__time {
-    margin-top: 0.65rem;
+    margin-top: 0.8rem;
   }
 }
 
@@ -438,10 +450,19 @@ $ink-red: #D6335A;
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* 沉到頁尾：清單短的時候不要貼在最後一張下面 */
-.p-my-notes__footnote {
-  margin: auto 0 0;
+/* 頁尾沉到畫面底部：清單短的時候不要貼在最後一張下面。
+   回到首頁在上、說明小字壓在最下面，跟一般頁尾的附註同一個位置 */
+.p-my-notes__footer {
+  margin-top: auto;
   padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.p-my-notes__footnote {
+  margin: 0;
   text-align: center;
   font-size: 0.75rem;
   line-height: 1.6;
