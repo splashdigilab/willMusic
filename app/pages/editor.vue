@@ -221,8 +221,17 @@
             referrerpolicy="no-referrer"
             @error="avatarBroken = true"
           />
+          <!-- 沒有頭貼或讀不到：暱稱第一個字，跟右上角的 MemberBadge 一樣 -->
+          <span v-else class="p-editor__submit-avatar p-editor__submit-avatar--initial" aria-hidden="true">
+            {{ Array.from(profile?.lineName || '?')[0] }}
+          </span>
           <span class="p-editor__submit-identity-text">
-            <span class="p-editor__submit-identity-name">以 {{ profile?.lineName || 'LINE 帳號' }} 送出</span>
+            <!-- 暱稱獨立一行、不塞進「以…送出」的句子裡：一個字的暱稱夾在句子中間
+                 會變成「以 江 送出」，讀起來像三個詞。LINE 標籤負責說明這是哪種帳號 -->
+            <span class="p-editor__submit-identity-name">
+              <span class="p-editor__submit-identity-name-text">{{ profile?.lineName || 'LINE 帳號' }}</span>
+              <span class="p-editor__submit-identity-tag">LINE</span>
+            </span>
             <span
               v-if="quotaKind !== 'loading' && quotaKind !== 'unlimited'"
               class="p-editor__submit-identity-quota"
@@ -231,7 +240,7 @@
               <template v-if="quotaKind === 'banned'">這個帳號已停止投稿資格</template>
               <template v-else-if="quotaKind === 'exhausted'">今天的 {{ quotaUsage?.dailyLimit }} 張已經送完了</template>
               <template v-else-if="quotaKind === 'cooldown'">{{ quotaWaitText }} 後才能送出</template>
-              <template v-else>今天第 {{ quotaUsage?.nth }}／{{ quotaUsage?.dailyLimit }} 張</template>
+              <template v-else>今天第 {{ quotaUsage?.nth }} 張，共 {{ quotaUsage?.dailyLimit }} 張</template>
             </span>
           </span>
           <button
@@ -2303,13 +2312,21 @@ const confirmSubmit = async () => {
         '⏱️'
       )
     } else if (e?.message === 'NOTE_CREATE_DENIED') {
-      // 已經登入卻還是被規則擋下，剩兩種可能：剛好在這幾秒內被封鎖
-      // （送出前的檢查已經過了），或是「後台開著 Token 驗證但這次沒帶憑證」
+      // 已經登入卻還是被規則擋下：剛好在這幾秒內被封鎖（送出前的檢查已經過了）、
+      // 後台開著 Token 驗證但這次沒帶憑證，或是線上規則跟這一版程式對不上
+      // （程式先上、規則還沒部署）。只有真的開著 Token 驗證才提 QR Code ——
+      // 驗證關著時講 QR Code，使用者會去找店員要一個根本不存在的東西
       if (await isSelfBanned()) {
         showAlert(BANNED_ALERT_MESSAGE, '無法送出', '🚫')
-      } else {
+      } else if (tokenRequiredForSubmit.value) {
         showAlert(
           '目前送出需要店員提供的 QR Code，請向店員索取後再試一次。',
+          '無法送出',
+          '🚫'
+        )
+      } else {
+        showAlert(
+          '系統暫時無法接受這張便利貼，請稍後再試一次。一直失敗的話，請洽現場工作人員。你的便利貼已經幫你留著了。',
           '無法送出',
           '🚫'
         )

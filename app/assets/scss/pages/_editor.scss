@@ -1018,51 +1018,87 @@ body.is-editor-page #app {
    放在 AppModal 的 footnote 插槽裡。modal 是 teleport 到 body 的，
    所以這幾個 class 不能巢狀在 .p-editor 底下（寫成 &__ 產生的也是頂層 class，這裡直接寫明）。 */
 
-/* 已登入：頭貼＋「以某某送出／今天第幾張」＋登出，收成一顆淺灰膠囊。
-   寬度跟著內容走、置中，暱稱長到換行時膠囊才撐滿。 */
+/* 已登入：頭貼｜暱稱＋今天第幾張｜登出，一整列。
+   與下面的按鈕同寬，左緣右緣對齊；原本是置中、寬度跟著內容走的膠囊，
+   短暱稱時縮成一小顆飄在中間，跟上下都對不齊。 */
 .p-editor__submit-identity {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  width: fit-content;
-  max-width: 100%;
-  margin: 0 auto;
-  padding: 0.4rem 0.9rem;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.05);
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.045);
   text-align: left;
 }
 
 .p-editor__submit-avatar {
-  width: 32px;
-  height: 32px;
-  /* 有頭貼時左邊的內距收窄，讓圓頭貼貼近膠囊的圓角 */
-  margin-left: -0.5rem;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
   background: #ddd;
+
+  /* 沒有頭貼：暱稱第一個字，深灰底白字，跟右上角的圓鈕同色 */
+  &--initial {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var.$will-dark-deep;
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 800;
+    line-height: 1;
+  }
 }
 
 .p-editor__submit-identity-text {
+  flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 0.15rem;
   min-width: 0;
   line-height: 1.35;
 }
 
+/* 暱稱太長就截斷成一行，LINE 標籤一定留著 */
 .p-editor__submit-identity-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.p-editor__submit-identity-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #323232;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
+  /* 暱稱是使用者輸入的，多半不在介面字集裡、由內容字型供應，而內容字型只有 700。
+     寫 800 的話介面字集裡有的字會比其他字粗一階，同一個名字粗細不一 */
   font-weight: 700;
-  overflow-wrap: anywhere;
+}
+
+/* 跟送出確認畫面的 LINE 登入按鈕同一個綠：說明這是 LINE 帳號，不是站內帳號 */
+.p-editor__submit-identity-tag {
+  flex-shrink: 0;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var.$line-green;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
 }
 
 .p-editor__submit-identity-quota {
-  color: #888;
-  font-size: 0.75rem;
+  color: #7A7A7A;
+  font-size: 0.78rem;
   font-weight: 700;
-  /* 冷卻倒數每秒跳，等寬數字才不會讓整顆膠囊跟著抖 */
+  /* 冷卻倒數每秒跳，等寬數字才不會讓整列跟著抖 */
   font-variant-numeric: tabular-nums;
 
   /* 送不出去（停權、用完、冷卻中）：按確認一定會被擋，先用顏色預告 */
@@ -1072,20 +1108,23 @@ body.is-editor-page #app {
 }
 
 /* 登出刻意做得很低調：它是給「這不是我」的人用的，不是這個畫面在問的問題。
-   上下的內距只是為了加大觸控範圍，不影響膠囊高度（膠囊由頭貼撐高）。 */
+   做成細框小膠囊而不是底線字：底線字的基線跟左邊兩行字對不齊，看起來像沒排好。 */
 .p-editor__submit-logout {
   flex-shrink: 0;
-  margin-left: 0.2rem;
-  padding: 0.35rem 0 0.35rem 0.2rem;
-  border: 0;
+  min-height: 32px;
+  padding: 0 0.8rem;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
   background: transparent;
-  color: #888;
+  color: #666;
   font-family: inherit;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
   cursor: pointer;
+
+  &:active {
+    background: rgba(0, 0, 0, 0.06);
+  }
 
   &:disabled {
     opacity: 0.5;

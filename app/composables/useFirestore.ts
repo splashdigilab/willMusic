@@ -198,8 +198,9 @@ export const useFirestore = () => {
         // 這條路必然再被拒一次，只會把真正的原因蓋成一段看不懂的訊息。
         //
         // 規則收斂之後，未登入者根本走不到這裡（前面的 uid 檢查就擋了），
-        // 所以剩下的 permission-denied 幾乎都是「後台開著 Token 驗證，
-        // 但這次送出沒帶憑證」。
+        // 剩下的 permission-denied 是這幾種：剛被封鎖、後台開著 Token 驗證
+        // 但這次沒帶憑證，或是線上規則還是舊版、不認得這一版的寫法
+        // （2026-09-26 就發生過：程式改寫 note_owners，規則還沒部署）。
         throw new Error('NOTE_CREATE_DENIED')
       }
     } catch (error) {
