@@ -18,6 +18,12 @@
     justify-content: center;
     z-index: 1000;
     padding: 1rem;
+    /* 矮螢幕（iPhone SE 加上瀏覽器工具列）放不下帶預覽的確認畫面時，
+       讓整個遮罩捲動，而不是把卡片上下裁掉。
+       配合 .c-modal 的 margin: auto —— 只靠 align-items: center 的話，
+       溢出的上半部會落在捲動範圍之外，永遠捲不到。 */
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 /* 稿子畫板 11 / 13 實測：卡片為淺灰斜向漸層、圓角約 28，
@@ -28,6 +34,7 @@
     padding: 2.25rem 1.75rem;
     max-width: 400px;
     width: 100%;
+    margin: auto;
     text-align: center;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
 
@@ -77,6 +84,10 @@
         }
     }
 
+    &__footnote {
+        margin-bottom: 1.25rem;
+    }
+
     &__actions {
         display: flex;
         flex-wrap: wrap;
@@ -109,6 +120,13 @@
             background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
         }
 
+        /* 按下去會離開本站、進 LINE 登入的主要動作。
+           用 LINE 綠而不是本站的天藍：使用者一眼就知道接下來會看到 LINE 的畫面，
+           不會以為按了「確認」卻被莫名其妙帶走。 */
+        .c-button--line {
+            background: var.$line-green;
+        }
+
         /* 附帶動作（例如確認上傳畫面裡的「分享便利貼」）：
            order 讓它排到取消／確認之後，flex-basis 100% 讓它自己佔滿一列 ——
            三顆實心藥丸擠一行在 iPhone SE 上放不下，語意上它也不是這個 modal 在問的問題。
@@ -121,6 +139,40 @@
             color: #6B6B6B;
             font-size: 0.95rem;
             box-shadow: none;
+        }
+
+        /* 主按鈕獨佔一列（stackedActions）。
+           DOM 順序是 取消 → 附帶動作 → 主按鈕，用 order 把主按鈕拉到第一列；
+           取消改成跟附帶動作同一種描邊，兩顆並排在第二列 ——
+           實心桃紅留在主按鈕下面會跟它搶視線。 */
+        &--stacked {
+            /* 文字比並排時長（「LINE 登入並上傳大螢幕」）。字級隨螢幕寬度縮、
+               字距與左右內距收窄，320 寬也能排成一行；真的放不下時才換行，
+               balance 讓兩行平均，不會剩一個字掉到第二行 */
+            .c-modal__confirm {
+                order: -1;
+                flex: 1 0 100%;
+                padding: 1rem 0.75rem;
+                font-size: clamp(1rem, 5vw, 1.15rem);
+                letter-spacing: 0.03em;
+                white-space: normal;
+                text-wrap: balance;
+                line-height: 1.3;
+            }
+
+            /* 兩顆描邊並排在第二列。左右內距收窄，否則 320 寬時「分享便利貼」會斷成兩行 */
+            .c-modal__cancel,
+            .c-modal__side-btn {
+                order: 0;
+                flex: 1 1 0;
+                padding: 0.7rem 0.5rem;
+                background: transparent;
+                border: 2px solid #D0D0D0;
+                color: #6B6B6B;
+                font-size: 0.95rem;
+                white-space: nowrap;
+                box-shadow: none;
+            }
         }
     }
 }

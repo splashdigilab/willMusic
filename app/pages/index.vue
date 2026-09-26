@@ -79,6 +79,18 @@
       </button>
     </div>
 
+    <!-- 登入狀態：已登入是 LINE 頭貼、沒登入是人像輪廓（見 MemberBadge）。放右上，與左上的說明對稱。
+         指標事件要擋掉，理由與說明鈕相同（usePanZoom 會搶走 click）。 -->
+    <div
+      class="p-index__member"
+      @pointerdown.stop
+      @mousedown.stop
+      @touchstart.stop
+      @wheel.stop
+    >
+      <MemberBadge />
+    </div>
+
     <!-- 回到中央：畫布控制，留在右下（地圖類 app 的慣例，拇指構得到）。
          只有畫面被拖走或縮放過才出現 —— 一進來本來就是置中的，那時按下去不會有任何事發生。 -->
     <Transition name="recenter-pop">
@@ -120,6 +132,16 @@
     >
       <NuxtLink to="/editor" class="p-index__make-btn">製作便利貼</NuxtLink>
     </div>
+
+    <AppModal
+      v-model="loginFailed"
+      icon="⚠️"
+      title="登入失敗"
+      message="登入沒有完成，請再試一次。"
+      confirm-text="確定"
+      cancel-text=""
+      @confirm="loginFailed = false"
+    />
   </div>
 </template>
 
@@ -135,10 +157,14 @@ import {
   type ScatterPosition
 } from '~/utils/scatter-layout'
 import StickyNote from '~/components/StickyNote.vue'
+import MemberBadge from '~/components/MemberBadge.vue'
+import AppModal from '~/components/AppModal.vue'
 
 definePageMeta({ layout: false, ssr: false })
 
 const { getHistory } = useFirestore()
+const { completeLoginReturn } = useMemberAuth()
+const loginFailed = ref(false)
 
 // ====== UI Refs ======
 const containerRef = ref<HTMLElement | null>(null)
@@ -383,6 +409,9 @@ onMounted(async () => {
     }
   })
 
+  // 從右上角的登入回來：跟載入同時進行，不讓人多等
+  const loginReturn = completeLoginReturn()
+
   // 等待字體、圖片載入與最小延遲
   try {
     const historyPromise = getHistory(HISTORY_FETCH_LIMIT)
@@ -403,8 +432,14 @@ onMounted(async () => {
   } catch (e) {
     console.warn('Loading error', e)
   }
-  
+
   loading.value = false
+
+  // 登入鈕在開場之後的牆上（開場蓋著右上角），所以回來時直接回到牆上，
+  // 不必再看一次開場
+  const outcome = await loginReturn
+  if (outcome) onStartClick()
+  if (outcome === 'error') loginFailed.value = true
 })
 
 onUnmounted(() => {

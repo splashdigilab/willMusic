@@ -23,6 +23,8 @@ export interface FirestoreCollections {
   statsDaily: string
   users: string
   userQuota: string
+  bannedUsers: string
+  noteOwners: string
 }
 
 export const useCollections = (): FirestoreCollections => {
@@ -44,6 +46,10 @@ export const useCollections = (): FirestoreCollections => {
     // 不會重複建），但測試站的登入不該把暱稱與頭貼寫進正式站的資料。
     users: `users${suffix}`,
     // 投稿配額同樣分組——不分的話在測試站測限流會吃掉正式站的每日額度
-    userQuota: `user_quota${suffix}`
+    userQuota: `user_quota${suffix}`,
+    // 停權名單跟著分組：在測試站試封鎖，不該連正式站的顧客一起擋掉
+    bannedUsers: `banned_users${suffix}`,
+    // 便利貼的投稿者。跟著便利貼分組，因為 doc ID 就是便利貼的 ID
+    noteOwners: `note_owners${suffix}`
   }
 }

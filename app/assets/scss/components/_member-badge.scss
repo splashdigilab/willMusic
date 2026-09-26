@@ -1,0 +1,153 @@
+/*
+  Component: Member Badge
+  右上角的 LINE 頭像與點開的小卡（MemberBadge.vue）。
+  首頁與編輯器共用，位置由各頁的外層決定，這裡只管自己的樣子。
+*/
+
+@use '../base/variables' as var;
+@use '../base/editor-variables' as ed;
+
+.c-member-badge {
+  position: relative;
+
+  /* 與旁邊的圓鈕同尺寸、同一圈細亮邊（理由見 _index.scss 的 .p-index__icon-btn），
+     放在一起才像同一排 */
+  &__btn {
+    width: ed.$editor-float-btn-size;
+    height: ed.$editor-float-btn-size;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 50%;
+    overflow: hidden;
+    background: var.$will-dark-deep;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__avatar {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* 沒登入：人像輪廓，跟旁邊的說明、返回圓鈕一樣是白色線條圖示 */
+  &__guest-icon {
+    width: 22px;
+    height: 22px;
+    color: #fff;
+  }
+
+  /* 頭貼讀不到時的替代：暱稱第一個字 */
+  &__initial {
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  /* 小卡靠右對齊頭像，往下展開。卡片與確認視窗同一套淺灰漸層 */
+  &__card {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    width: 15rem;
+    max-width: calc(100vw - 1.5rem);
+    padding: 1rem 1.1rem 0.9rem;
+    border-radius: 18px;
+    background: linear-gradient(to bottom left, #FCFCFC 0%, #EEEEEE 100%);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+    text-align: left;
+  }
+
+  &__name {
+    margin: 0;
+    color: #323232;
+    font-size: 1rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+
+  &__status {
+    margin: 0.35rem 0 0;
+    color: #666;
+    font-size: 0.85rem;
+    font-weight: 700;
+    line-height: 1.5;
+    /* 冷卻倒數每秒跳，等寬數字才不會左右抖 */
+    font-variant-numeric: tabular-nums;
+
+    /* 額度用完或停權：送不出去的狀態用桃紅，跟確認畫面一致 */
+    &.is-warning {
+      color: var.$will-red;
+    }
+  }
+
+  /* 我的便利貼：小卡裡唯一的導覽，做成整列可點的連結，跟下面低調的登出分開 */
+  &__link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.75rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.05);
+    color: #323232;
+    font-size: 0.9rem;
+    font-weight: 800;
+    text-decoration: none;
+
+    &:active {
+      background: rgba(0, 0, 0, 0.1);
+    }
+  }
+
+  /* 沒登入時小卡裡的登入鈕：跟送出確認畫面的登入按鈕同一個 LINE 綠 */
+  &__login {
+    display: block;
+    width: 100%;
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border: 0;
+    border-radius: 999px;
+    background: var.$line-green;
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+
+    &:active {
+      transform: scale(0.97);
+    }
+  }
+
+  &__logout {
+    margin-top: 0.6rem;
+    padding: 0.3rem 0;
+    border: 0;
+    background: transparent;
+    color: #888;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+  }
+}
+
+.member-pop-enter-active,
+.member-pop-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.member-pop-enter-from,
+.member-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}

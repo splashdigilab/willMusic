@@ -7,41 +7,42 @@
  *
  * 往返會讓頁面整個重載，所以導向之前一定要把草稿同步寫下來（見 startLogin）。
  */
-import { useNuxtApp } from '#imports'
+import { useNuxtApp, useRoute, useRouter } from '#imports'
 import { signInWithCustomToken } from 'firebase/auth'
+import { withQuery } from 'ufo'
 import { useAuthSession } from '~/composables/useAuthSession'
+import { useMemberProfile } from '~/composables/useMemberProfile'
 
-/** 登入往返期間記住「回來之後要做什麼」。sessionStorage 撐得過一次 302 往返 */
-const PENDING_ACTION_KEY = 'willmusic_pending_action'
+/**
+ * 登入往返期間記住「回來之後要做什麼」，放在回程網址的 query 上。
+ *
+ * 不放 sessionStorage：手機外部瀏覽器走「用 LINE App 登入」時，LINE App 認證完
+ * 是把回程網址丟回瀏覽器，可能開在新分頁，而 sessionStorage 是跟著分頁走的。
+ * 網址則會跟著 start → LINE → callback 的每一次 302 一路帶到最後。
+ *
+ * 這個值決定回來時要不要跳過活動規範頁，所以不能丟：丟了的話，送出途中去登入的人
+ * 回來會被要求重新勾同意、按 START。
+ */
+export const PENDING_ACTION_QUERY = 'resume'
 
 export type PendingAction = 'submit'
 
 /** callback 會在網址上附註結果，前端讀完就把它從網址清掉 */
 export type LoginOutcome = 'ok' | 'cancelled' | 'error'
 
+/** 回程網址上的待續動作。讀完要連同 login／reason 一起從網址上清掉 */
+export const readPendingAction = (query: Record<string, unknown>): PendingAction | null =>
+  query[PENDING_ACTION_QUERY] === 'submit' ? 'submit' : null
+
 export const useMemberAuth = () => {
   const { $auth } = useNuxtApp() as any
+  const route = useRoute()
+  const router = useRouter()
+  // 要在同步的地方先拿：completeLoginReturn 裡是 await 之後，那時 Nuxt 的 context 已經不在了
+  const { syncProfile } = useMemberProfile()
   const { user, ready, isMember, claims, ensureInitialized, syncRole, logout } = useAuthSession()
 
   ensureInitialized()
-
-  const setPendingAction = (action: PendingAction) => {
-    if (!import.meta.client) return
-    try {
-      sessionStorage.setItem(PENDING_ACTION_KEY, action)
-    } catch { /* 無痕模式寫不進去；頂多是回來之後不自動接續 */ }
-  }
-
-  const takePendingAction = (): PendingAction | null => {
-    if (!import.meta.client) return null
-    try {
-      const value = sessionStorage.getItem(PENDING_ACTION_KEY)
-      sessionStorage.removeItem(PENDING_ACTION_KEY)
-      return value === 'submit' ? value : null
-    } catch {
-      return null
-    }
-  }
 
   /**
    * 導向 LINE 授權頁。**這個呼叫之後頁面就離開了**，
@@ -52,8 +53,8 @@ export const useMemberAuth = () => {
    */
   const startLogin = (returnTo: string, action?: PendingAction) => {
     if (!import.meta.client) return
-    if (action) setPendingAction(action)
-    window.location.href = `/api/auth/line/start?r=${encodeURIComponent(returnTo)}`
+    const target = action ? withQuery(returnTo, { [PENDING_ACTION_QUERY]: action }) : returnTo
+    window.location.href = `/api/auth/line/start?r=${encodeURIComponent(target)}`
   }
 
   /**
@@ -77,6 +78,35 @@ export const useMemberAuth = () => {
     }
   }
 
+  /**
+   * 一般頁面（首頁、我的便利貼）從 LINE 回來時的收尾：把網址上的結果清掉、
+   * 領 token 完成登入、在背景寫會員資料。
+   *
+   * **編輯器不要用這個**：它要接續送出、還原草稿，有自己的 handleLoginReturn。
+   * /api/auth/session 的 token 是一次性的，同一次載入呼叫兩次的話後面那次會失敗。
+   *
+   * @returns 這次載入不是登入回程時回 null
+   */
+  const completeLoginReturn = async (): Promise<LoginOutcome | null> => {
+    const outcome = route.query.login
+    if (typeof outcome !== 'string') return null
+
+    // 讀完就清掉：重新整理不該再觸發一次，也不該連同網址被分享出去
+    const query = { ...route.query }
+    delete query.login
+    delete query.reason
+    delete query[PENDING_ACTION_QUERY]
+    await router.replace({ query })
+
+    if (outcome === 'cancelled') return 'cancelled'
+    if (outcome === 'ok' && await completeLogin()) {
+      // 會員資料寫入是背景工作，寫失敗不影響登入
+      void syncProfile(claims.value?.lineName ?? '', claims.value?.linePicture ?? null)
+      return 'ok'
+    }
+    return 'error'
+  }
+
   return {
     user,
     ready,
@@ -85,7 +115,7 @@ export const useMemberAuth = () => {
     profile: claims,
     startLogin,
     completeLogin,
-    takePendingAction,
+    completeLoginReturn,
     logout
   }
 }

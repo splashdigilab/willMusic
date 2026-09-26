@@ -34,7 +34,31 @@ export const taipeiDateKey = (now: number = Date.now()): string => {
   return `${local.getUTCFullYear()}-${local.getUTCMonth() + 1}-${local.getUTCDate()}`
 }
 
+/**
+ * 這次送出後 submitCount 會是多少，也就是「今天的第幾張」。
+ *
+ * reserve() 寫進去的值與確認畫面顯示的張數都用這一個算法。
+ * 與上次預約同一個 noteId 是「同一張的重試」，已經算在 usedToday 裡，不再多加。
+ */
+const nextSubmitCount = (quota: UserQuota | null, noteId: string | undefined, today: string): number => {
+  const usedToday = quota?.submitDate === today ? (quota.submitCount ?? 0) : 0
+  const isRetry = !!quota && !!noteId && quota.pendingNoteId === noteId
+  return isRetry
+    ? (usedToday === 0 ? 1 : usedToday)
+    : usedToday + 1
+}
+
 export type QuotaBlockReason = 'cooldown' | 'daily'
+
+export interface QuotaUsage {
+  /** 這次送出是今天的第幾張 */
+  nth: number
+  /** 今天已經用掉幾張 */
+  usedToday: number
+  dailyLimit: number
+  /** 冷卻還要等多久（毫秒），0 = 現在就能送。同一張的重試不受冷卻限制 */
+  retryAfterMs: number
+}
 
 export interface QuotaCheck {
   allowed: boolean
@@ -131,14 +155,10 @@ export const useSubmissionQuota = () => {
 
     const quota = await loadQuota()
     const today = taipeiDateKey()
-    const usedToday = quota?.submitDate === today ? (quota.submitCount ?? 0) : 0
-    const isRetry = !!quota && quota.pendingNoteId === noteId
 
     // 這幾個值的算法要與 firestore.rules 的 canWriteQuota 對齊，
     // 算錯的話規則會拒絕，而且看起來像是「沒有權限」
-    const submitCount = isRetry
-      ? (usedToday === 0 ? 1 : usedToday)
-      : usedToday + 1
+    const submitCount = nextSubmitCount(quota, noteId, today)
 
     try {
       await setDoc(ref, {
@@ -156,5 +176,35 @@ export const useSubmissionQuota = () => {
     }
   }
 
-  return { check, reserve, loadConfig, loadQuota, taipeiDateKey }
+  /**
+   * 確認畫面的「今天第 N／M 張」與頭像小卡的「今天還能送幾張」。純顯示用：
+   * 後台關掉頻率限制、或讀取失敗時回 null，畫面上就不顯示張數，
+   * 不要拿「讀不到」去猜一個可能是錯的數字。
+   *
+   * @param noteId 目前的 submissionId；還沒產生就傳 undefined（不可能是重試）
+   */
+  const loadUsage = async (noteId: string | undefined): Promise<QuotaUsage | null> => {
+    const ref = quotaRef()
+    if (!ref) return null
+    try {
+      const [config, snap] = await Promise.all([loadConfig(), getDoc(ref)])
+      if (!config.enabled) return null
+      const quota = snap.exists() ? (snap.data() as UserQuota) : null
+      const today = taipeiDateKey()
+      const isRetry = !!quota && !!noteId && quota.pendingNoteId === noteId
+      const lastMs = (quota?.lastSubmitAt as any)?.toMillis?.()
+      const readyAt = typeof lastMs === 'number' ? lastMs + config.cooldownMinutes * 60 * 1000 : 0
+      return {
+        nth: nextSubmitCount(quota, noteId, today),
+        usedToday: quota?.submitDate === today ? (quota.submitCount ?? 0) : 0,
+        dailyLimit: config.dailyLimit,
+        retryAfterMs: isRetry ? 0 : Math.max(0, readyAt - Date.now())
+      }
+    } catch (e) {
+      console.warn('[quota] 讀取用量失敗', e)
+      return null
+    }
+  }
+
+  return { check, reserve, loadUsage, loadConfig, loadQuota, taipeiDateKey }
 }

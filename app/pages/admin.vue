@@ -467,9 +467,17 @@
                   </div>
                   <div class="p-admin__note-meta">
                     <span class="p-admin__note-time">{{ formatTime(note.timestamp) }}</span>
-                    <span class="p-admin__note-submitter" :title="note.uid || ''">
+                    <button
+                      v-if="ownerOf(note)"
+                      type="button"
+                      class="p-admin__note-submitter p-admin__note-submitter--link"
+                      :title="ownerOf(note)"
+                      @click="memberPanelUid = ownerOf(note) ?? null"
+                    >
+                      <span v-if="bans.has(ownerOf(note) ?? '')" class="p-admin__tag p-admin__tag--banned">已封鎖</span>
                       {{ submitterLabel(note) }}
-                    </span>
+                    </button>
+                    <span v-else class="p-admin__note-submitter">{{ submitterLabel(note) }}</span>
                     <button
                       @click="openDeleteModal(note.id, true)"
                       class="p-admin__btn-delete"
@@ -528,9 +536,17 @@
                   </div>
                   <div class="p-admin__note-meta">
                     <span class="p-admin__note-time">{{ formatTime(note.playedAt || note.timestamp) }}</span>
-                    <span class="p-admin__note-submitter" :title="note.uid || ''">
+                    <button
+                      v-if="ownerOf(note)"
+                      type="button"
+                      class="p-admin__note-submitter p-admin__note-submitter--link"
+                      :title="ownerOf(note)"
+                      @click="memberPanelUid = ownerOf(note) ?? null"
+                    >
+                      <span v-if="bans.has(ownerOf(note) ?? '')" class="p-admin__tag p-admin__tag--banned">已封鎖</span>
                       {{ submitterLabel(note) }}
-                    </span>
+                    </button>
+                    <span v-else class="p-admin__note-submitter">{{ submitterLabel(note) }}</span>
                     <button
                       @click="openDeleteModal(note.id, false)"
                       class="p-admin__btn-delete"
@@ -581,18 +597,70 @@
           </div>
         </section>
 
-        <!-- 會員資料：個資查詢與刪除 -->
+        <!-- 會員：清單＋編號查詢。點任何一位都打開 AdminMemberPanel，
+             看他送過的便利貼、封鎖、刪個資都在那裡。 -->
         <section v-show="activeAdminTab === 'members'" class="p-admin__card">
-          <h2 class="p-admin__card-title">會員資料查詢與刪除</h2>
+          <h2 class="p-admin__card-title">會員</h2>
           <p class="p-admin__video-hint">
-            供處理個資查詢與刪除請求之用。便利貼管理裡每張卡片的投稿者欄位，
-            滑鼠移上去就能看到完整的使用者編號，複製到這裡查詢。
-          </p>
-          <p class="p-admin__video-hint p-admin__video-hint--compact">
-            「刪除個人資料」只清掉暱稱、頭貼與投稿額度紀錄，便利貼會留著（但就此無法追溯投稿者）。
-            要連便利貼一起撤下請用下面那顆。
+            點任一位會員，可以看這個帳號送過的所有便利貼、封鎖帳號，或處理個資刪除請求。
+            在「便利貼管理」裡點卡片上的投稿者，也會打開同一個畫面。
           </p>
 
+          <div class="p-admin__member-filters" role="tablist" aria-label="會員篩選">
+            <button
+              type="button"
+              class="p-admin__member-filter"
+              :class="{ 'is-active': memberFilter === 'all' }"
+              role="tab"
+              :aria-selected="memberFilter === 'all'"
+              @click="memberFilter = 'all'"
+            >
+              全部（依最近登入）
+            </button>
+            <button
+              type="button"
+              class="p-admin__member-filter"
+              :class="{ 'is-active': memberFilter === 'banned' }"
+              role="tab"
+              :aria-selected="memberFilter === 'banned'"
+              @click="memberFilter = 'banned'"
+            >
+              已封鎖（{{ bans.size }}）
+            </button>
+          </div>
+
+          <div v-if="memberListLoading && visibleMemberRows.length === 0" class="p-admin__empty-state">載入中...</div>
+          <div v-else-if="visibleMemberRows.length === 0" class="p-admin__empty-state">
+            {{ memberFilter === 'banned' ? '目前沒有封鎖的帳號' : '還沒有會員' }}
+          </div>
+          <ul v-else class="p-admin__member-list">
+            <li v-for="row in visibleMemberRows" :key="row.uid">
+              <button type="button" class="p-admin__member-row" @click="memberPanelUid = row.uid">
+                <img v-if="row.avatar" :src="row.avatar" alt="" class="p-admin__member-avatar" />
+                <span v-else class="p-admin__member-avatar" aria-hidden="true" />
+                <span class="p-admin__member-row-text">
+                  <span class="p-admin__member-name">
+                    {{ row.name || '（沒有暱稱）' }}
+                    <span v-if="bans.has(row.uid)" class="p-admin__tag p-admin__tag--banned">已封鎖</span>
+                  </span>
+                  <span class="p-admin__member-uid">{{ row.subtitle }}</span>
+                </span>
+                <span class="p-admin__member-row-chevron" aria-hidden="true">›</span>
+              </button>
+            </li>
+          </ul>
+          <div v-if="memberFilter === 'all' && memberHasMore" class="p-admin__btn-row p-admin__member-more">
+            <button
+              type="button"
+              class="p-admin__btn p-admin__btn--secondary p-admin__btn--inline"
+              :disabled="memberListLoading"
+              @click="loadMembers(false)"
+            >
+              {{ memberListLoading ? '載入中…' : '載入更多' }}
+            </button>
+          </div>
+
+          <h3 class="p-admin__panel-section-title">用編號查詢</h3>
           <div class="p-admin__form-group">
             <label class="p-admin__form-label" for="member-uid-input">使用者編號（uid）</label>
             <input
@@ -601,78 +669,27 @@
               type="text"
               class="p-admin__form-input"
               placeholder="line:U xxxxxxxx…"
-              :disabled="isMemberBusy"
-              @keyup.enter="lookupMember"
+              @keyup.enter="openMemberByUid"
             />
           </div>
-
           <div class="p-admin__btn-row">
             <button
               type="button"
               class="p-admin__btn p-admin__btn--primary p-admin__btn--inline"
-              :disabled="isMemberBusy || !memberUidInput"
-              @click="lookupMember"
+              :disabled="!memberUidInput"
+              @click="openMemberByUid"
             >
-              {{ isMemberBusy ? '處理中…' : '查詢' }}
+              查詢
             </button>
-          </div>
-
-          <div v-if="memberLookupDone" class="p-admin__member-result">
-            <p v-if="!memberRecord" class="p-admin__empty-state">
-              查無這個編號的會員資料。便利貼可能仍存在（下方的張數會顯示）。
-            </p>
-            <template v-else>
-              <div class="p-admin__member-identity">
-                <img
-                  v-if="memberRecord.avatar"
-                  :src="memberRecord.avatar"
-                  alt=""
-                  class="p-admin__member-avatar"
-                />
-                <div>
-                  <p class="p-admin__member-name">{{ memberRecord.displayName || '（沒有暱稱）' }}</p>
-                  <p class="p-admin__member-uid">{{ memberUidInput }}</p>
-                </div>
-              </div>
-            </template>
-
-            <p class="p-admin__member-counts">
-              便利貼：待處理 {{ memberNoteCounts.pending }} 張、歷史 {{ memberNoteCounts.history }} 張
-            </p>
-
-            <div class="p-admin__btn-row">
-              <button
-                type="button"
-                class="p-admin__btn p-admin__btn--danger p-admin__btn--inline"
-                :disabled="isMemberBusy"
-                @click="openMemberDeleteModal(false)"
-              >
-                刪除個人資料
-              </button>
-              <button
-                type="button"
-                class="p-admin__btn p-admin__btn--danger p-admin__btn--inline"
-                :disabled="isMemberBusy"
-                @click="openMemberDeleteModal(true)"
-              >
-                刪除個人資料與所有便利貼
-              </button>
-            </div>
           </div>
         </section>
       </div>
     </div>
 
-    <AppModal
-      v-model="memberDeleteModalOpen"
-      title="確認刪除個人資料"
-      :message="memberDeleteMessage"
-      confirmText="確定刪除"
-      cancelText="取消"
-      confirmButtonClass="c-button--danger"
-      :loading="isMemberBusy"
-      @confirm="confirmMemberDelete"
-      @cancel="memberDeleteModalOpen = false"
+    <AdminMemberPanel
+      v-model:uid="memberPanelUid"
+      @changed="onMemberChanged"
+      @notify="showAdminToast"
     />
 
     <AppModal
@@ -696,17 +713,17 @@ import {
   getDoc,
   getDocs,
   doc,
-  deleteDoc,
   query,
   orderBy,
   onSnapshot,
   setDoc,
   startAfter,
-  where,
   limit,
-  Timestamp
+  Timestamp,
+  type QueryDocumentSnapshot
 } from 'firebase/firestore'
-import { DEFAULT_RATE_LIMIT, type RateLimitConfig, type UserProfile } from '~/types'
+import { DEFAULT_RATE_LIMIT, type BannedUser, type RateLimitConfig } from '~/types'
+import type { MemberRow } from '~/composables/useMemberAdmin'
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import QRCode from 'qrcode'
 import { use } from 'echarts/core'
@@ -715,6 +732,7 @@ import { BarChart, HeatmapChart, LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import AppModal from '~/components/AppModal.vue'
+import AdminMemberPanel from '~/components/AdminMemberPanel.vue'
 import {
   clampInterstitialIntervalMinutes,
   CANVAS_INTERSTITIAL_DIVISORS_OF_60,
@@ -730,6 +748,8 @@ definePageMeta({
 const { $firestore, $storage } = useNuxtApp()
 const { createToken } = useFirestore()
 const { logout } = useAdminAuth()
+const { listMembers, loadOwners, deleteNote } = useMemberAdmin()
+const { listBans } = useBannedUsers()
 const router = useRouter()
 
 /**
@@ -786,7 +806,7 @@ const adminTabs: Array<{ key: AdminTabKey; label: string }> = [
   { key: 'uploadGate', label: '上傳控管' },
   { key: 'display', label: '播放設定' },
   { key: 'notes', label: '便利貼管理' },
-  { key: 'members', label: '會員資料' }
+  { key: 'members', label: '會員' }
 ]
 const activeAdminTab = ref<AdminTabKey>('overview')
 const setActiveAdminTab = (tab: AdminTabKey) => {
@@ -957,45 +977,63 @@ const pendingNotes = ref<any[]>([])
 const historyNotes = ref<any[]>([])
 
 // ── 投稿者 ────────────────────────────────────────────────
-// 便利貼只存 uid，暱稱在 users/{uid}。渲染時逐筆去讀的話一頁 20 張就是
-// 20 次讀取，所以查過的放進快取——同一個人翻再多頁也只讀一次。
-// 空字串代表「查過了但沒有名字」，與「還沒查」（undefined）要分得開。
+// 便利貼上沒有投稿者（便利貼公開可讀），投稿者在 note_owners/{noteId}，
+// 暱稱又在 users/{uid}。兩層都放快取：一頁 20 張的投稿者一次查完
+// （getDocsByIds 每 30 個一組），暱稱則同一個人翻再多頁也只讀一次。
+// 兩個快取都用空字串代表「查過了但沒有」，與「還沒查」（undefined）要分得開。
+const noteOwnerUids = ref<Record<string, string>>({})
 const submitterNames = ref<Record<string, string>>({})
 
-const loadSubmitterNames = async (notes: Array<{ uid?: string }>) => {
-  const missing = [...new Set(
+const loadSubmitters = async (notes: Array<{ id?: string }>) => {
+  const missingNotes = notes
+    .map(note => note.id)
+    .filter((id): id is string => !!id && noteOwnerUids.value[id] === undefined)
+  if (missingNotes.length > 0) {
+    try {
+      const owners = await loadOwners(missingNotes)
+      missingNotes.forEach((id) => { noteOwnerUids.value[id] = owners[id] ?? '' })
+    } catch (e) {
+      console.warn('[admin] 讀取投稿者失敗', e)
+    }
+  }
+
+  const missingUids = [...new Set(
     notes
-      .map(note => note.uid)
+      .map(note => (note.id ? noteOwnerUids.value[note.id] : ''))
       .filter((uid): uid is string => !!uid && submitterNames.value[uid] === undefined)
   )]
-  if (missing.length === 0) return
-
-  await Promise.all(missing.map(async (uid) => {
+  await Promise.all(missingUids.map(async (uid) => {
     try {
       const snap = await getDoc(doc(db, cols.users, uid))
       submitterNames.value[uid] = snap.exists() ? (snap.get('displayName') || '') : ''
     } catch (e) {
-      console.warn('[admin] 讀取投稿者失敗', uid, e)
+      console.warn('[admin] 讀取投稿者暱稱失敗', uid, e)
       submitterNames.value[uid] = ''
     }
   }))
 }
 
+/** 這張便利貼的投稿者 uid。undefined = 還在查；'' = 沒有紀錄 */
+const ownerOf = (note: { id?: string }): string | undefined =>
+  note.id ? noteOwnerUids.value[note.id] : ''
+
 /**
- * 沒有 uid 的是 LINE 登入上線之前送出的便利貼——那批刻意不回填，
- * 所以這在後台是正常狀態，不是資料壞掉。
+ * 沒有投稿者紀錄的是 LINE 登入上線之前送出的便利貼（匿名時期），
+ * 或投稿者已經申請刪除個資——這在後台是正常狀態，不是資料壞掉。
  */
-const submitterLabel = (note: { uid?: string }): string => {
-  if (!note.uid) return '舊資料'
-  const name = submitterNames.value[note.uid]
+const submitterLabel = (note: { id?: string }): string => {
+  const uid = ownerOf(note)
+  if (uid === undefined) return '載入中…'
+  if (!uid) return '舊資料'
+  const name = submitterNames.value[uid]
   if (name === undefined) return '載入中…'
   // 同名的人不少，末四碼讓店員分得出來；完整 uid 放在 title 供複製
-  const shortId = note.uid.replace(/^line:/, '').slice(-4)
+  const shortId = uid.replace(/^line:/, '').slice(-4)
   return name ? `${name}（…${shortId}）` : `未命名（…${shortId}）`
 }
 
 watch([pendingNotes, historyNotes], ([pending, history]) => {
-  void loadSubmitterNames([...pending, ...history])
+  void loadSubmitters([...pending, ...history])
 })
 const pendingNotesTotal = ref(0)
 const historyNotesTotal = ref(0)
@@ -1218,35 +1256,17 @@ const openDeleteModal = (id: string, isPending: boolean) => {
   deleteModalOpen.value = true
 }
 
-/**
- * 刪除便利貼時一併清掉 Storage 上的手繪圖，否則圖片會無限累積。
- * 舊便利貼的 drawing 是內嵌的 data URL，沒有檔案要刪；失敗也不影響刪除本身。
- */
-const deleteNoteDrawing = async (noteId: string, isPending: boolean) => {
-  const list = isPending ? pendingNotes.value : historyNotes.value
-  const drawing = list.find(note => note.id === noteId)?.style?.drawing
-  if (typeof drawing !== 'string' || !drawing.startsWith('http')) return
-  try {
-    await deleteObject(storageRef(storage, drawing))
-  } catch (err: unknown) {
-    const code = typeof err === 'object' && err !== null && 'code' in err ? (err as { code?: string }).code : ''
-    if (code !== 'storage/object-not-found') {
-      console.warn('[admin] 便利貼已刪除，但手繪圖檔案清除失敗', err)
-    }
-  }
-}
-
 const confirmDelete = async () => {
   if (!deleteModalData.value) return
   isDeleting.value = true
   try {
-    const colName = deleteModalData.value.isPending ? cols.queuePending : cols.queueHistory
-    // 先刪文件再清圖。反過來的話，文件刪除一旦失敗（權限或網路），
-    // 便利貼會繼續留在牆上但圖片已經不存在，變成破圖。
-    // 圖片網址是從記憶體裡的清單讀的、不是重新查詢，所以文件先刪不影響。
-    await deleteDoc(doc(db, colName, deleteModalData.value.id))
-    await deleteNoteDrawing(deleteModalData.value.id, deleteModalData.value.isPending)
-    if (deleteModalData.value.isPending) {
+    const { id, isPending } = deleteModalData.value
+    const list = isPending ? pendingNotes.value : historyNotes.value
+    // 連同 Storage 上的手繪圖一起刪（順序與理由見 useMemberAdmin.deleteNote）。
+    // 圖片網址從記憶體裡的清單拿，不必重新查詢
+    const style = list.find(note => note.id === id)?.style
+    await deleteNote({ id, isPending, style })
+    if (isPending) {
       await loadPendingNotesPage()
     } else {
       await loadHistoryNotesPage()
@@ -1518,91 +1538,104 @@ const saveRateLimitSettings = async () => {
   }
 }
 
-// ── 會員資料查詢與刪除（處理個資請求用）──────────────────────
-const memberUidInput = ref('')
-const memberLookupDone = ref(false)
-const memberRecord = ref<UserProfile | null>(null)
-const memberNoteCounts = ref({ pending: 0, history: 0 })
-const isMemberBusy = ref(false)
-const memberDeleteModalOpen = ref(false)
-const memberDeleteIncludesNotes = ref(false)
+// ── 會員 ─────────────────────────────────────────────────
+// 清單在這裡，單一會員的所有操作（看便利貼、封鎖、刪個資）在 AdminMemberPanel。
 
-const memberDeleteMessage = computed(() => {
-  const total = memberNoteCounts.value.pending + memberNoteCounts.value.history
-  return memberDeleteIncludesNotes.value
-    ? `將刪除這位會員的暱稱、頭貼、投稿額度紀錄，以及他的 ${total} 張便利貼。此操作無法復原。`
-    : '將刪除這位會員的暱稱、頭貼與投稿額度紀錄。便利貼會保留，但之後無法再追溯投稿者。此操作無法復原。'
+/** 開著的會員面板。null = 關著 */
+const memberPanelUid = ref<string | null>(null)
+const memberUidInput = ref('')
+
+const openMemberByUid = () => {
+  const uid = memberUidInput.value.trim()
+  if (uid) memberPanelUid.value = uid
+}
+
+/**
+ * 整份停權名單。便利貼卡片與會員清單上的「已封鎖」都查這一份，
+ * 不逐筆去讀 —— 名單很短，一次讀完比每個投稿者多讀一次便宜。
+ */
+const bans = ref<Map<string, BannedUser>>(new Map())
+
+const loadBans = async () => {
+  try {
+    bans.value = await listBans()
+  } catch (err) {
+    console.error('[admin] 載入停權名單失敗', err)
+  }
+}
+
+type MemberFilter = 'all' | 'banned'
+const memberFilter = ref<MemberFilter>('all')
+const memberRows = ref<MemberRow[]>([])
+const memberHasMore = ref(false)
+const memberListLoading = ref(false)
+let memberCursor: QueryDocumentSnapshot | null = null
+let memberListLoaded = false
+
+const loadMembers = async (reset: boolean) => {
+  if (memberListLoading.value) return
+  memberListLoading.value = true
+  try {
+    const page = await listMembers(reset ? null : memberCursor)
+    memberRows.value = reset ? page.members : [...memberRows.value, ...page.members]
+    memberCursor = page.cursor
+    memberHasMore.value = page.hasMore
+    memberListLoaded = true
+  } catch (err) {
+    console.error('[admin] 載入會員清單失敗', err)
+    showAdminToast('error', '載入會員清單失敗，請稍後再試')
+  } finally {
+    memberListLoading.value = false
+  }
+}
+
+const formatShortUid = (uid: string) => `…${uid.replace(/^line:/, '').slice(-4)}`
+
+interface MemberListRow {
+  uid: string
+  name: string
+  avatar?: string
+  subtitle: string
+}
+
+const visibleMemberRows = computed<MemberListRow[]>(() => {
+  if (memberFilter.value === 'banned') {
+    // 停權名單裡的人可能已經刪了個資，所以名字用封鎖當下存的快照；
+    // 頭貼只有剛好也在上面清單裡的人才有
+    const avatars = new Map(memberRows.value.map(m => [m.uid, m.avatar]))
+    return [...bans.value].map(([uid, ban]) => ({
+      uid,
+      name: ban.displayName,
+      avatar: avatars.get(uid),
+      subtitle: `封鎖於 ${formatTime(ban.bannedAt)}${ban.reason ? ` · ${ban.reason}` : ''}`
+    }))
+  }
+  return memberRows.value.map(m => ({
+    uid: m.uid,
+    name: m.displayName,
+    avatar: m.avatar,
+    subtitle: `最近登入 ${formatTime(m.updatedAt)} · ${formatShortUid(m.uid)}`
+  }))
 })
 
-/** 找出這個 uid 的所有便利貼。單一欄位等值查詢，Firestore 會自動建索引 */
-const findMemberNotes = async (uid: string) => {
-  const [pendingSnap, historySnap] = await Promise.all([
-    getDocs(query(collection(db, cols.queuePending), where('uid', '==', uid))),
-    getDocs(query(collection(db, cols.queueHistory), where('uid', '==', uid)))
+// 清單等第一次切到「會員」分頁才讀，沒打開過就不花這筆讀取
+watch(activeAdminTab, (tab) => {
+  if (tab === 'members' && !memberListLoaded) void loadMembers(true)
+})
+
+/** 面板裡做了任何變更（刪便利貼、封鎖、刪個資）之後，外面看得到的地方都要跟著更新 */
+const onMemberChanged = async (uid: string) => {
+  // 暱稱與投稿者紀錄都可能被刪掉了（刪除個資），這個人相關的快取全部作廢、重新查
+  delete submitterNames.value[uid]
+  for (const [noteId, ownerUid] of Object.entries(noteOwnerUids.value)) {
+    if (ownerUid === uid) delete noteOwnerUids.value[noteId]
+  }
+  await Promise.all([
+    loadBans(),
+    loadPendingNotesPage(),
+    loadHistoryNotesPage(),
+    memberListLoaded ? loadMembers(true) : Promise.resolve()
   ])
-  return { pending: pendingSnap.docs, history: historySnap.docs }
-}
-
-const lookupMember = async () => {
-  const uid = memberUidInput.value.trim()
-  if (!uid) return
-
-  isMemberBusy.value = true
-  memberLookupDone.value = false
-  try {
-    const [profileSnap, notes] = await Promise.all([
-      getDoc(doc(db, cols.users, uid)),
-      findMemberNotes(uid)
-    ])
-    memberRecord.value = profileSnap.exists() ? (profileSnap.data() as UserProfile) : null
-    memberNoteCounts.value = { pending: notes.pending.length, history: notes.history.length }
-    memberLookupDone.value = true
-  } catch (err) {
-    console.error('[admin] 查詢會員失敗', err)
-    showAdminToast('error', '查詢失敗，請確認編號是否正確')
-  } finally {
-    isMemberBusy.value = false
-  }
-}
-
-const openMemberDeleteModal = (includeNotes: boolean) => {
-  memberDeleteIncludesNotes.value = includeNotes
-  memberDeleteModalOpen.value = true
-}
-
-const confirmMemberDelete = async () => {
-  const uid = memberUidInput.value.trim()
-  if (!uid) return
-
-  isMemberBusy.value = true
-  try {
-    if (memberDeleteIncludesNotes.value) {
-      // 先刪便利貼再刪個資：反過來的話中途失敗會留下「查不到人的便利貼」，
-      // 而那時已經沒有 users 文件可以再找到它們了
-      const notes = await findMemberNotes(uid)
-      await Promise.all([
-        ...notes.pending.map(d => deleteDoc(doc(db, cols.queuePending, d.id))),
-        ...notes.history.map(d => deleteDoc(doc(db, cols.queueHistory, d.id)))
-      ])
-    }
-
-    // 額度紀錄也是個資（記錄了這個人什麼時候投過稿），一起刪。
-    // 副作用是刪完之後這個人的當日額度會重置——處理個資請求本來就不常發生，
-    // 可以接受。
-    await Promise.all([
-      deleteDoc(doc(db, cols.users, uid)),
-      deleteDoc(doc(db, cols.userQuota, uid))
-    ])
-
-    showAdminToast('success', '已刪除該會員的個人資料')
-    memberDeleteModalOpen.value = false
-    await lookupMember()
-  } catch (err) {
-    console.error('[admin] 刪除會員資料失敗', err)
-    showAdminToast('error', '刪除失敗，請稍後再試')
-  } finally {
-    isMemberBusy.value = false
-  }
 }
 
 const startCanvasVideoListener = () => {
@@ -1773,6 +1806,8 @@ const clearCanvasVideo = async () => {
 // 統計的預設日期與 30 秒自動刷新由 useAdminStats 自行掛載／卸載
 onMounted(() => {
   startNotesListeners()
+  // 便利貼卡片上要標「已封鎖」，跟便利貼一起載
+  void loadBans()
   startTokenRequirementListener()
   startGpsFenceListener()
   startRateLimitListener()

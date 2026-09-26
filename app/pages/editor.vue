@@ -33,6 +33,9 @@
           </svg>
           全部重來
         </button>
+        <!-- 登入狀態（已登入是頭貼、沒登入是人像輪廓），放最右邊，與首頁同一個角落。
+             從這裡登入會整頁導去 LINE，所以先同步存草稿 -->
+        <MemberBadge :before-login="saveDraftData" />
       </div>
 
       <!-- 活動規範滿版 overlay：版面與首頁開場完全共用，只有文字不同 -->
@@ -105,12 +108,22 @@
 
             <!-- 選填的提前登入。送出那一刻才登入是一定成立的路徑（見 confirmSubmit），
                  但那時使用者已經畫了十分鐘，被導去 LINE 再回來的風險比較大 ——
-                 願意先登入的人在這裡一鍵解決，回程只是重載一次空白的編輯器。
+                 願意先登入的人在這裡一鍵解決，回程會落回這一頁，照常勾同意、按 START
+                 （見 handleLoginReturn：這個入口不能跳過開場）。
                  排在 START 下面：START 才是這頁的主要動作，登入是可以略過的補充，
                  擺在上面會先把人攔下來做一個他其實不必現在做的決定。 -->
             <p v-if="isMember" class="p-index__intro-line p-index__intro-line--done">
               已用 LINE 登入{{ profile?.lineName ? `：${profile.lineName}` : '' }}
               <button type="button" class="p-index__intro-line-logout" @click="logout">登出</button>
+            </p>
+            <!-- 已登入的人在開始畫之前就知道今天還能不能送（冷卻中每秒倒數），
+                 不必畫完按送出才被擋 -->
+            <p
+              v-if="isMember && quotaSummary"
+              class="p-index__intro-line p-index__intro-line--quota"
+              :class="{ 'is-warning': quotaBlocked }"
+            >
+              {{ quotaSummary }}
             </p>
             <button
               v-else
@@ -174,17 +187,63 @@
 
     <!-- Submit Confirmation Modal。
          分享便利貼原本在中樞那一列，線性流程沒有中樞了，改放這裡：
-         這個 modal 本來就有預覽，看著成品決定要存到手機還是送上大螢幕是同一個當下的事。 -->
+         這個 modal 本來就有預覽，看著成品決定要存到手機還是送上大螢幕是同一個當下的事。
+
+         未登入時主按鈕按下去是整頁導去 LINE，所以按鈕文字與顏色都要先講清楚，
+         不能寫「確認」—— 那會讓人以為按了就送出，結果卻被帶離本站。
+         登入前後主按鈕都在第一列同一個位置，從 LINE 回來時不必重新找，
+         只是字與顏色換了。 -->
     <AppModal
       v-model="showSubmitModal"
-      title="確認上傳"
+      :title="justSignedIn ? '登入成功' : '確認上傳'"
       message="請確認您的便利貼樣貌，上傳後將無法修改。"
+      :confirm-text="isMember ? '上傳大螢幕' : 'LINE 登入並上傳大螢幕'"
+      :confirm-button-class="isMember ? 'c-button--primary' : 'c-button--line'"
+      stacked-actions
       :loading="isSubmitting"
       @confirm="confirmSubmit"
       @cancel="showSubmitModal = false"
     >
       <template #preview>
         <StickyNote v-if="previewNoteData" :note="previewNoteData" />
+      </template>
+      <template #footnote>
+        <!-- 以誰的身分送出、今天第幾張。送不出去的狀態（停權、額度用完、冷卻中）
+             在按下去之前就用警示色講清楚，冷卻中的倒數每秒跳。 -->
+        <div v-if="isMember" class="p-editor__submit-identity">
+          <img
+            v-if="profile?.linePicture && !avatarBroken"
+            :src="profile.linePicture"
+            alt=""
+            class="p-editor__submit-avatar"
+            referrerpolicy="no-referrer"
+            @error="avatarBroken = true"
+          />
+          <span class="p-editor__submit-identity-text">
+            <span class="p-editor__submit-identity-name">以 {{ profile?.lineName || 'LINE 帳號' }} 送出</span>
+            <span
+              v-if="quotaKind !== 'loading' && quotaKind !== 'unlimited'"
+              class="p-editor__submit-identity-quota"
+              :class="{ 'is-exhausted': quotaBlocked }"
+            >
+              <template v-if="quotaKind === 'banned'">這個帳號已停止投稿資格</template>
+              <template v-else-if="quotaKind === 'exhausted'">今天的 {{ quotaUsage?.dailyLimit }} 張已經送完了</template>
+              <template v-else-if="quotaKind === 'cooldown'">{{ quotaWaitText }} 後才能送出</template>
+              <template v-else>今天第 {{ quotaUsage?.nth }}／{{ quotaUsage?.dailyLimit }} 張</template>
+            </span>
+          </span>
+          <button
+            type="button"
+            class="p-editor__submit-logout"
+            :disabled="isSubmitting"
+            @click="logout"
+          >
+            登出
+          </button>
+        </div>
+        <p v-else class="p-editor__submit-login-hint">
+          送出需要 LINE 登入。登入後會回到這裡，便利貼會幫你留著。
+        </p>
       </template>
       <template #secondary-action>
         <button
@@ -672,12 +731,14 @@ import { useStorage } from '~/composables/useStorage'
 import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
 import { useNoteExport } from '~/composables/useNoteExport'
+import { PENDING_ACTION_QUERY, readPendingAction } from '~/composables/useMemberAuth'
 import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '#imports'
 import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import StickyNote from '~/components/StickyNote.vue'
 import AppModal from '~/components/AppModal.vue'
 import EditorTutorialModal from '~/components/EditorTutorialModal.vue'
+import MemberBadge from '~/components/MemberBadge.vue'
 
 definePageMeta({ ssr: false })
 
@@ -700,7 +761,7 @@ const router = useRouter()
 const { $firestore } = useNuxtApp()
 const db = $firestore as any
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
-const { isMember, profile, startLogin, completeLogin, takePendingAction, logout } = useMemberAuth()
+const { isMember, profile, startLogin, completeLogin, logout } = useMemberAuth()
 const { syncProfile } = useMemberProfile()
 
 const MAX_TEXT_BLOCKS = 3
@@ -944,6 +1005,44 @@ let unsubTokenRequirement: (() => void) | null = null
 // 換個無痕視窗就沒了。有了 LINE 身分之後改成綁在人身上，而且是規則在擋，
 // 不是前端在擋。實作與「為什麼是預約制」見 useSubmissionQuota。
 const { check: checkQuota } = useSubmissionQuota()
+const { isSelfBanned } = useBannedUsers()
+
+/** 被停權的人按送出時看到的說明。不寫原因：原因是後台的備註，不對外 */
+const BANNED_ALERT_MESSAGE = '這個 LINE 帳號已被停止投稿資格，無法再送出便利貼。如有疑問，請洽現場工作人員。'
+
+// ====== 額度狀態：活動規範頁與確認畫面的身分列共用 ======
+
+/** 剛從 LINE 登入回來、確認畫面是自動開回來的那一次。標題改成「登入成功」 */
+const justSignedIn = ref(false)
+/** LINE 頭貼網址在使用者換頭貼後會失效，破圖就收掉，只留文字 */
+const avatarBroken = ref(false)
+
+const {
+  load: loadQuota,
+  reset: resetQuota,
+  usage: quotaUsage,
+  kind: quotaKind,
+  isBlocked: quotaBlocked,
+  waitText: quotaWaitText,
+  summary: quotaSummary
+} = useQuotaStatus()
+
+// 兩個地方要顯示額度，同一時間只會開著其中一個：
+//   活動規範頁 → 已登入的人還沒開始畫就知道今天能不能送
+//   確認畫面   → 帶 submissionId：同一張的重試不吃額度、不受冷卻限制（跟規則一致）
+// 兩個都沒開、或登出了，就停掉倒數。只是讓人按之前心裡有數，
+// 真正的檢查仍在 confirmSubmit 與規則。
+watch([showIntroOverlay, showSubmitModal, isMember], ([intro, open, member]) => {
+  // 「登入成功」只屬於登入回來的那一次開啟；關掉或登出就收回
+  if (!open || !member) justSignedIn.value = false
+  if (!member || (!intro && !open)) {
+    resetQuota()
+    return
+  }
+  void loadQuota(open ? submissionId.value : undefined)
+}, { immediate: true })
+
+watch(() => profile.value?.linePicture, () => { avatarBroken.value = false })
 
 const formatCooldownRemaining = (remainingMs: number): string => {
   const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000))
@@ -1985,6 +2084,13 @@ const confirmSubmit = async () => {
     return
   }
 
+  // 停權放在配額之前：被封鎖的人不該看到「請 3 分鐘後再試」這種會讓人以為還能送的訊息
+  if (await isSelfBanned()) {
+    showSubmitModal.value = false
+    showAlert(BANNED_ALERT_MESSAGE, '無法送出', '🚫')
+    return
+  }
+
   // 配額的體驗性檢查。真正的強制在 firestore.rules，這裡是為了讓使用者
   // 在按下送出的當下就知道原因，而不是等一輪上傳流程跑完才被拒絕。
   const quota = await checkQuota(ensureSubmissionId())
@@ -2166,13 +2272,17 @@ const confirmSubmit = async () => {
         '⏱️'
       )
     } else if (e?.message === 'NOTE_CREATE_DENIED') {
-      // 已經登入卻還是被規則擋下，實務上幾乎只剩「後台開著 Token 驗證
-      // 但這次沒帶憑證」這一種
-      showAlert(
-        '目前送出需要店員提供的 QR Code，請向店員索取後再試一次。',
-        '無法送出',
-        '🚫'
-      )
+      // 已經登入卻還是被規則擋下，剩兩種可能：剛好在這幾秒內被封鎖
+      // （送出前的檢查已經過了），或是「後台開著 Token 驗證但這次沒帶憑證」
+      if (await isSelfBanned()) {
+        showAlert(BANNED_ALERT_MESSAGE, '無法送出', '🚫')
+      } else {
+        showAlert(
+          '目前送出需要店員提供的 QR Code，請向店員索取後再試一次。',
+          '無法送出',
+          '🚫'
+        )
+      }
     } else if (
       tokenRequiredForSubmit.value &&
       (e?.code === 'permission-denied' || e?.message?.includes('Missing or insufficient permissions'))
@@ -2259,42 +2369,54 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
 }
 
 /**
- * 從 LINE 回來之後接續原本的動作。
+ * 從 LINE 回來之後接續原本的動作。網址上沒有 login 參數就什麼都不做。
  *
- * 認得出「這次載入是登入往返」時，會跳過一般的開場流程
- * （活動規範 → START → 問要不要用草稿）並直接還原草稿 ——
- * 使用者幾秒前才剛按下送出，再讓他把那一串重看一次是很奇怪的。
- * 網址上沒有 login 參數就什麼都不做。
+ * 登入有兩個入口，回來之後的處理不同：
+ *
+ *   送出途中被導去登入（網址帶 resume=submit）
+ *     → 跳過開場流程（活動規範 → START → 問要不要用草稿），直接還原草稿、
+ *       開回確認畫面。使用者幾秒前才剛按下送出，再讓他把那一串重看一次很奇怪，
+ *       而且規範在按送出之前就已經同意過了。
+ *
+ *   活動規範頁的「先用 LINE 登入」
+ *     → 留在規範頁，照常勾同意、按 START。這個入口跟同意勾選是分開的，
+ *       使用者很可能還沒勾就先按了登入；若也跳過開場，就等於沒勾同意也能進編輯器，
+ *       第一次來的人也看不到教學。
  */
 const handleLoginReturn = async (): Promise<void> => {
   const outcome = route.query.login
   if (typeof outcome !== 'string') return
 
   const reason = typeof route.query.reason === 'string' ? route.query.reason : ''
-  const pendingAction = takePendingAction()
+  const resumingSubmit = readPendingAction(route.query) === 'submit'
 
   // 網址上的登入結果讀完就清掉：重新整理不該再觸發一次，
   // 也不該把它連同 token 一起分享出去
   const query = { ...route.query }
   delete query.login
   delete query.reason
+  delete query[PENDING_ACTION_QUERY]
   await router.replace({ query })
 
-  // 跳過開場：規範在按送出之前就已經同意過了
-  showIntroOverlay.value = false
-  termsAccepted.value = true
-  await nextTick()
-  initFabricBrush()
-
-  const draft = loadDraft()
-  if (draft) {
+  if (resumingSubmit) {
+    showIntroOverlay.value = false
+    termsAccepted.value = true
     await nextTick()
-    await new Promise<void>(r => requestAnimationFrame(() => r()))
-    await loadDraftData(draft)
+    initFabricBrush()
+
+    const draft = loadDraft()
+    if (draft) {
+      await nextTick()
+      await new Promise<void>(r => requestAnimationFrame(() => r()))
+      await loadDraftData(draft)
+    }
   }
 
   if (outcome === 'cancelled') {
-    showAlert('送出便利貼需要用 LINE 登入。你做的內容都還在，登入後就能送出。', '還沒完成登入', '🔑')
+    // 從規範頁登入又取消的人還站在規範頁，登入連結就在眼前，不必再多一個提示
+    if (resumingSubmit) {
+      showAlert('送出便利貼需要用 LINE 登入。你做的內容都還在，登入後就能送出。', '還沒完成登入', '🔑')
+    }
     return
   }
 
@@ -2319,7 +2441,9 @@ const handleLoginReturn = async (): Promise<void> => {
   // 刻意只開回確認畫面，**不自動送出**。
   // 自動送的話，使用者在這一刻按上一頁或重新整理都可能再觸發一次；
   // submissionId 擋得住重複建立，但讓人搞不清楚到底送出了沒更糟。
-  if (pendingAction === 'submit' && hasSubmittableContent.value) {
+  // 標題換成「登入成功」，否則畫面跟導走之前一模一樣，看不出剛才的登入有沒有成功。
+  if (resumingSubmit && hasSubmittableContent.value) {
+    justSignedIn.value = true
     showSubmitModal.value = true
   }
 }

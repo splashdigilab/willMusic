@@ -1,0 +1,194 @@
+@use '../base/variables' as var;
+
+/*
+  Page: My Notes
+  我的便利貼：這個 LINE 帳號送過的每一張，以及今天還能送幾張。
+
+  視覺與送出後的等待頁（_queue-status.scss）同一套：深灰底、白色漸層卡片、
+  天藍漸層藥丸。這兩頁是同一件事的前後 —— 送出、然後等它上牆。
+*/
+.p-my-notes {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  background-color: var.$will-dark;
+  color: #fff;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.p-my-notes__container {
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  padding:
+    calc(0.75rem + env(safe-area-inset-top, 0px))
+    min(6.48vw, 26px)
+    calc(2rem + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* 返回鈕與標題同一列。返回鈕沿用首頁的圓鈕（.p-index__icon-btn） */
+.p-my-notes__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.p-my-notes__title {
+  margin: 0;
+  font-size: clamp(1.4rem, 6.5vw, 1.8rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.p-my-notes__card {
+  box-sizing: border-box;
+  padding: 1.25rem;
+  border-radius: 1.4rem;
+  background: linear-gradient(to bottom left, #FFFFFF 0%, #ECECEC 100%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  color: #323232;
+  text-align: center;
+}
+
+/* ── 額度卡 ── */
+.p-my-notes__quota-main {
+  margin: 0;
+  font-size: clamp(1.2rem, 5.6vw, 1.5rem);
+  font-weight: 800;
+  line-height: 1.3;
+  /* 冷卻倒數每秒跳，等寬數字才不會左右抖 */
+  font-variant-numeric: tabular-nums;
+
+  &.is-warning {
+    color: var.$will-red;
+  }
+}
+
+.p-my-notes__quota-sub {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #7A7A7A;
+}
+
+/* 主要按鈕：與等待頁「回到首頁」同一組天藍漸層藥丸 */
+.p-my-notes__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 1rem;
+  padding: 0.75rem 1.25rem;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(to right, #66CADC 0%, #01A7C5 100%);
+  color: #fff;
+  font-family: inherit;
+  font-size: clamp(0.95rem, 4.4vw, 1.1rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  /* 按下去會進 LINE 登入：跟送出確認畫面的登入按鈕同一個綠 */
+  &--line {
+    background: var.$line-green;
+  }
+}
+
+/* ── 未登入 ── */
+.p-my-notes__signin-text {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.p-my-notes__signin-error {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var.$will-red;
+}
+
+/* ── 清單 ── */
+.p-my-notes__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.p-my-notes__item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* 便利貼本身是寬 100%、正方形，給它一個固定寬度的框就好 */
+.p-my-notes__thumb {
+  flex-shrink: 0;
+  width: 88px;
+}
+
+.p-my-notes__meta {
+  min-width: 0;
+}
+
+.p-my-notes__status {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.4;
+
+  &.is-waiting {
+    color: var.$will-blue;
+  }
+
+  /* 正在播或下一張：現在就該抬頭看牆，用最醒目的黃 */
+  &.is-now {
+    color: var.$will-yellow;
+  }
+
+  &.is-played {
+    color: rgba(255, 255, 255, 0.85);
+  }
+}
+
+.p-my-notes__time {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.p-my-notes__hint {
+  padding: 1.5rem 0;
+  text-align: center;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.p-my-notes__footnote {
+  margin: 0;
+  text-align: center;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.5);
+}

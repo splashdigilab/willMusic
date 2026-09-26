@@ -1011,3 +1011,91 @@ body.is-editor-page #app {
   }
 
 }
+
+/* ========== 確認上傳畫面的身分列 ==========
+   放在 AppModal 的 footnote 插槽裡。modal 是 teleport 到 body 的，
+   所以這幾個 class 不能巢狀在 .p-editor 底下（寫成 &__ 產生的也是頂層 class，這裡直接寫明）。 */
+
+/* 已登入：頭貼＋「以某某送出／今天第幾張」＋登出，收成一顆淺灰膠囊。
+   寬度跟著內容走、置中，暱稱長到換行時膠囊才撐滿。 */
+.p-editor__submit-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.05);
+  text-align: left;
+}
+
+.p-editor__submit-avatar {
+  width: 32px;
+  height: 32px;
+  /* 有頭貼時左邊的內距收窄，讓圓頭貼貼近膠囊的圓角 */
+  margin-left: -0.5rem;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #ddd;
+}
+
+.p-editor__submit-identity-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.p-editor__submit-identity-name {
+  color: #323232;
+  font-size: 0.85rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.p-editor__submit-identity-quota {
+  color: #888;
+  font-size: 0.75rem;
+  font-weight: 700;
+  /* 冷卻倒數每秒跳，等寬數字才不會讓整顆膠囊跟著抖 */
+  font-variant-numeric: tabular-nums;
+
+  /* 送不出去（停權、用完、冷卻中）：按確認一定會被擋，先用顏色預告 */
+  &.is-exhausted {
+    color: var.$will-red;
+  }
+}
+
+/* 登出刻意做得很低調：它是給「這不是我」的人用的，不是這個畫面在問的問題。
+   上下的內距只是為了加大觸控範圍，不影響膠囊高度（膠囊由頭貼撐高）。 */
+.p-editor__submit-logout {
+  flex-shrink: 0;
+  margin-left: 0.2rem;
+  padding: 0.35rem 0 0.35rem 0.2rem;
+  border: 0;
+  background: transparent;
+  color: #888;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* 未登入：預告主按鈕按下去會發生什麼事 */
+.p-editor__submit-login-hint {
+  margin: 0;
+  color: #666;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  text-wrap: balance;
+}

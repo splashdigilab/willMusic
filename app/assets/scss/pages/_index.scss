@@ -370,6 +370,26 @@ $edge-inset: 1rem;
         color: rgba(255, 255, 255, 0.65);
         overflow-wrap: anywhere;
     }
+
+    /* 今天還能送幾張：緊接在「已用 LINE 登入」下面，所以上方間距收窄。
+       送不出去的狀態（停權、用完、冷卻中）要跳出來，但這張卡片的底是淺藍條紋，
+       黃字或桃紅字都看不清楚 —— 改成全白字墊一塊半透明深色膠囊 */
+    &--quota {
+        margin-top: 1.5cqw;
+        color: rgba(255, 255, 255, 0.65);
+        font-variant-numeric: tabular-nums;
+
+        &.is-warning {
+            /* 基底的 width: 100% 會把膠囊撐滿整行，這裡改回跟著字的寬度 */
+            display: table;
+            width: auto;
+            margin-inline: auto;
+            padding: 0.8cqw 3cqw;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.32);
+            color: #fff;
+        }
+    }
 }
 
 /* 登出：接在「已用 LINE 登入：某某」後面的小字。
@@ -581,6 +601,14 @@ $edge-inset: 1rem;
     z-index: 100;
     display: flex;
     gap: 0.6rem;
+}
+
+/* LINE 頭像：右上，與左上的說明鈕同一條水平線 */
+.p-index__member {
+    position: absolute;
+    top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    right: 0.75rem;
+    z-index: 100;
 }
 
 /* 回到中央：右下角的畫布控制 */

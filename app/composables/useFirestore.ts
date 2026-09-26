@@ -13,6 +13,7 @@ import {
   runTransaction,
   getDoc,
   setDoc,
+  writeBatch,
   type QueryDocumentSnapshot,
   type DocumentData
 } from 'firebase/firestore'
@@ -132,12 +133,16 @@ export const useFirestore = () => {
       // 看起來像權限設錯，很難聯想到是少了一步。
       await reserve(pendingRef.id)
 
+      // 投稿者不寫在便利貼上（便利貼公開可讀），寫在 note_owners，
+      // 而且必須跟便利貼同一批寫入 —— 規則用 getAfter／existsAfter 檢查兩邊對得上，
+      // 分兩次寫的話第一次就會被拒。
+      const ownerData = { uid, createdAt: serverTimestamp() }
+
       const createNoteWithToken = async (resolvedToken: string): Promise<string> => {
         const noteData = {
           content: form.content,
           style: sanitizedStyle,
           token: resolvedToken,
-          uid,
           timestamp: serverTimestamp(),
           status: 'waiting'
         }
@@ -157,8 +162,9 @@ export const useFirestore = () => {
             throw new Error('Token already used')
           }
 
-          // 寫入 pending queue 並將 token 標記為 used
+          // 寫入 pending queue 與投稿者，並將 token 標記為 used
           transaction.set(tokenPendingRef, noteData)
+          transaction.set(doc(db, cols.noteOwners, resolvedToken), ownerData)
           transaction.update(tokenRef, { status: 'used' })
         })
 
@@ -170,14 +176,16 @@ export const useFirestore = () => {
       }
 
       try {
-        await setDoc(pendingRef, {
+        const batch = writeBatch(db)
+        batch.set(pendingRef, {
           content: form.content,
           style: sanitizedStyle,
           token: pendingRef.id,
-          uid,
           timestamp: serverTimestamp(),
           status: 'waiting'
         })
+        batch.set(doc(db, cols.noteOwners, pendingRef.id), ownerData)
+        await batch.commit()
         return pendingRef.id
       } catch (error: any) {
         const denied =
@@ -330,15 +338,16 @@ export const useFirestore = () => {
         // 這裡是明列欄位而不是整份複製，所以**每次 queue_pending 多一個欄位，
         // 這份清單就要跟著加**，否則便利貼一上牆該欄位就靜靜消失了。
         //
-        // uid 是 optional（LINE 登入之前的舊便利貼沒有），用條件展開帶進來。
+        // 投稿者在 note_owners/{同一個 ID}，搬移時 ID 不變，所以不用跟著搬。
+        // 測試期間有一批舊格式的便利貼把 uid 寫在文件裡，這裡刻意不帶過去 ——
+        // queue_history 是公開可讀的。
+        //
         // 不能套 removeUndefined：它會遞迴重建物件，把 serverTimestamp() 的
         // sentinel 與 Timestamp 拆成普通的 plain object，寫進去就不是時間了。
-        const uid = pendingData.uid ?? item.uid
         const historyData = {
           content: pendingData.content ?? item.content,
           style: pendingData.style ?? item.style,
           token: pendingData.token ?? token,
-          ...(uid ? { uid } : {}),
           timestamp: pendingData.timestamp ?? item.timestamp,
           status: 'played',
           playedAt: serverTimestamp()

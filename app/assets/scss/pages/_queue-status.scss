@@ -138,3 +138,15 @@
     transform: scale(0.97);
   }
 }
+
+/* 次要連結：主要動作是回到首頁，這一條做成文字連結，不跟藥丸搶。
+   容器的 gap 是 2rem，這裡拉近一點讓兩者讀起來是同一組 */
+.p-queue-status__link {
+  margin-top: -1.25rem;
+  padding: 0.4rem 0.75rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}

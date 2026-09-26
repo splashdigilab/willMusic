@@ -99,20 +99,14 @@ export type TokenStatus = 'unused' | 'used'
 /**
  * 待處理佇列項目
  *
- * `uid` 是 LINE 登入上線後才有的欄位，所以是 optional：在那之前送出的便利貼
- * 沒有這個欄位，而且刻意不回填（規則只管 create，舊文件不受影響；
- * 回填要對整個 queue_history 逐筆寫入，成本與風險都不划算）。
- * 顯示端遇到沒有 uid 的資料一律當成匿名處理。
- *
- * 注意 uid 只用於身分追溯與封鎖，**不會顯示在 LED 牆上**。
- * 牆上要不要出現暱稱與頭貼由使用者自己決定，那份資料在 style 裡。
+ * **沒有投稿者欄位。** 便利貼是公開可讀的，投稿者（LINE 使用者編號）放在
+ * 只有本人與後台讀得到的 note_owners/{noteId}，見 NoteOwner。
  */
 export interface QueuePendingItem {
   id?: string // Firestore document ID
   content: string
   style: StickyNoteStyle
   token: string
-  uid?: string // 投稿者的 Firebase uid（= line:<LINE userId>）
   timestamp: Timestamp
   status: 'waiting'
 }
@@ -125,10 +119,22 @@ export interface QueueHistoryItem {
   content: string
   style: StickyNoteStyle
   token: string
-  uid?: string
   timestamp: Timestamp
   status: 'played'
   playedAt: Timestamp
+}
+
+/**
+ * 便利貼的投稿者（note_owners/{noteId}），doc ID 與便利貼相同。
+ *
+ * 跟便利貼分開存，是因為便利貼公開可讀而 uid 就是 LINE 使用者編號。
+ * 必須跟便利貼同一批寫入，規則用 getAfter／existsAfter 檢查兩邊對得上。
+ *
+ * 匿名時期（LINE 登入上線前）的便利貼沒有這一份，顯示端當成「舊資料」。
+ */
+export interface NoteOwner {
+  uid: string
+  createdAt: Timestamp
 }
 
 /**
@@ -143,6 +149,24 @@ export interface UserProfile {
   avatar?: string
   createdAt: Timestamp
   updatedAt: Timestamp
+}
+
+/**
+ * 停權名單（banned_users/{uid}）。只有後台能寫，被封鎖的本人讀得到自己那一份。
+ *
+ * 存在就代表停權，沒有「enabled」之類的欄位 —— 規則只需要 exists() 一次，
+ * 解除封鎖就是把文件刪掉。
+ *
+ * 暱稱存一份快照：刪除個人資料會把 users/{uid} 清掉，但停權名單要留著，
+ * 否則後台會看到一串認不出是誰的編號。
+ */
+export interface BannedUser {
+  displayName: string
+  /** 給後台自己看的備註，不會顯示給被封鎖的人 */
+  reason: string
+  bannedAt: Timestamp
+  /** 執行封鎖的後台帳號 email */
+  bannedBy: string
 }
 
 /**

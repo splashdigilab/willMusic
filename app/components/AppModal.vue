@@ -14,11 +14,16 @@
             <slot name="preview"></slot>
           </div>
 
-          <div class="c-modal__actions">
+          <!-- 緊貼在按鈕上方的補充說明，例如「按下去會發生什麼事」 -->
+          <div v-if="$slots.footnote" class="c-modal__footnote">
+            <slot name="footnote"></slot>
+          </div>
+
+          <div class="c-modal__actions" :class="{ 'c-modal__actions--stacked': stackedActions }">
             <!-- Secondary/Cancel Button -->
-            <button 
+            <button
               v-if="cancelText"
-              class="c-button c-button--secondary" 
+              class="c-button c-button--secondary c-modal__cancel"
               @click="handleCancel"
               :disabled="loading"
             >
@@ -27,9 +32,9 @@
             <slot name="secondary-action"></slot>
 
             <!-- Primary/Confirm Button -->
-            <button 
+            <button
               v-if="confirmText"
-              class="c-button" 
+              class="c-button c-modal__confirm"
               :class="confirmButtonClass"
               @click="handleConfirm"
               :disabled="loading"
@@ -83,6 +88,14 @@ const props = defineProps({
     default: '處理中...'
   },
   closeOnOverlay: {
+    type: Boolean,
+    default: false
+  },
+  /**
+   * 主按鈕獨佔第一列、加大，其餘按鈕縮成描邊排在下面。
+   * 給「主要動作明顯比其他選項重要」的畫面用，例如送出確認。
+   */
+  stackedActions: {
     type: Boolean,
     default: false
   }

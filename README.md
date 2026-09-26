@@ -49,6 +49,22 @@
 登入。活動規範頁另外提供一個選填的「先登入」，讓願意的人不必在畫完之後才被
 導去 LINE。往返會整頁重載，所以 `redirectToLogin()` 一定是**同步**存完草稿才導向。
 
+兩個入口回來之後的處理不同，靠回程網址上的 `resume=submit` 分辨（不用 sessionStorage：
+外部瀏覽器走 LINE App 登入時回程可能開在新分頁）：送出途中去登入的人跳過活動規範頁、
+直接開回確認畫面；從規範頁登入的人留在規範頁，照常勾同意、按 START。
+
+首頁與編輯器的右上角一直有一顆登入狀態鈕（`MemberBadge`）：已登入是 LINE 頭貼，
+點開是暱稱、今天還能送幾張、「我的便利貼」、登出；沒登入是人像輪廓，點開說明
+「瀏覽和製作都不用登入，送出時才需要」並附一顆 LINE 登入。
+（原本沒登入時什麼都不放，怕暗示「要先登入才能玩」，但使用者因此看不出自己有沒有登入、
+也找不到自己的便利貼，2026-09-26 改成兩種狀態都顯示。）
+從這顆鈕登入回來時，首頁與 `/my-notes` 用 `completeLoginReturn()` 收尾；
+編輯器有自己的 `handleLoginReturn`（要接續送出），兩者不能同時用——token 是一次性的。
+
+「今天還能送幾張、還要等多久」出現在四個地方：頭像小卡、活動規範頁（已登入時）、
+送出確認畫面、`/my-notes`。都來自 `useQuotaStatus`，冷卻中每秒倒數，講法一致。
+**後台關掉頻率限制時這些都不顯示張數**（沒有限制就沒有「剩幾張」）。
+
 ### 登入流程
 
 ```
@@ -87,10 +103,11 @@ signInWithCustomToken     之後的登入狀態由 Firebase SDK 自己維護
 | `/` | 便利貼牆，可拖曳縮放瀏覽歷史作品 | |
 | `/editor` | 編輯器：便利貼材質／造型、文字、手繪、貼紙 | 送出時需 LINE |
 | `/queue-status` | 送出後的等待頁，顯示佇列長度與預估時間 | |
+| `/my-notes` | 我的便利貼：送過哪些、排到第幾、今天還能送幾張 | LINE |
 | `/privacy` | 隱私權政策 | |
 | `/terms` | 活動規範（完整版；編輯器開場卡片顯示的是摘要） | |
 | `/login` | 後台登入（Firebase Auth 帳密） | |
-| `/admin` | 後台：營運統計、Token、GPS、投稿頻率、插播影片、便利貼管理、會員資料 | 後台 |
+| `/admin` | 後台：營運統計、Token、GPS、投稿頻率、插播影片、便利貼管理、會員（清單、封鎖、個資刪除） | 後台 |
 | `/canvas` | **LED 牆播放頁** | 後台 |
 | `/qrcode` | 店內掃碼頁，顯示後台即時產生的 QR code | 後台 |
 
@@ -116,17 +133,14 @@ signInWithCustomToken     之後的登入狀態由 Firebase SDK 自己維護
   content: string          // 所有文字區塊合併後的純文字
   style: StickyNoteStyle   // 見 app/types/index.ts
   token: string            // 同時也是 doc ID
-  uid?: string             // 投稿者的 Firebase uid（= line:<LINE userId>）
   timestamp: Timestamp
   status: 'waiting'
 }
 ```
 
-`uid` 是 LINE 登入上線後才有的欄位，所以是 optional：在那之前送出的便利貼沒有它，
-而且**刻意不回填**（規則只管 create，舊文件不受影響；回填要逐筆寫入整個
-`queue_history`，成本與風險都不划算）。顯示端遇到沒有 `uid` 的一律當匿名處理。
-
-`uid` 只用於身分追溯與封鎖，**不會顯示在 LED 牆上**。
+**便利貼上沒有投稿者。** 這個集合公開可讀（首頁一次讀 100 張），而投稿者的 uid
+就是 LINE 使用者編號，寫在這裡等於公開給任何打開開發者工具的人。
+投稿者存在 `note_owners`（見下面）。
 
 ### `queue_history` — 已播放
 
@@ -166,9 +180,47 @@ doc ID 就是 Firebase uid（`line:<LINE userId>`）：
 不是渲染時回來讀這裡——否則首頁 100 張就是 100 次額外讀取，
 而且使用者改暱稱會連帶改掉所有舊便利貼。
 
-後台的便利貼管理會顯示投稿者（暱稱 + uid 末四碼，完整 uid 在 `title` 屬性裡）。
-那裡是逐筆讀 `users/{uid}`，但查過的會進快取，同一個人翻幾頁都只讀一次；
-後台流量低，這個成本可以接受。沒有 `uid` 的舊便利貼顯示為「舊資料」。
+後台的便利貼管理會顯示投稿者（暱稱 + uid 末四碼），點下去打開會員面板
+（`AdminMemberPanel`）：這個人送過的所有便利貼、封鎖、刪個資都在那裡。
+一頁的投稿者用 `note_owners` 一次查完（每 30 個一組），暱稱再讀 `users/{uid}`，
+兩層都有快取。沒有投稿者紀錄的顯示為「舊資料」，不能點。
+
+### `note_owners` — 便利貼的投稿者
+
+doc ID 與便利貼相同（搬進 `queue_history` 時 ID 不變，所以這份不用跟著搬）：
+
+```ts
+{ uid: string, createdAt: Timestamp }
+```
+
+只有本人與後台讀得到。**必須跟便利貼同一批寫入**（`writeBatch`，有 token 時在同一個
+transaction）：規則在便利貼那邊用 `getAfter` 要求「這一批寫完後投稿者是我」，
+在這邊用 `!exists() && existsAfter()` 要求「便利貼是這一批才建立的」——
+少了後者，任何人都能把匿名時期、沒有投稿者紀錄的舊便利貼認領成自己的。
+
+- 「我的便利貼」用 `where('uid', '==', 自己)` 查出 ID，再去待播與歷史拿便利貼本身。
+- 後台刪便利貼時一起刪；刪除個人資料時刪掉這個人全部的投稿者紀錄，
+  留下的便利貼就再也追溯不到這個人。
+- 匿名時期（LINE 登入前）的便利貼沒有這份，而且**不回填**。
+
+### `banned_users` — 停權名單
+
+doc ID 同樣是 Firebase uid。**文件存在就代表停權**，解除就是刪掉它：
+
+```ts
+{ displayName: string, reason: string, bannedAt: Timestamp, bannedBy: string }
+```
+
+`canCreateNote` 檢查 `!exists()`，所以只擋送出——被封鎖的人仍能瀏覽、製作、
+下載自己的圖。LINE userId 在同一個 channel 下不會變，要繞過就得另辦一個 LINE 帳號。
+
+- `displayName` 是封鎖當下的快照：刪除個人資料會清掉 `users/{uid}`，名單上還是要認得出是誰。
+- `reason` 只給後台看，前台的訊息不寫原因。
+- **刪除個人資料不會刪這份**，否則申請刪除個資就等於解除封鎖。隱私權政策有對應的一條。
+- 後台一次讀完整份名單（上限 500），便利貼卡片與會員清單上的「已封鎖」都查這一份，
+  不逐筆讀。
+
+封鎖時預設一併撤下待播中的便利貼（不撤的話照樣會上 LED 牆）；已播放的由店員勾選。
 
 ### `user_quota` — 投稿配額
 
@@ -364,7 +416,7 @@ server/api/             # moderation.post.ts
   `enabled: false`，程式與規則都還在但沒有人走。LINE 登入上線後身分改由它負責，
   要重新啟用 token 之前得先處理 `system/active_token` 兩站共用的問題。
 - **LINE 暱稱目前不會上 LED 牆，所以還沒有審核缺口**——它只存在 `users/{uid}`
-  與後台的投稿者欄位。要送審的文字已經集中到 `editor.vue` 的 `moderatableText`，
+  （只有本人與後台讀得到）。要送審的文字已經集中到 `editor.vue` 的 `moderatableText`，
   **做名牌貼紙時必須把暱稱加進那個 computed**，否則就是一條「把 LINE 暱稱改成
   髒話就直接上牆」的路。該處有註解說明。
 

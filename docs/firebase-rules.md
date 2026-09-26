@@ -1,8 +1,14 @@
 # Firebase 安全規則：套用前務必先看
 
-`firestore.rules` 與 `storage.rules` 是**依照程式碼裡實際存在的每一個查詢**寫出來的，
-但撰寫當下**無法讀取線上現行的規則**（開發機沒有安裝 Firebase CLI）。
-所以這兩份檔案還沒有套用到任何環境，**套用前一定要先驗證**。
+`firestore.rules` 與 `storage.rules` 是**依照程式碼裡實際存在的每一個查詢**寫出來的。
+
+**部署狀態（2026-09-25）**：兩份都已部署到 willmusic-dd6ae，是第 2 節「三步走」的
+步驟 ①（過渡版）。部署前用 Rules API 的 `:test` 端點跑過行為測試
+（Firestore 40 項、Storage 14 項，涵蓋正式站舊版程式的每一種寫入、
+會員不再被當成店員、測試組只收新格式）——那個端點只評估規則，不碰資料，
+開發機沒有 Java、跑不了模擬器時可以用它代替。
+部署前的線上 Storage 規則是 `canvas_interstitial/**` 任何人可寫（連未登入都行），
+這次一併收斂成只有後台帳密能寫。
 
 ## 這些規則改了什麼
 
@@ -25,6 +31,8 @@ tokens         allow read, update, create: if true;
 | `stats_daily` | 不能碰 | 只能累加計數（限制欄位） | 讀取 |
 | `users` | 不能碰 | 讀寫自己那一份（限制欄位） | 讀取、刪除 |
 | `user_quota` | 不能碰 | 讀自己那一份、依冷卻與每日上限預約 | 讀取、刪除 |
+| `banned_users` | 不能碰 | 讀自己那一份（前台用來說明為什麼送不出去） | 全部 |
+| `note_owners` | 不能碰 | 讀自己的（我的便利貼）；只能跟便利貼同一批建立 | 讀取、刪除 |
 | `system/*` | 只能讀 | 只能讀 | 全部 |
 | 其他 | 全部拒絕 | 全部拒絕 | 全部拒絕 |
 
@@ -57,10 +65,15 @@ firebase emulators:start --only firestore,storage,auth
 ## 套用
 
 ```bash
-firebase deploy --only firestore:rules,storage:rules
+# 先只編譯、不部署（唯讀，線上規則不會變）
+npx firebase-tools deploy --only firestore:rules,storage --dry-run --project willmusic-dd6ae
+# 確認後才真的部署
+npx firebase-tools deploy --only firestore:rules,storage --project willmusic-dd6ae
 ```
 
-建議**先在測試專案套用、跑過一輪**，確認沒問題再套到正式專案。
+**沒有獨立的測試專案**：測試站與正式站是同一個 Firebase 專案（willmusic-dd6ae），
+資料用集合後綴分開，但規則只有一份，部署當下兩站同時生效。
+所以規則必須同時相容兩站當時跑的程式，見下面第 2 節的過渡版。
 
 ## 出事了怎麼辦
 
@@ -84,34 +97,50 @@ Firebase Console 的 Firestore／Storage → 規則 → 「查看歷史記錄」
 >
 > 不想啟用的話，部署前先到後台把開關關掉，或直接刪除那份文件。
 
-## 2. LINE 登入：規則與程式**必須一起上**
+## 2. LINE 登入：規則分三步上（正式站與測試站共用同一份規則）
 
 這一版把 `isStaff()` 從 `request.auth != null` 改成檢查
 `request.auth.token.firebase.sign_in_provider == 'password'`，並新增 `isMember()`
 （`== 'custom'`）。前台顧客現在也會登入，兩者跑在同一個 Firebase Auth 上。
 
-> **順序很重要，兩個方向都會出事：**
->
-> - **程式先上、規則沒跟上** → 顧客用 LINE 登入後，舊的 `isStaff()` 會把他當成
->   店員：可以清空待播佇列、竄改歷史牆、自行發放上傳憑證、改掉 GPS 圍籬與
->   大螢幕播放的影片。**這是整面 LED 牆被接管，不是小問題。**
-> - **規則先上、程式沒跟上** → 舊版程式的投稿沒有 `uid` 欄位、使用者也沒登入，
->   新的 `canCreateNote()` 會一律拒絕，**所有人都送不出便利貼**。
->
-> 沒有「先上一邊觀察看看」這個選項。要分段的話，唯一安全的拆法是
-> **先只部署 `isStaff()` 的拆分**（那一段與 LINE 無關，舊程式完全不受影響，
-> 因為後台本來就是帳密登入），之後再一起上 `canCreateNote()` 與程式碼。
+**難處在於規則只有一份**：正式站（origin/main）還是舊版的匿名投稿，
+測試站（staging）已經是 LINE 登入版，兩邊的寫入格式不同，卻要吃同一份規則。
+所以 `firestore.rules` 目前是**過渡版**：正式組集合兩種格式都收，
+測試組（`_dev`）只收新格式。過渡用的條件都標了「【過渡期】」。
 
-模擬器驗證時至少要蓋到這四項：
+| 步驟 | 做什麼 | 正式站 | 測試站 |
+|---|---|---|---|
+| ① 現在 | 部署目前這份規則（連同 `storage.rules`） | 行為與現在相同，照常匿名投稿 | 投稿開始能用；登入的顧客不再被當成店員 |
+| ② 任何時候 | 正式站換成新版程式 | 改走登入投稿，**不需要動規則** | — |
+| ③ 正式站穩定一天後 | 刪掉所有「【過渡期】」、重新部署 | 只收登入投稿，封鎖與額度開始真的擋得住人 | 不變 |
+
+> **① 要盡快。** 目前線上的規則 `isStaff()` 只看 `request.auth != null`。
+> 測試站的 LINE 登入一旦能用，任何在測試站登入的顧客對**正式站的資料**也是「店員」
+> （同一個 Firebase 專案、同一套 Auth）：可以清空正式站的待播佇列、竄改歷史牆、
+> 發放上傳憑證、改掉 GPS 圍籬與大螢幕影片。這一份規則把這個洞補起來，
+> 而且不影響舊版程式——舊版後台與大螢幕本來就是帳密登入。
+>
+> 目前線上規則的另一個後果：測試站的新版程式寫入帶 `uid` 的便利貼與 `user_quota_dev`，
+> 舊規則都會拒絕，所以**測試站現在送不出便利貼**，要等 ① 部署之後才會通。
+>
+> ③ 之前，正式站的封鎖與投稿額度都**擋不住刻意繞過的人**（走舊的匿名格式就好）。
+> 一般使用者用的是新版畫面、一定會走登入，所以實際上只有會自己打 API 的人繞得過。
+
+`storage.rules` 不需要過渡版：正式站的舊版程式只在後台上傳與刪除插播影片
+（帳密登入，`isStaff()` 照樣通過），手繪圖是新版才開始存進 Storage 的。
+它跟 Firestore 規則一樣有 `isStaff()` 的拆分，所以 ① 應該一起部署。
+
+驗證時至少要蓋到這幾項：
 
 | 身分 | 應該可以 | 應該被拒 |
 |---|---|---|
-| 未登入 | 讀 `queue_pending` / `queue_history` / `system` | 建立便利貼、寫 `stats_daily`、上傳手繪圖 |
-| member（custom token） | 建立自己的便利貼（`uid` == 自己）、寫自己的 `users/{uid}` | 刪便利貼、寫 `system`、發 token、讀 `stats_daily`、寫別人的 `users/{uid}`、`displayName` 與 `lineName` claim 不符 |
+| 未登入 | 讀 `queue_pending` / `queue_history` / `system`；**在正式組**用舊格式建立便利貼、寫 `stats_daily`（過渡期） | 在測試組建立便利貼、寫 `stats_daily_dev`、上傳手繪圖、帶 `uid` 的便利貼 |
+| member（custom token） | 建立自己的便利貼（`uid` == 自己、有預約）、寫自己的 `users/{uid}` | 刪便利貼、寫 `system`、發 token、讀 `stats_daily`、寫別人的 `users/{uid}`、`displayName` 與 `lineName` claim 不符 |
 | staff（password） | 全部 | — |
 | 舊便利貼（無 `uid`） | 照常被讀取與顯示 | — |
 
-另外新增了 `users` / `users_dev`、`user_quota` / `user_quota_dev` 四個 match 區塊。
+另外新增了 `users` / `users_dev`、`user_quota` / `user_quota_dev`、
+`banned_users` / `banned_users_dev` 六個 match 區塊。
 **規則裡的集合是一組一組手寫的，改任何一條都要記得兩組都改**，
 只改正式組的話測試站會整組被擋下。
 
@@ -142,6 +171,54 @@ Firebase Console 的 Firestore／Storage → 規則 → 「查看歷史記錄」
   前端 `useSubmissionQuota` 的同名函式必須算出一模一樣的字串（含「不補零」）。
 - **`system/editor_rate_limit` 不存在時採用預設值，不是放行。** 這與 GPS 圍籬
   相反——圍籬設錯會把人鎖在門外所以寧可放行；頻率限制放行等於完全沒有限制。
+
+## 3b. 停權名單
+
+後台可以封鎖帳號（會員面板裡的「封鎖這個帳號」），寫入 `banned_users/{uid}`，
+`canCreateNote` 多了一條 `!exists(bannedRef)`。只擋送出：被封鎖的人仍能讀、
+能製作，只是建不了便利貼。
+
+模擬器要測：
+
+1. 名單上的 member 建立便利貼 → **被拒**（就算已經預約成功也一樣）
+2. 不在名單上的 member → 照常可以送
+3. member 讀自己的 `banned_users/{uid}` → 允許；讀別人的、或寫任何一份 → **被拒**
+4. staff 讀寫 → 允許
+
+**上線順序可以分開，兩種順序都不會出事**：名單是空的時候，規則等於沒改；
+程式先上而規則還沒上的話，後台的封鎖按鈕會寫入失敗（catch-all 拒絕），
+其他功能都不受影響。
+
+過渡期（見第 2 節）正式組還收匿名的舊格式投稿，所以封鎖在正式站要到步驟 ③
+才真的擋得住刻意繞過的人；測試組現在就有效。
+
+刪除個人資料（`users` 與 `user_quota`）**不會**連帶刪掉停權紀錄，
+否則被封鎖的人申請刪除個資就等於解除封鎖。隱私權政策的「保存多久」有對應的一條。
+
+已知限制：Storage 的 `note_drawings/` 沒有檢查停權名單（Storage 規則要跨服務讀
+Firestore 才做得到，還牽涉測試／正式兩組名單），所以被封鎖的人仍能上傳手繪圖檔。
+圖檔沒有對應的便利貼就不會顯示在任何地方，影響只有儲存空間 —— 這跟任何會員
+不送出、只上傳的情況相同，不是封鎖造成的新缺口。
+
+## 3c. 投稿者移出便利貼（`note_owners`）
+
+便利貼公開可讀，原本卻帶著 `uid`（= LINE 使用者編號），任何人打開開發者工具就看得到，
+與隱私權政策「LINE 使用者識別碼不會公開」不符。現在便利貼不帶 `uid`，
+投稿者寫在 `note_owners/{noteId}`，只有本人與後台讀得到，而且必須跟便利貼同一批寫入：
+
+- 便利貼那邊：`existsAfter(ownerRef) && getAfter(ownerRef).data.uid == request.auth.uid`
+- 投稿者那邊：`!exists(noteRef) && existsAfter(noteRef)`（便利貼必須是這一批才建立的，
+  否則匿名時期沒有投稿者紀錄的舊便利貼可以被任何人認領）
+
+**部署要跟測試站的程式一起上。** 線上測試站跑的程式還會在便利貼上寫 `uid`、
+不寫 `note_owners`，新規則會拒絕它。正式站不受影響（舊版程式走【過渡期】的匿名格式）。
+
+過渡期的已知限制多了一條：新格式的便利貼拿掉 `uid` 之後跟舊的匿名格式欄位相同，
+所以正式組會直接走舊格式放行，封鎖與額度在正式站要到步驟 ③ 才對刻意繞過的人生效
+（一般使用者仍會被前端的檢查與預約規則擋下）。測試組不受影響。
+
+測試站既有的測試便利貼還帶著 `uid`（正式站沒有這種資料，正式站一直是匿名投稿）。
+這批不會被新程式讀到；上正式站前清掉測試資料即可，不需要搬移。
 
 ## 4. 手繪圖改存 Storage
 

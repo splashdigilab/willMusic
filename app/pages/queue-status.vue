@@ -24,6 +24,8 @@
       </div>
 
       <NuxtLink to="/" class="p-queue-status__btn-home">＼ 回到首頁 ／</NuxtLink>
+      <!-- 離開這頁之後，還能在「我的便利貼」看到自己那張排到第幾 -->
+      <NuxtLink to="/my-notes" class="p-queue-status__link">查看我的便利貼</NuxtLink>
     </div>
   </div>
 </template>

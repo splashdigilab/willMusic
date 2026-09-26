@@ -372,13 +372,7 @@
     color: #666;
   }
 
-  /* ── 會員資料查詢結果 ─────────────────────────────── */
-  &__member-result {
-    margin-top: 1.25rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid #e5e7eb;
-  }
-
+  /* ── 會員（清單、面板共用）──────────────────────────── */
   &__member-identity {
     display: flex;
     align-items: center;
@@ -409,21 +403,256 @@
     overflow-wrap: anywhere;
   }
 
-  &__member-counts {
-    margin: 1rem 0 0;
+  /* 狀態標籤，目前只有「已封鎖」 */
+  &__tag {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.5;
+    vertical-align: middle;
+
+    &--banned {
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+    }
+  }
+
+  &__member-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  &__member-filter {
+    padding: 0.45rem 0.9rem;
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    background: #fff;
+    font-family: inherit;
     font-size: 0.875rem;
-    color: #555;
+    font-weight: 700;
+    color: #4b5563;
+    cursor: pointer;
+
+    &.is-active {
+      background: #111;
+      border-color: #111;
+      color: #fff;
+    }
+  }
+
+  &__member-list {
+    margin: 0 0 1rem;
+    padding: 0;
+    list-style: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+
+    li + li {
+      border-top: 1px solid #f0f1f3;
+    }
+  }
+
+  /* 整列都是按鈕：手機上點名字或點頭貼都要能打開面板 */
+  &__member-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 0;
+    background: #fff;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: #f9fafb;
+    }
+
+    .p-admin__member-avatar {
+      width: 40px;
+      height: 40px;
+    }
+  }
+
+  &__member-row-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__member-row-chevron {
+    flex-shrink: 0;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: #bbb;
+  }
+
+  &__member-more {
+    justify-content: center;
+    margin-bottom: 1rem;
   }
 
   /* 投稿者。LINE 暱稱長度沒有上限（雖然存進來時已截到 12 字），
      這裡仍然限制成單行省略，避免一張卡片被名字撐高、整排跟著錯開。
-     完整 uid 在 title 屬性裡，滑鼠移上去可以看、也能複製去查。 */
+     完整 uid 在 title 屬性裡。 */
   &__note-submitter {
     font-size: 0.75rem;
     color: #888;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+
+    /* 有 uid 的可以點開會員面板。平板與手機沒有 hover 可以看 title，
+       所以一定要是可點的東西，不能只靠提示框 */
+    &--link {
+      display: block;
+      width: 100%;
+      padding: 0.25rem 0;
+      border: 0;
+      background: transparent;
+      font-family: inherit;
+      text-decoration: underline;
+      text-decoration-color: #d1d5db;
+      text-underline-offset: 0.2em;
+      cursor: pointer;
+
+      &:hover {
+        color: #111;
+        text-decoration-color: currentColor;
+      }
+    }
+  }
+
+  /* ── 會員面板（AdminMemberPanel，teleport 到 body）──────────
+     從右邊滑出的抽屜，手機上滿版。z-index 低於 AppModal（1000）：
+     面板裡的「確定封鎖」「確定刪除」確認視窗要蓋在面板上面。 */
+  &__panel {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  &__panel-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(17, 17, 17, 0.45);
+  }
+
+  &__panel-sheet {
+    position: relative;
+    width: min(640px, 100%);
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1.5rem;
+    background: #fff;
+    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.18);
+
+    .p-admin__note-grid {
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1rem;
+      overflow: visible;
+    }
+  }
+
+  &__panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  &__panel-close {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #e5e7eb;
+    border-radius: 50%;
+    background: #fff;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: #555;
+    cursor: pointer;
+
+    &:hover {
+      background: #f3f4f6;
+    }
+  }
+
+  &__panel-copy {
+    margin-left: 0.35rem;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    font-family: inherit;
+    font-size: 0.7rem;
+    color: #555;
+    cursor: pointer;
+  }
+
+  &__panel-section-title {
+    margin: 1.5rem 0 0.75rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #111;
+  }
+
+  &__ban-status {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #991b1b;
+    font-size: 0.875rem;
+  }
+
+  &__ban-status-title {
+    margin: 0;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  &__ban-status-reason {
+    margin: 0.35rem 0 0;
+  }
+
+  /* 封鎖確認視窗（AppModal 的 footnote）裡的表單。
+     AppModal 整張置中對齊，表單要靠左才好讀 */
+  &__ban-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    text-align: left;
+  }
+
+  &__check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #333;
+    cursor: pointer;
+
+    input {
+      margin-top: 0.25rem;
+      flex-shrink: 0;
+    }
   }
 
   &__btn-delete {

@@ -6,13 +6,17 @@ rules_version = '2';
 // 但**送出一定要 LINE 登入**，而且不能修改或刪除別人的東西。
 // 所有破壞性操作一律限後台。
 //
+// 例外：正式站還沒換成 LINE 登入版之前，正式組集合同時接受舊版的匿名投稿。
+// 見下面「【過渡期】」那一段，正式站換版之後要拿掉。
+//
 // 規則是依照程式碼裡實際存在的每一個查詢寫的。改動任何 Firestore 操作時，
 // 記得回來確認這裡也要跟著調整，否則會在前台看到 permission-denied。
 //
 // ── 兩組資料集合 ────────────────────────────────────────────
 // 前端由 NUXT_PUBLIC_FIRESTORE_SUFFIX 決定連到哪一組（見 app/utils/collections.ts）：
-//   空值 = queue_pending / queue_history / tokens / stats_daily / users
-//   _dev = queue_pending_dev / queue_history_dev / tokens_dev / stats_daily_dev / users_dev
+//   空值 = queue_pending / queue_history / tokens / stats_daily / users / user_quota /
+//          banned_users / note_owners
+//   _dev = 以上每一個都加 _dev
 // 規則語言沒有迴圈或巨集，所以 match 區塊只能一組組寫。判斷條件全部抽成下面的
 // function 共用，兩組 match 的差別只有「對應的 tokens 集合路徑」由呼叫端傳入。
 // 要再開第三組測試資料時，複製一組 match 區塊、把集合名稱與 tokens 路徑一起改掉即可。
@@ -74,9 +78,11 @@ service cloud.firestore {
 
     // ── queue_pending 的投稿條件 ────────────────────────────
     // 瀏覽與編輯都不需要登入，但**送出一定要**：
-    //   0. 必須是 LINE 會員，而且 uid 要跟自己的 token 一致。這是前台唯一的
-    //      身分約束，後續的封鎖與限流都建立在它上面。只在前端擋是沒用的，
-    //      繞過 UI 直接用 Firebase SDK 打這個集合就進來了
+    //   0. 必須是 LINE 會員，而且同一批寫入的 note_owners 記的是自己（見下面）。
+    //      這是前台唯一的身分約束，後續的封鎖與限流都建立在它上面。只在前端擋是
+    //      沒用的，繞過 UI 直接用 Firebase SDK 打這個集合就進來了
+    //   0a. 不在停權名單上（banned_users/{uid}）。只擋這一個動作：被封鎖的人
+    //       仍然可以瀏覽、製作、下載自己的圖，只是送不上牆
     //   0b. 必須先在 user_quota/{uid} 預約過這個 doc ID（見上面的「預約制」）
     //   1. doc ID 必須等於 token —— moveToHistory 與去重邏輯都依賴這個不變式，
     //      不強制的話可以建立 queue_pending/A 卻帶 token:'B'，歷史紀錄就會錯位
@@ -84,21 +90,45 @@ service cloud.firestore {
     //      前台的 checkTokenStatus() 只是體驗，繞過前端直接打 API 就失效了。
     //      （QR token 機制目前停用中，LINE 登入上線後不再依賴它，但規則留著）
     //   3. 限制欄位與長度，避免被塞任意資料
-    function canCreateNote(noteId, tokenRef, quotaRef) {
+    //
+    // 停權只檢查在這裡，不檢查在預約（canWriteQuota）：被封鎖的人就算預約成功，
+    // 也換不到便利貼；兩邊都檢查只是多花一次讀取。
+    //
+    // ── 投稿者不寫在便利貼上 ──────────────────────────────
+    // 便利貼是公開可讀的（首頁一次讀 100 張），uid 就是 LINE 使用者編號，
+    // 寫在便利貼上等於公開給所有人。所以投稿者存在另一份 note_owners/{noteId}，
+    // 只有本人與後台讀得到，而且必須跟便利貼**同一批**寫入（writeBatch／transaction）：
+    // 這裡用 getAfter 要求「這一批寫完之後，這張便利貼的投稿者是我」，
+    // canCreateNoteOwner 則要求「這一批裡同時建立了這張便利貼」。
+    function canCreateNote(noteId, tokenRef, quotaRef, bannedRef, ownerRef) {
       return isMember()
-             && incoming().uid == request.auth.uid
+             && !exists(bannedRef)
              && hasFreshReservation(noteId, quotaRef)
+             && existsAfter(ownerRef)
+             && getAfter(ownerRef).data.uid == request.auth.uid
              && noteId == incoming().token
              && incoming().status == 'waiting'
              && incoming().content is string
              && incoming().content.size() <= 1000
              && incoming().style is map
              && incoming().token is string
-             && incoming().uid is string
              && incoming().keys().hasOnly(
-                  ['content', 'style', 'token', 'timestamp', 'status', 'uid']
+                  ['content', 'style', 'token', 'timestamp', 'status']
                 )
              && (!tokenRequired() || hasUsableToken(tokenRef));
+    }
+
+    // ── note_owners/{noteId} 的建立條件 ────────────────────
+    // 只能在建立便利貼的那一批裡一起建立：exists() 看的是這一批之前、
+    // existsAfter() 看的是之後。少了「之前不存在」這一條的話，任何人都能
+    // 把一張已經在牆上、還沒有投稿者紀錄的舊便利貼（匿名時期的）認領成自己的。
+    function canCreateNoteOwner(noteRef) {
+      return isMember()
+             && incoming().uid == request.auth.uid
+             && incoming().keys().hasOnly(['uid', 'createdAt'])
+             && incoming().createdAt == request.time
+             && !exists(noteRef)
+             && existsAfter(noteRef);
     }
 
     // ── users/{uid} 的寫入條件 ─────────────────────────────
@@ -226,6 +256,55 @@ service cloud.firestore {
              && incoming().date == dateKey;
     }
 
+    // ══ 【過渡期】正式站舊版程式的相容條件 ══════════════════════
+    //
+    // 正式站與測試站是同一個 Firebase 專案，規則只有一份。正式站跑的還是舊版
+    // （origin/main：不登入、匿名投稿、便利貼沒有 uid），測試站跑的是 LINE 登入版。
+    // 所以正式組集合在過渡期要**兩種寫法都收**：
+    //
+    //   舊版的匿名投稿 → 下面這三個 *Legacy 條件（與舊規則逐字相同）
+    //   新版的會員投稿 → 上面的 canCreateNote 等
+    //
+    // 這樣正式站換成新版程式的那一刻不需要同時改規則，兩邊可以分開上線。
+    // 代價是過渡期內正式站仍然可以匿名投稿，**封鎖與投稿額度在正式站擋不住人**
+    // （繞過登入走舊格式就好）。測試組（_dev）不收舊格式，一律是新規則。
+    //
+    // 正式站換成新版、穩定一天（讓還開著舊頁面的人都重新整理過）之後：
+    // 搜尋「【過渡期】」，刪掉這一段與正式組 match 裡的 `|| ...Legacy(...)`，重新部署。
+    //
+    // isStaff() 的拆分不在過渡範圍：舊版後台與大螢幕本來就是帳密登入
+    // （sign_in_provider = password），舊程式完全不受影響。
+
+    // 【過渡期】舊版匿名投稿：沒有 uid、不需要預約
+    function canCreateNoteLegacy(noteId, tokenRef) {
+      return noteId == incoming().token
+             && incoming().status == 'waiting'
+             && incoming().content is string
+             && incoming().content.size() <= 1000
+             && incoming().style is map
+             && incoming().token is string
+             && incoming().keys().hasOnly(
+                  ['content', 'style', 'token', 'timestamp', 'status']
+                )
+             && (!tokenRequired() || hasUsableToken(tokenRef));
+    }
+
+    // 【過渡期】舊版送出時匿名把憑證改成 used
+    function canUpdateTokenLegacy() {
+      return resource.data.status == 'unused'
+             && incoming().status == 'used'
+             && incoming().diff(resource.data).affectedKeys().hasOnly(['status'])
+             && tokenUnexpired(resource.data);
+    }
+
+    // 【過渡期】舊版送出後匿名累加每日統計
+    function canWriteDailyStatLegacy(dateKey) {
+      return incoming().keys().hasOnly(
+               ['date', 'total', 'hours', 'updatedAt']
+             )
+             && incoming().date == dateKey;
+    }
+
     // ══ 正式資料 ══════════════════════════════════════════
 
     // 待播佇列，也是前台的投稿入口
@@ -233,10 +312,18 @@ service cloud.firestore {
       // 首頁、等待頁與大螢幕都要讀；內容本來就會公開展示
       allow read: if true;
 
-      allow create: if canCreateNote(
+      // 【過渡期】舊格式放前面：匿名請求時 request.auth 是 null，
+      // 先算新版條件的話 $(request.auth.uid) 會出錯。|| 會短路，舊格式成立就不往後算
+      allow create: if canCreateNoteLegacy(
+                         noteId,
+                         /databases/$(database)/documents/tokens/$(noteId)
+                       )
+                    || canCreateNote(
                          noteId,
                          /databases/$(database)/documents/tokens/$(noteId),
-                         /databases/$(database)/documents/user_quota/$(request.auth.uid)
+                         /databases/$(database)/documents/user_quota/$(request.auth.uid),
+                         /databases/$(database)/documents/banned_users/$(request.auth.uid),
+                         /databases/$(database)/documents/note_owners/$(noteId)
                        );
 
       // 送出後就不能再改；只有大螢幕播完或後台管理才會刪
@@ -261,7 +348,7 @@ service cloud.firestore {
       // 只有後台可以發憑證
       allow create: if isStaff();
 
-      allow update: if canUpdateToken();
+      allow update: if canUpdateToken() || canUpdateTokenLegacy();  // 【過渡期】
       allow delete: if isStaff();
     }
 
@@ -269,7 +356,7 @@ service cloud.firestore {
     match /stats_daily/{dateKey} {
       // 只有後台會看統計
       allow read: if isStaff();
-      allow create, update: if canWriteDailyStat(dateKey);
+      allow create, update: if canWriteDailyStat(dateKey) || canWriteDailyStatLegacy(dateKey);  // 【過渡期】
     }
 
     // LINE 會員資料。doc ID 就是 Firebase uid（= line:<LINE userId>）。
@@ -293,6 +380,26 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
+    // 停權名單。存在就是停權，由 canCreateNote 檢查。
+    // 本人讀得到自己那一份：前台要在按送出時告訴他「這個帳號已停止投稿」，
+    // 而不是讓規則擋下來之後顯示一句看不出原因的錯誤。
+    // 刪除個人資料時**不會**一起刪 —— 否則申請刪除個資就等於解除封鎖。
+    match /banned_users/{uid} {
+      allow read: if isStaff() || (isMember() && request.auth.uid == uid);
+      allow create, update, delete: if isStaff();
+    }
+
+    // 便利貼的投稿者。doc ID 與便利貼相同（queue_pending 搬到 queue_history 時
+    // ID 不變，所以這一份不用跟著搬）。本人讀得到自己的（「我的便利貼」用
+    // where('uid', '==', 自己) 查），後台全部讀得到。
+    // 刪便利貼時由後台一起刪；刪除個人資料時也會刪，之後就無法追溯投稿者。
+    match /note_owners/{noteId} {
+      allow read: if isStaff() || (isMember() && resource.data.uid == request.auth.uid);
+      allow create: if canCreateNoteOwner(/databases/$(database)/documents/queue_pending/$(noteId));
+      allow update: if false;
+      allow delete: if isStaff();
+    }
+
     // ══ 測試資料（NUXT_PUBLIC_FIRESTORE_SUFFIX=_dev）══════════
     // 條件與正式組完全相同，只有集合名稱與 tokens 路徑帶了 _dev。
 
@@ -302,7 +409,9 @@ service cloud.firestore {
       allow create: if canCreateNote(
                          noteId,
                          /databases/$(database)/documents/tokens_dev/$(noteId),
-                         /databases/$(database)/documents/user_quota_dev/$(request.auth.uid)
+                         /databases/$(database)/documents/user_quota_dev/$(request.auth.uid),
+                         /databases/$(database)/documents/banned_users_dev/$(request.auth.uid),
+                         /databases/$(database)/documents/note_owners_dev/$(noteId)
                        );
 
       allow update: if false;
@@ -336,6 +445,18 @@ service cloud.firestore {
     match /user_quota_dev/{uid} {
       allow read: if isStaff() || (isMember() && request.auth.uid == uid);
       allow create, update: if canWriteQuota(uid);
+      allow delete: if isStaff();
+    }
+
+    match /banned_users_dev/{uid} {
+      allow read: if isStaff() || (isMember() && request.auth.uid == uid);
+      allow create, update, delete: if isStaff();
+    }
+
+    match /note_owners_dev/{noteId} {
+      allow read: if isStaff() || (isMember() && resource.data.uid == request.auth.uid);
+      allow create: if canCreateNoteOwner(/databases/$(database)/documents/queue_pending_dev/$(noteId));
+      allow update: if false;
       allow delete: if isStaff();
     }
 
