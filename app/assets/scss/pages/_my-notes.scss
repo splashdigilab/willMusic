@@ -6,12 +6,31 @@
 
   視覺與送出後的等待頁（_queue-status.scss）同一套：深灰底、白色漸層卡片、
   天藍漸層藥丸。這兩頁是同一件事的前後 —— 送出、然後等它上牆。
+
+  由上而下：額度卡（今天還能送幾張 + 製作按鈕）→ 排隊中 → 已上牆。
+  排隊中做成一列一張、字放大，因為要讀的是「前面還有幾張」；
+  已上牆做成兩欄的牆，那時候要看的是便利貼本身。
 */
+
+/* 額度卡與清單卡片共用的內距／圓角 */
+$card-radius: 1.4rem;
+$tile-radius: 1.1rem;
+$tile-bg: rgba(255, 255, 255, 0.07);
+$tile-border: 1px solid rgba(255, 255, 255, 0.08);
+
+/* 白底卡片上的文字色。品牌桃紅 #EA4C71 放在淡粉底上對比不夠，壓深一階 */
+$ink: #323232;
+$ink-sub: #7A7A7A;
+$ink-blue: #0B8AA1;
+$ink-red: #D6335A;
+
 .p-my-notes {
   position: fixed;
   inset: 0;
   display: flex;
   justify-content: center;
+  /* 不用預設的 stretch：容器要能比畫面高，才捲得動 */
+  align-items: flex-start;
   background-color: var.$will-dark;
   color: #fff;
   overflow-y: auto;
@@ -21,14 +40,16 @@
 .p-my-notes__container {
   width: 100%;
   max-width: 420px;
+  /* 至少一個畫面高：空狀態要能置中在剩下的空間，頁尾說明要能沉到底 */
+  min-height: 100%;
   box-sizing: border-box;
   padding:
     calc(0.75rem + env(safe-area-inset-top, 0px))
     min(6.48vw, 26px)
-    calc(2rem + env(safe-area-inset-bottom, 0px));
+    calc(1.5rem + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 /* 返回鈕與標題同一列。返回鈕沿用首頁的圓鈕（.p-index__icon-btn） */
@@ -38,42 +59,125 @@
   gap: 0.75rem;
 }
 
+/* 標題比等待頁小一階：這頁的主角是底下的額度與便利貼，不是標題 */
 .p-my-notes__title {
   margin: 0;
-  font-size: clamp(1.4rem, 6.5vw, 1.8rem);
+  font-size: clamp(1.25rem, 5.6vw, 1.45rem);
   font-weight: 800;
   letter-spacing: 0.06em;
 }
 
-.p-my-notes__card {
+/* ── 額度卡 ── */
+.p-my-notes__quota {
   box-sizing: border-box;
-  padding: 1.25rem;
-  border-radius: 1.4rem;
+  padding: 1.25rem 1.25rem 1.35rem;
+  border-radius: $card-radius;
   background: linear-gradient(to bottom left, #FFFFFF 0%, #ECECEC 100%);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
-  color: #323232;
-  text-align: center;
+  color: $ink;
 }
 
-/* ── 額度卡 ── */
-.p-my-notes__quota-main {
+.p-my-notes__quota-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.p-my-notes__quota-label {
   margin: 0;
-  font-size: clamp(1.2rem, 5.6vw, 1.5rem);
-  font-weight: 800;
-  line-height: 1.3;
-  /* 冷卻倒數每秒跳，等寬數字才不會左右抖 */
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: $ink-sub;
+}
+
+.p-my-notes__quota-count {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0.15rem 0 0;
+  /* 冷卻倒數與張數會跳，等寬數字才不會左右抖 */
   font-variant-numeric: tabular-nums;
 
-  &.is-warning {
-    color: var.$will-red;
+  strong {
+    font-size: 2.75rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  span {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: $ink-sub;
+  }
+
+  /* 讀取中：數字位置換成一塊灰色骨架，大小跟個位數差不多 */
+  &.is-loading strong {
+    width: 3rem;
+    border-radius: 0.5rem;
+    background: rgba(0, 0, 0, 0.08);
+    color: transparent;
+    animation: p-my-notes-pulse 1.2s ease-in-out infinite;
   }
 }
 
-.p-my-notes__quota-sub {
+/* 張數右邊的狀態：可以送是天藍，送不出去（冷卻／用完）是桃紅 */
+.p-my-notes__chip {
+  flex-shrink: 0;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(var.$will-blue, 0.16);
+  color: $ink-blue;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+
+  &.is-warning {
+    background: rgba(var.$will-red, 0.12);
+    color: $ink-red;
+  }
+}
+
+/* 一格一張，用掉的變灰 */
+.p-my-notes__pips {
+  display: flex;
+  gap: 6px;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    flex: 1;
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(to right, #66CADC 0%, #01A7C5 100%);
+
+    &.is-used {
+      background: rgba(0, 0, 0, 0.1);
+    }
+  }
+}
+
+.p-my-notes__quota-alert {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: $ink-red;
+}
+
+.p-my-notes__quota-note {
   margin: 0.35rem 0 0;
   font-size: 0.9rem;
   font-weight: 700;
-  color: #7A7A7A;
+  line-height: 1.6;
+  color: $ink-sub;
+
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
 /* 主要按鈕：與等待頁「回到首頁」同一組天藍漸層藥丸 */
@@ -83,8 +187,8 @@
   justify-content: center;
   width: 100%;
   box-sizing: border-box;
-  margin-top: 1rem;
-  padding: 0.75rem 1.25rem;
+  margin-top: 1.1rem;
+  padding: 0.8rem 1.25rem;
   border: 0;
   border-radius: 999px;
   background: linear-gradient(to right, #66CADC 0%, #01A7C5 100%);
@@ -97,6 +201,7 @@
   white-space: nowrap;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
   cursor: pointer;
+  transition: transform 0.15s ease;
 
   &:active {
     transform: scale(0.97);
@@ -104,27 +209,58 @@
 
   /* 按下去會進 LINE 登入：跟送出確認畫面的登入按鈕同一個綠 */
   &--line {
+    max-width: 280px;
+    margin-top: 1.75rem;
     background: var.$line-green;
   }
 }
 
-/* ── 未登入 ── */
-.p-my-notes__signin-text {
+/* ── 區塊標題：「排隊中 2」「已上牆 5」 ── */
+.p-my-notes__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.p-my-notes__section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin: 0;
+  padding-left: 0.25rem;
   font-size: 0.95rem;
-  font-weight: 700;
-  line-height: 1.6;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.9);
+
+  span {
+    min-width: 1.5rem;
+    padding: 0.1rem 0.45rem;
+    box-sizing: border-box;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    font-size: 0.75rem;
+    text-align: center;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+  }
 }
 
-.p-my-notes__signin-error {
-  margin: 0.6rem 0 0;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var.$will-red;
+/* 便利貼本身是寬 100%、正方形，給它一個固定寬度的框就好 */
+.p-my-notes__thumb {
+  flex-shrink: 0;
+  width: 84px;
 }
 
-/* ── 清單 ── */
-.p-my-notes__list {
+.p-my-notes__time {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 排隊中：一列一張 ── */
+.p-my-notes__queue {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -133,49 +269,166 @@
   gap: 0.75rem;
 }
 
-.p-my-notes__item {
+.p-my-notes__ticket {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.75rem;
-  border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.06);
+  gap: 1.1rem;
+  padding: 0.85rem 1rem 0.85rem 0.85rem;
+  border-radius: $tile-radius;
+  border: $tile-border;
+  background: $tile-bg;
+
+  /* 正在播或下一張：現在就該抬頭看牆，用最醒目的黃，外圈慢慢呼吸。
+     底色不疊黃 —— 淡黃疊在深灰上會變成髒髒的橄欖色 */
+  &.is-now {
+    border-color: var.$will-yellow;
+    animation: p-my-notes-glow 1.8s ease-in-out infinite;
+
+    .p-my-notes__ticket-main {
+      font-size: 1.3rem;
+      color: var.$will-yellow;
+    }
+  }
 }
 
-/* 便利貼本身是寬 100%、正方形，給它一個固定寬度的框就好 */
-.p-my-notes__thumb {
-  flex-shrink: 0;
-  width: 88px;
-}
-
-.p-my-notes__meta {
+.p-my-notes__ticket-meta {
   min-width: 0;
 }
 
-.p-my-notes__status {
+.p-my-notes__ticket-main {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 800;
-  line-height: 1.4;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
 
-  &.is-waiting {
+  strong {
+    margin: 0 0.1em;
+    font-size: 1.6em;
     color: var.$will-blue;
-  }
-
-  /* 正在播或下一張：現在就該抬頭看牆，用最醒目的黃 */
-  &.is-now {
-    color: var.$will-yellow;
-  }
-
-  &.is-played {
-    color: rgba(255, 255, 255, 0.85);
   }
 }
 
-.p-my-notes__time {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.55);
+.p-my-notes__ticket-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+/* ── 已上牆：兩欄 ── */
+.p-my-notes__gallery {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.p-my-notes__tile {
+  padding: 0.9rem 0.9rem 0.7rem;
+  border-radius: $tile-radius;
+  border: $tile-border;
+  background: $tile-bg;
+  text-align: center;
+
+  .p-my-notes__thumb {
+    width: 100%;
+  }
+
+  .p-my-notes__time {
+    margin-top: 0.65rem;
+  }
+}
+
+/* ── 空狀態／未登入：置中在額度卡下方剩下的空間 ── */
+.p-my-notes__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 0.5rem 2rem;
+  text-align: center;
+}
+
+/* 三張疊在一起的空白便利貼，顏色取品牌的藍、桃紅、黃 */
+.p-my-notes__empty-art {
+  position: relative;
+  width: 136px;
+  height: 112px;
+  margin-bottom: 1.5rem;
+
+  i {
+    position: absolute;
+    width: 64px;
+    height: 64px;
+    border-radius: 6px;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+
+    &:nth-child(1) {
+      left: 4px;
+      top: 22px;
+      background: var.$will-blue;
+      transform: rotate(-14deg);
+    }
+
+    &:nth-child(2) {
+      left: 68px;
+      top: 10px;
+      background: var.$will-red;
+      transform: rotate(11deg);
+    }
+
+    /* 最前面那張畫兩道短線，看得出是「還沒寫」的便利貼 */
+    &:nth-child(3) {
+      left: 36px;
+      top: 40px;
+      background: var.$will-yellow;
+      transform: rotate(-3deg);
+
+      &::before,
+      &::after {
+        content: '';
+        position: absolute;
+        left: 14px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(0, 0, 0, 0.16);
+      }
+
+      &::before {
+        top: 22px;
+        width: 36px;
+      }
+
+      &::after {
+        top: 34px;
+        width: 24px;
+      }
+    }
+  }
+}
+
+.p-my-notes__empty-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.p-my-notes__empty-text {
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.p-my-notes__signin-error {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var.$will-red;
 }
 
 .p-my-notes__hint {
@@ -185,10 +438,28 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
+/* 沉到頁尾：清單短的時候不要貼在最後一張下面 */
 .p-my-notes__footnote {
-  margin: 0;
+  margin: auto 0 0;
+  padding-top: 0.5rem;
   text-align: center;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+@keyframes p-my-notes-pulse {
+  50% { opacity: 0.4; }
+}
+
+@keyframes p-my-notes-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var.$will-yellow, 0); }
+  50% { box-shadow: 0 0 0 5px rgba(var.$will-yellow, 0.18); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p-my-notes__quota-count.is-loading strong,
+  .p-my-notes__ticket.is-now {
+    animation: none;
+  }
 }
