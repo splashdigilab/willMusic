@@ -336,9 +336,8 @@ $edge-inset: 1rem;
     }
 }
 
-/* 規範頁的 LINE 登入那一列。
-   刻意做得比 START 低調：登入在這裡是選填的，主要動作仍然是 START。
-   已登入與未登入共用同一個 class，高度一致，狀態切換時版面不會跳。 */
+/* 規範頁 START 底下那一行：沒登入是「先用 LINE 登入」，已登入只在今天送不出去時出現警示。
+   刻意做得比 START 低調：登入在這裡是選填的，主要動作仍然是 START。 */
 .p-index__intro-line {
     display: block;
     width: 100%;
@@ -365,51 +364,17 @@ $edge-inset: 1rem;
         }
     }
 
-    &--done {
-        /* 已登入是狀態不是動作，拿掉底線並降低存在感 */
-        color: rgba(255, 255, 255, 0.65);
-        overflow-wrap: anywhere;
-    }
-
-    /* 今天還能送幾張：緊接在「已用 LINE 登入」下面，所以上方間距收窄。
-       送不出去的狀態（停權、用完、冷卻中）要跳出來，但這張卡片的底是淺藍條紋，
+    /* 今天送不出去（停權、額度用完）。這張卡片的底是淺藍條紋，
        黃字或桃紅字都看不清楚 —— 改成全白字墊一塊半透明深色膠囊 */
-    &--quota {
-        margin-top: 1.5cqw;
-        color: rgba(255, 255, 255, 0.65);
-        font-variant-numeric: tabular-nums;
-
-        &.is-warning {
-            /* 基底的 width: 100% 會把膠囊撐滿整行，這裡改回跟著字的寬度 */
-            display: table;
-            width: auto;
-            margin-inline: auto;
-            padding: 0.8cqw 3cqw;
-            border-radius: 999px;
-            background: rgba(0, 0, 0, 0.32);
-            color: #fff;
-        }
-    }
-}
-
-/* 登出：接在「已用 LINE 登入：某某」後面的小字。
-   用 inline 讓它跟著名字走，名字長到換行時不會被孤立在下一行的行首。 */
-.p-index__intro-line-logout {
-    display: inline;
-    margin-left: 1.5cqw;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    font-family: inherit;
-    font-size: inherit;
-    font-weight: inherit;
-    color: rgba(255, 255, 255, 0.85);
-    text-decoration: underline;
-    text-underline-offset: 0.6cqw;
-    cursor: pointer;
-
-    &:active {
-        opacity: 0.6;
+    &--warning {
+        /* 基底的 width: 100% 會把膠囊撐滿整行，這裡改回跟著字的寬度 */
+        display: table;
+        width: auto;
+        margin-inline: auto;
+        padding: 0.8cqw 3cqw;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.32);
+        color: #fff;
     }
 }
 

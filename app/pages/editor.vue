@@ -111,24 +111,21 @@
                  願意先登入的人在這裡一鍵解決，回程會落回這一頁，照常勾同意、按 START
                  （見 handleLoginReturn：這個入口不能跳過開場）。
                  排在 START 下面：START 才是這頁的主要動作，登入是可以略過的補充，
-                 擺在上面會先把人攔下來做一個他其實不必現在做的決定。 -->
-            <template v-if="isMember">
-              <p class="p-index__intro-line p-index__intro-line--done">
-                已用 LINE 登入{{ profile?.lineName ? `：${profile.lineName}` : '' }}
-                <button type="button" class="p-index__intro-line-logout" @click="logout">登出</button>
-              </p>
-              <!-- 已登入的人在開始畫之前就知道今天還能不能送（冷卻中每秒倒數），
-                   不必畫完按送出才被擋 -->
-              <p
-                v-if="quotaSummary"
-                class="p-index__intro-line p-index__intro-line--quota"
-                :class="{ 'is-warning': quotaBlocked }"
-              >
-                {{ quotaSummary }}
-              </p>
-            </template>
+                 擺在上面會先把人攔下來做一個他其實不必現在做的決定。
+
+                 已登入的人不列「已用 LINE 登入：某某」與還能送幾張：右上角頭像、確認畫面、
+                 我的便利貼都看得到，擠在 START 底下只是多兩行字。
+                 只留今天確定送不出去的兩種（停權、額度用完）—— 不先講，人會畫完才在確認畫面被擋。
+                 冷卻不必講：只有幾分鐘，畫完差不多就過了。 -->
+            <p
+              v-if="isMember && (quotaKind === 'banned' || quotaKind === 'exhausted')"
+              class="p-index__intro-line p-index__intro-line--warning"
+            >
+              {{ quotaSummary }}
+            </p>
+            <!-- 等登入狀態確定才出現：已登入的人重新整理時，才不會先閃一下這行再消失 -->
             <button
-              v-else
+              v-else-if="authReady && !isMember"
               type="button"
               class="p-index__intro-line p-index__intro-line--action"
               @click="loginFromIntro"
@@ -854,7 +851,7 @@ const router = useRouter()
 const { $firestore } = useNuxtApp()
 const db = $firestore as any
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
-const { user, isMember, profile, startLogin, completeLogin, logout } = useMemberAuth()
+const { ready: authReady, user, isMember, profile, startLogin, completeLogin, logout } = useMemberAuth()
 const { syncProfile, getProfile } = useMemberProfile()
 
 const MAX_TEXT_BLOCKS = 3
@@ -1176,7 +1173,7 @@ const {
 } = useQuotaStatus()
 
 // 兩個地方要顯示額度，同一時間只會開著其中一個：
-//   活動規範頁 → 已登入的人還沒開始畫就知道今天能不能送
+//   活動規範頁 → 今天送不出去（停權、用完）的人，還沒開始畫就知道
 //   確認畫面   → 帶 submissionId：同一張的重試不吃額度、不受冷卻限制（跟規則一致）
 // 兩個都沒開、或登出了，就停掉倒數。只是讓人按之前心裡有數，
 // 真正的檢查仍在 confirmSubmit 與規則。
