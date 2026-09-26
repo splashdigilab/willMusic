@@ -263,7 +263,9 @@ body.is-editor-page #app {
     @include sn.sticky-note-sticker-img;
   }
 
-  /* 手繪層 (Fabric.js)：永遠最底層，除非啟動 drawMode 才到最上層 */
+  /* 手繪層 (Fabric.js)。實際的前後順序由 template 的 NOTE_LAYER_Z.drawing 決定
+     （貼紙之下、文字之上），畫圖時也不變 —— 這裡的 z-index: 0 只是 inline 樣式
+     套上之前的預設值 */
   &__drawing-layer {
     display: flex;
     align-items: center;

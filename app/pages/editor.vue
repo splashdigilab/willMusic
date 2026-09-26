@@ -341,14 +341,14 @@
             />
           </div>
 
-          <!-- 手繪層 (Fabric.js) -->
+          <!-- 手繪層 (Fabric.js)。畫圖時也維持在貼紙底下，跟成品的前後順序一致 -->
           <div
             ref="drawingLayerRef"
             class="p-editor__drawing-layer"
             :class="{ 'is-active': drawMode }"
-            :style="{ 
+            :style="{
               pointerEvents: drawMode ? 'auto' : 'none',
-              zIndex: drawMode ? DRAW_MODE_LAYER_Z : NOTE_LAYER_Z.drawing
+              zIndex: NOTE_LAYER_Z.drawing
             }"
           >
             <!-- Fabric.js canvas：始終留在 DOM（init 需要），縮小後視覺空白 -->
@@ -868,9 +868,9 @@ const textBlockDragging = ref(false)
 const textBlockTransforming = ref(false)
 
 // 疊放順序是固定的（NOTE_LAYER_Z：貼紙最上、手繪中間、文字最下），編輯器與顯示端共用同一組值。
-// 繪圖時手繪層暫時蓋在所有東西上面，筆畫才看得見 —— 那只是「正在畫」的臨時狀態，
-// 不會被記錄下來，也不是便利貼本身的順序。
-const DRAW_MODE_LAYER_Z = 9999
+// 畫圖時也不例外：原本會把手繪層暫時拉到最上面，結果畫的時候線蓋在貼紙上，
+// 送出後卻變成貼紙蓋在線上，看到的跟成品不一樣。不拉也畫得到 —— 畫圖這一步
+// 貼紙是 pointer-events: none（只有 STEP 5 點得到），觸控會穿過貼紙落到手繪層。
 
 // 文字編輯時的原始內容快照（用於取消還原）
 const textBlockInitialContents = new Map<string, string>()
