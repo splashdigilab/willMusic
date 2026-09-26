@@ -170,6 +170,13 @@
     }
   }
 
+  /* 署名：寬度跟著暱稱長度走，不套貼紙的固定尺寸。z-index 由 template 給 */
+  &__name-tag {
+    position: absolute;
+    pointer-events: none;
+    line-height: 1;
+  }
+
   /* 手繪圖層 */
   &__drawing {
     position: absolute;

@@ -13,6 +13,40 @@ export interface StickerInstance {
 }
 
 /**
+ * 名牌（署名）在便利貼上的位置。欄位與貼紙相同，互動邏輯直接共用。
+ */
+export interface NameTagPlacement {
+  x: number
+  y: number
+  scale: number
+  rotation: number
+}
+
+/**
+ * 送出後存在便利貼上的名牌：送出那一刻的 LINE 暱稱與頭貼，複製一份進 style。
+ *
+ * 不是渲染時回去讀 users/{uid}：那份只有本人與後台讀得到，首頁 100 張也會變成
+ * 100 次額外讀取，而且使用者改暱稱會連帶改掉舊便利貼。
+ * firestore.rules 會驗 name 等於登入身分的 lineName，冒用不了別人的名字。
+ */
+export interface NameTag extends NameTagPlacement {
+  name: string
+  /** 縮圖後的頭貼 data URL。沒有頭貼就沒有這個欄位，顯示暱稱第一個字 */
+  avatar?: string
+}
+
+/**
+ * 草稿裡的名牌：**只存位置與是誰貼的，不存暱稱與頭貼**。
+ *
+ * 畫面上顯示的永遠是目前登入的人。uid 用來判斷這份位置還算不算數：
+ * 同一台手機換人登入時，上一個人貼的名牌不能變成下一個人的署名
+ * （對方沒有選擇要署名，名字卻出現在便利貼上）。
+ */
+export interface NameTagDraft extends NameTagPlacement {
+  uid: string
+}
+
+/**
  * 文字區塊實例（多文字支援）
  */
 export interface TextBlockInstance {
@@ -56,6 +90,8 @@ export interface DraftData {
    * 第二次寫同一個 ID 會被 Firestore 擋下來，不會變成兩張便利貼。
    */
   submissionId?: string
+  /** 名牌的位置（見 NameTagDraft）。名牌在編輯器裡混在 stickers 裡，存草稿時才拆出來 */
+  nameTag?: NameTagDraft
   timestamp: number
 }
 
@@ -84,6 +120,8 @@ export interface StickyNoteStyle {
   drawing?: string // 手繪內容 data URL (base64 PNG)
   /** 各物件 id 的疊放順序（預覽/上傳/display 與編輯器一致）；無則沿用預設文字 1、貼紙 3 */
   objectLayerOrder?: Record<string, number>
+  /** 署名。沒有這個欄位就是匿名投稿 */
+  nameTag?: NameTag
 }
 
 /**

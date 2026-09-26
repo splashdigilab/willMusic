@@ -151,6 +151,15 @@ signInWithCustomToken     之後的登入狀態由 Firebase SDK 自己維護
 就是 LINE 使用者編號，寫在這裡等於公開給任何打開開發者工具的人。
 投稿者存在 `note_owners`（見下面）。
 
+**署名（`style.nameTag`）是選填的。** 使用者在 STEP 5 或送出確認畫面主動貼上名牌，
+便利貼才會帶著 `{ name, avatar?, x, y, scale, rotation }`；沒有這個欄位就是匿名投稿。
+暱稱與頭貼是送出那一刻複製進來的（頭貼先縮成 128px JPEG，只有幾 KB），
+規則會驗 `name` 等於登入身分的 `lineName`、`avatar` 只能是圖片 data URL。
+名牌在編輯器裡混在 `stickers` 陣列中（拖曳、縮放直接沿用貼紙那一套），
+存草稿與送出時才拆出來，見 `app/utils/name-tag.ts`。
+草稿只存名牌的位置與貼的人的 uid，不存暱稱與頭貼：換人登入時上一個人的名牌會被丟掉，
+不會變成下一個人的署名。
+
 ### `queue_history` — 已播放
 
 同上，另加 `status: 'played'` 與 `playedAt: Timestamp`。
@@ -435,10 +444,10 @@ server/api/             # moderation.post.ts
 - **QR token 機制目前停用。** `system/editor_token_requirement` 是
   `enabled: false`，程式與規則都還在但沒有人走。LINE 登入上線後身分改由它負責，
   要重新啟用 token 之前得先處理 `system/active_token` 兩站共用的問題。
-- **LINE 暱稱目前不會上 LED 牆，所以還沒有審核缺口**——它只存在 `users/{uid}`
-  （只有本人與後台讀得到）。要送審的文字已經集中到 `editor.vue` 的 `moderatableText`，
-  **做名牌貼紙時必須把暱稱加進那個 computed**，否則就是一條「把 LINE 暱稱改成
-  髒話就直接上牆」的路。該處有註解說明。
+- **署名的暱稱會上 LED 牆，跟內文分開送審。** 要送審的文字集中在 `editor.vue` 的
+  `moderatableText`（內文）與 `moderatableName`（暱稱），**之後再多一種會上牆的使用者文字，
+  也要加進那裡**。分開送是因為暱稱在這個網站改不了：被擋時要告訴使用者拿掉署名，
+  而不是「請修改文字」。跟內文一樣是 fail-open；頭貼沒有審核路徑，跟手繪圖一樣靠後台下架。
 
 ## 授權
 

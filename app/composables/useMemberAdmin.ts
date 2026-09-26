@@ -7,6 +7,7 @@
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -14,6 +15,7 @@ import {
   orderBy,
   query,
   startAfter,
+  updateDoc,
   where,
   type QueryDocumentSnapshot
 } from 'firebase/firestore'
@@ -130,16 +132,31 @@ export const useMemberAdmin = () => {
   }
 
   /**
-   * 刪除個人資料：暱稱、頭貼、投稿額度紀錄，以及每張便利貼的投稿者紀錄。
+   * 刪除個人資料：暱稱、頭貼、投稿額度紀錄、每張便利貼的投稿者紀錄，
+   * 以及便利貼上的署名。
    *
    * 額度紀錄也是個資（記錄了這個人什麼時候投過稿），一起刪。副作用是
    * 這個人的當日額度會重置 —— 個資請求不常發生，可以接受。
    * 投稿者紀錄刪掉之後，留下來的便利貼就再也追溯不到這個人。
    *
+   * 署名是送出時把暱稱與頭貼複製進便利貼的，刪了 users/{uid} 它還在，
+   * 所以要逐張拿掉。**必須在刪投稿者紀錄之前做**：那是找到這些便利貼的唯一線索，
+   * 先刪的話中途失敗就再也找不回來。
+   *
    * **停權名單不動**：否則被封鎖的人申請刪除個資就等於解除封鎖。
    * 隱私權政策「保存多久」的停權紀錄一條就是為此而寫。
    */
   const deleteProfile = async (uid: string): Promise<void> => {
+    const notes = await findMemberNotes(uid)
+    await Promise.all(
+      notes
+        .filter(note => note.style?.nameTag)
+        .map(note => updateDoc(
+          doc($firestore, note.isPending ? cols.queuePending : cols.queueHistory, note.id),
+          { 'style.nameTag': deleteField() }
+        ))
+    )
+
     const ownedIds = await findOwnedNoteIds(uid)
     await Promise.all([
       deleteDoc(doc($firestore, cols.users, uid)),

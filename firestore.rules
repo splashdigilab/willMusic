@@ -111,11 +111,51 @@ service cloud.firestore {
              && incoming().content is string
              && incoming().content.size() <= 1000
              && incoming().style is map
+             && isValidNameTag(incoming().style)
              && incoming().token is string
              && incoming().keys().hasOnly(
                   ['content', 'style', 'token', 'timestamp', 'status']
                 )
              && (!tokenRequired() || hasUsableToken(tokenRef));
+    }
+
+    // ── 署名（style.nameTag）──────────────────────────────
+    // 便利貼的 style 其他部分都不驗（只要是 map），唯獨署名要驗：它是「這張是誰做的」，
+    // 不驗的話自己打 API 就能用別人的名字上牆。
+    //   · name 必須等於 custom token 的 lineName claim —— 那是 server 從 LINE 的
+    //     id_token 取出後簽進去的，前端改不了（users/{uid} 的 displayName 也是這樣綁的）
+    //   · avatar 只收 base64 的圖片 data URL。擋的是外部網址：那會讓牆上的圖片由別人的
+    //     主機供應，審核過後還能換掉。圖片內容本身驗不了，跟手繪圖一樣靠後台即時下架
+    //   · 大小上限與 users/{uid}.avatar 相同；前端送出前會縮到 128px，實際只有幾 KB
+    // 沒有 nameTag 就是匿名投稿，一律通過。
+    function isValidNameTag(style) {
+      return !('nameTag' in style)
+             || (
+               style.nameTag is map
+               && style.nameTag.keys().hasOnly(['name', 'avatar', 'x', 'y', 'scale', 'rotation'])
+               && style.nameTag.keys().hasAll(['name', 'x', 'y', 'scale', 'rotation'])
+               && style.nameTag.name is string
+               && style.nameTag.name == request.auth.token.lineName
+               && (
+                 !('avatar' in style.nameTag)
+                 || (
+                   style.nameTag.avatar is string
+                   && style.nameTag.avatar.size() <= 30000
+                   && style.nameTag.avatar.matches('data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+')
+                 )
+               )
+             );
+    }
+
+    // ── 後台拿掉署名 ──────────────────────────────────────
+    // queue_pending 送出後誰都不能改，唯一的例外是這個：刪除個人資料但保留便利貼時，
+    // 便利貼上複製過去的暱稱與頭貼也是個資，要能拿掉。只准拿掉 style.nameTag，
+    // 其他任何欄位都不能動。（queue_history 本來就開放後台寫入，不需要這條）
+    function isNameTagRemovalByStaff() {
+      return isStaff()
+             && incoming().diff(resource.data).affectedKeys().hasOnly(['style'])
+             && incoming().style.diff(resource.data.style).affectedKeys().hasOnly(['nameTag'])
+             && !('nameTag' in incoming().style);
     }
 
     // ── note_owners/{noteId} 的建立條件 ────────────────────
@@ -275,13 +315,16 @@ service cloud.firestore {
     // isStaff() 的拆分不在過渡範圍：舊版後台與大螢幕本來就是帳密登入
     // （sign_in_provider = password），舊程式完全不受影響。
 
-    // 【過渡期】舊版匿名投稿：沒有 uid、不需要預約
+    // 【過渡期】舊版匿名投稿：沒有 uid、不需要預約。
+    // 舊版程式沒有署名功能，匿名請求也沒有 lineName 可以比對，所以一律不收 nameTag ——
+    // 少了這條，這個相容入口就是一條不必登入就能冒名署名的路
     function canCreateNoteLegacy(noteId, tokenRef) {
       return noteId == incoming().token
              && incoming().status == 'waiting'
              && incoming().content is string
              && incoming().content.size() <= 1000
              && incoming().style is map
+             && !('nameTag' in incoming().style)
              && incoming().token is string
              && incoming().keys().hasOnly(
                   ['content', 'style', 'token', 'timestamp', 'status']
@@ -326,8 +369,9 @@ service cloud.firestore {
                          /databases/$(database)/documents/note_owners/$(noteId)
                        );
 
-      // 送出後就不能再改；只有大螢幕播完或後台管理才會刪
-      allow update: if false;
+      // 送出後就不能再改；只有大螢幕播完或後台管理才會刪。
+      // 例外：刪除個人資料時後台要拿掉署名，見 isNameTagRemovalByStaff
+      allow update: if isNameTagRemovalByStaff();
       allow delete: if isStaff();
     }
 
@@ -414,7 +458,7 @@ service cloud.firestore {
                          /databases/$(database)/documents/note_owners_dev/$(noteId)
                        );
 
-      allow update: if false;
+      allow update: if isNameTagRemovalByStaff();
       allow delete: if isStaff();
     }
 

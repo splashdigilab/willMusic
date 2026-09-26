@@ -9,13 +9,16 @@ import type { StickerInstance } from '~/types'
  *
  * 同一類之間不分先後，靠 DOM 順序（＝建立順序）決定，後放的蓋前放的。
  *
+ * 署名（名牌）在所有東西上面：它是「這張是誰做的」，被貼紙蓋掉就失去意義。
+ *
  * 舊便利貼另當別論：它們存了 objectLayerOrder，顯示端仍以那份記錄為準，
  * 所以已經上牆的內容不會因為這次改動而變樣。
  */
 export const NOTE_LAYER_Z = {
   text: 1,
   drawing: 2,
-  sticker: 3
+  sticker: 3,
+  nameTag: 4
 } as const
 
 /** 舊便利貼記錄手繪層順序時用的鍵 */
@@ -36,9 +39,9 @@ export function getTextBlockStyle(x: number, y: number, scale: number, rotation:
 }
 
 /**
- * 貼紙定位與變換樣式（編輯器與顯示端共用）
+ * 貼紙定位與變換樣式（編輯器與顯示端共用）。署名的名牌欄位與貼紙相同，也走這裡
  */
-export function getStickerStyle(sticker: StickerInstance) {
+export function getStickerStyle(sticker: Pick<StickerInstance, 'x' | 'y' | 'scale' | 'rotation'>) {
   return {
     left: `${sticker.x}%`,
     top: `${sticker.y}%`,

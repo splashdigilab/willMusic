@@ -257,6 +257,12 @@ body.is-editor-page #app {
 
     @include sn.sticky-note-sticker-size;
     @include sn.sticky-note-sticker-layout;
+
+    /* 署名：寬度跟著暱稱長度走，不套貼紙的固定正方形 */
+    &.is-name-tag {
+      width: auto;
+      height: auto;
+    }
   }
 
   &__sticker-img {
@@ -350,6 +356,16 @@ body.is-editor-page #app {
     &--sticker {
       @include sn.sticky-note-sticker-size;
       @include sn.sticky-note-sticker-layout;
+    }
+
+    /* 署名的編輯框：大小由裡面那份看不見的名牌撐開（-name-tag-sizer） */
+    &--name-tag {
+      width: auto;
+      height: auto;
+    }
+
+    &-name-tag-sizer {
+      visibility: hidden;
     }
 
     &.is-selected {
@@ -637,6 +653,70 @@ body.is-editor-page #app {
     height: 0.95rem;
     flex-shrink: 0;
     display: block;
+  }
+
+  /* STEP 5 的署名列，排在貼圖格子上面。貼紙面板是固定高度，這一列吃掉的高度
+     由下面的格子讓出來（格子本來就可以捲動） */
+  &__signature-row {
+    flex-shrink: 0;
+    margin-bottom: ed.$editor-grid-gap;
+  }
+
+  /* 已登入：頭貼｜暱稱｜貼上署名。暱稱靠左、動作靠右，
+     暱稱太長就截斷，動作那段一定留著 */
+  &__signature-btn {
+    justify-content: flex-start;
+    gap: 0.5rem;
+    padding: 0.3rem 0.85rem 0.3rem 0.3rem;
+    /* 登入前後同高（＝頭貼加上下內距），從 LINE 回來時下面的格子才不會跳一下 */
+    min-height: 2.2rem;
+
+    /* 已經貼上：跟造型選中一樣轉成天藍，按下去是選取那張名牌 */
+    &.is-active {
+      background: rgba(0, 167, 197, 0.14);
+      color: #00879F;
+    }
+
+    /* 沒登入：整列就是登入鈕，文字置中 */
+    &--login {
+      justify-content: center;
+      padding: 0.5rem 0.6rem;
+    }
+  }
+
+  &__signature-avatar {
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    display: block;
+    background: #ccc;
+
+    &--initial {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var.$will-dark-deep;
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+  }
+
+  /* 暱稱是使用者輸入的，由內容字型供應，而內容字型只有 700 */
+  &__signature-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+    color: #323232;
+    font-weight: 700;
+  }
+
+  &__signature-action {
+    flex-shrink: 0;
   }
 
   /* ========== 控制項：筆刷／顏色／對齊／材質／造型／貼紙 ========== */
@@ -1139,4 +1219,104 @@ body.is-editor-page #app {
   font-size: 0.85rem;
   line-height: 1.6;
   text-wrap: balance;
+}
+
+/* 署名開關：接在身分列下面，左右跟身分列對齊。
+   開關｜在便利貼上署名 ……… 調整位置 */
+.p-editor__submit-signature {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  padding: 0 0.75rem;
+  min-height: 36px;
+}
+
+.p-editor__submit-signature-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* 原生 checkbox 留著（鍵盤、報讀器都靠它），只是看不見，外觀由旁邊的 switch 負責 */
+.p-editor__submit-signature-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.p-editor__submit-signature-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  background: #D4D4D4;
+  transition: background 0.2s ease;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease;
+  }
+
+  .p-editor__submit-signature-input:checked + & {
+    background: #00A7C5;
+
+    &::after {
+      transform: translateX(16px);
+    }
+  }
+
+  .p-editor__submit-signature-input:focus-visible + & {
+    outline: 2px solid #00A7C5;
+    outline-offset: 2px;
+  }
+
+  .p-editor__submit-signature-input:disabled + & {
+    opacity: 0.5;
+  }
+}
+
+.p-editor__submit-signature-label {
+  color: #323232;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+/* 跟身分列的「登出」同一種細框小膠囊 */
+.p-editor__submit-signature-adjust {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 0.8rem;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
+  background: transparent;
+  color: #666;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+
+  &:active {
+    background: rgba(0, 0, 0, 0.06);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }

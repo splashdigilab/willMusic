@@ -399,7 +399,7 @@ const profileDeleteIncludesNotes = ref(false)
 const profileDeleteMessage = computed(() => {
   const base = profileDeleteIncludesNotes.value
     ? `將刪除這位會員的暱稱、頭貼、投稿額度紀錄，以及這個帳號送出的 ${notes.value.length} 張便利貼。此操作無法復原。`
-    : '將刪除這位會員的暱稱、頭貼與投稿額度紀錄。便利貼會保留，但之後無法再追溯投稿者。此操作無法復原。'
+    : '將刪除這位會員的暱稱、頭貼與投稿額度紀錄，並拿掉便利貼上的署名。便利貼會保留，但之後無法再追溯投稿者。此操作無法復原。'
   return ban.value ? `${base}停權紀錄會保留。` : base
 })
 

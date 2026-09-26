@@ -62,6 +62,10 @@
         decoding="async"
         fetchpriority="low"
       />
+      <!-- 署名。疊在所有東西上面（NOTE_LAYER_Z.nameTag），沒有就是匿名投稿 -->
+      <div v-if="nameTag" class="c-sticky-note__name-tag" :style="nameTagStyle">
+        <NoteNameTag :name="nameTag.name" :avatar="nameTagAvatar" />
+      </div>
     </div>
     </div>
   </div>
@@ -73,6 +77,8 @@ import { STICKER_LIBRARY } from '~/data/stickers'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
 import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z, DRAWING_LAYER_ID } from '~/utils/sticky-note-style'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
+import { isInlineAvatar } from '~/utils/name-tag'
+import NoteNameTag from '~/components/NoteNameTag.vue'
 
 interface Props {
   note: QueuePendingItem | QueueHistoryItem
@@ -112,6 +118,19 @@ const getStickerWrapStyle = (sticker: StickerInstance) => {
 const drawingStyle = computed(() => ({
   zIndex: objectLayerOrder.value[DRAWING_LAYER_ID] ?? NOTE_LAYER_Z.drawing
 }))
+
+const nameTag = computed(() => {
+  const tag = props.note.style?.nameTag
+  return tag && typeof tag.name === 'string' && tag.name ? tag : null
+})
+
+// 規則只收 data URL，這裡再擋一次：規則還沒部署到的期間寫進來的外部網址，
+// 不該讓牆上的圖片由別人的主機供應。擋掉就退成暱稱第一個字
+const nameTagAvatar = computed(() => (isInlineAvatar(nameTag.value?.avatar) ? nameTag.value!.avatar : null))
+
+const nameTagStyle = computed(() => (nameTag.value
+  ? { ...getStickerStyle(nameTag.value), zIndex: NOTE_LAYER_Z.nameTag }
+  : undefined))
 
 const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
   shape: props.note.style.shape || DEFAULT_SHAPE_ID,

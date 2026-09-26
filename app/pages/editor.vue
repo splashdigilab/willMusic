@@ -210,50 +210,79 @@
         <StickyNote v-if="previewNoteData" :note="previewNoteData" />
       </template>
       <template #footnote>
-        <!-- 以誰的身分送出、今天第幾張。送不出去的狀態（停權、額度用完、冷卻中）
-             在按下去之前就用警示色講清楚，冷卻中的倒數每秒跳。 -->
-        <div v-if="isMember" class="p-editor__submit-identity">
-          <img
-            v-if="profile?.linePicture && !avatarBroken"
-            :src="profile.linePicture"
-            alt=""
-            class="p-editor__submit-avatar"
-            referrerpolicy="no-referrer"
-            @error="avatarBroken = true"
-          />
-          <!-- 沒有頭貼或讀不到：暱稱第一個字，跟右上角的 MemberBadge 一樣 -->
-          <span v-else class="p-editor__submit-avatar p-editor__submit-avatar--initial" aria-hidden="true">
-            {{ Array.from(profile?.lineName || '?')[0] }}
-          </span>
-          <span class="p-editor__submit-identity-text">
-            <!-- 暱稱獨立一行、不塞進「以…送出」的句子裡：一個字的暱稱夾在句子中間
-                 會變成「以 江 送出」，讀起來像三個詞。LINE 標籤負責說明這是哪種帳號 -->
-            <span class="p-editor__submit-identity-name">
-              <span class="p-editor__submit-identity-name-text">{{ profile?.lineName || 'LINE 帳號' }}</span>
-              <span class="p-editor__submit-identity-tag">LINE</span>
+        <template v-if="isMember">
+          <!-- 以誰的身分送出、今天第幾張。送不出去的狀態（停權、額度用完、冷卻中）
+               在按下去之前就用警示色講清楚，冷卻中的倒數每秒跳。 -->
+          <div class="p-editor__submit-identity">
+            <img
+              v-if="profile?.linePicture && !avatarBroken"
+              :src="profile.linePicture"
+              alt=""
+              class="p-editor__submit-avatar"
+              referrerpolicy="no-referrer"
+              @error="avatarBroken = true"
+            />
+            <!-- 沒有頭貼或讀不到：暱稱第一個字，跟右上角的 MemberBadge 一樣 -->
+            <span v-else class="p-editor__submit-avatar p-editor__submit-avatar--initial" aria-hidden="true">
+              {{ Array.from(profile?.lineName || '?')[0] }}
             </span>
-            <span
-              v-if="quotaKind !== 'loading' && quotaKind !== 'unlimited'"
-              class="p-editor__submit-identity-quota"
-              :class="{ 'is-exhausted': quotaBlocked }"
+            <span class="p-editor__submit-identity-text">
+              <!-- 暱稱獨立一行、不塞進「以…送出」的句子裡：一個字的暱稱夾在句子中間
+                   會變成「以 江 送出」，讀起來像三個詞。LINE 標籤負責說明這是哪種帳號 -->
+              <span class="p-editor__submit-identity-name">
+                <span class="p-editor__submit-identity-name-text">{{ profile?.lineName || 'LINE 帳號' }}</span>
+                <span class="p-editor__submit-identity-tag">LINE</span>
+              </span>
+              <span
+                v-if="quotaKind !== 'loading' && quotaKind !== 'unlimited'"
+                class="p-editor__submit-identity-quota"
+                :class="{ 'is-exhausted': quotaBlocked }"
+              >
+                <template v-if="quotaKind === 'banned'">這個帳號已停止投稿資格</template>
+                <template v-else-if="quotaKind === 'exhausted'">今天的 {{ quotaUsage?.dailyLimit }} 張已經送完了</template>
+                <template v-else-if="quotaKind === 'cooldown'">{{ quotaWaitText }} 後才能送出</template>
+                <template v-else>今天第 {{ quotaUsage?.nth }} 張，共 {{ quotaUsage?.dailyLimit }} 張</template>
+              </span>
+            </span>
+            <button
+              type="button"
+              class="p-editor__submit-logout"
+              :disabled="isSubmitting"
+              @click="logout"
             >
-              <template v-if="quotaKind === 'banned'">這個帳號已停止投稿資格</template>
-              <template v-else-if="quotaKind === 'exhausted'">今天的 {{ quotaUsage?.dailyLimit }} 張已經送完了</template>
-              <template v-else-if="quotaKind === 'cooldown'">{{ quotaWaitText }} 後才能送出</template>
-              <template v-else>今天第 {{ quotaUsage?.nth }} 張，共 {{ quotaUsage?.dailyLimit }} 張</template>
-            </span>
-          </span>
-          <button
-            type="button"
-            class="p-editor__submit-logout"
-            :disabled="isSubmitting"
-            @click="logout"
-          >
-            登出
-          </button>
-        </div>
+              登出
+            </button>
+          </div>
+          <!-- 署名的最後一道入口。多數人是在這個畫面才登入的，STEP 5 那一列他們看到時
+               還沒有名牌可貼。開關預設關：隱私權政策寫的是「主動放上才公開」，
+               從 LINE 回來的「登入成功」那一次也不自動打開。
+               這裡的預覽不能拖，所以另外給「調整位置」回 STEP 5。 -->
+          <div class="p-editor__submit-signature">
+            <label class="p-editor__submit-signature-toggle">
+              <input
+                type="checkbox"
+                role="switch"
+                class="p-editor__submit-signature-input"
+                :checked="hasNameTag"
+                :disabled="isSubmitting"
+                @change="onSignatureToggle"
+              />
+              <span class="p-editor__submit-signature-switch" aria-hidden="true" />
+              <span class="p-editor__submit-signature-label">在便利貼上署名</span>
+            </label>
+            <button
+              v-if="hasNameTag"
+              type="button"
+              class="p-editor__submit-signature-adjust"
+              :disabled="isSubmitting"
+              @click="adjustNameTag"
+            >
+              調整位置
+            </button>
+          </div>
+        </template>
         <p v-else class="p-editor__submit-login-hint">
-          送出需要 LINE 登入。登入後會回到這裡，便利貼會幫你留著。
+          送出需要 LINE 登入。登入後會回到這裡，便利貼會幫你留著，也可以選擇要不要署名。
         </p>
       </template>
       <template #secondary-action>
@@ -334,18 +363,20 @@
           </div>
 
           <!-- 貼紙圖片（可裁切）。只在 STEP 5 可點：其他步驟點了也只是跳出一個
-               當下沒有任何控制項可用的編輯框，反而擋住底下的東西。 -->
+               當下沒有任何控制項可用的編輯框，反而擋住底下的東西。
+               署名（名牌）也在這個陣列裡，互動沿用貼紙那一套，只有長相與疊放層不同。 -->
           <div
             v-for="sticker in stickers"
             :key="sticker.id"
             class="p-editor__sticker-content"
-            :class="{ 'is-sticker-clickable': activeTab === 'sticker' }"
-            :style="[getStickerStyle(sticker), { zIndex: NOTE_LAYER_Z.sticker }]"
+            :class="{ 'is-sticker-clickable': activeTab === 'sticker', 'is-name-tag': isNameTagSticker(sticker) }"
+            :style="[getStickerStyle(sticker), { zIndex: stickerLayerZ(sticker) }]"
             @click.stop="selectSticker(sticker.id)"
             @touchstart.stop="() => { if (!isTwoFingerGesture) selectSticker(sticker.id) }"
           >
-            <img 
-              v-if="getStickerById(sticker.type)?.svgFile"
+            <NoteNameTag v-if="isNameTagSticker(sticker)" :name="nameTagName" :avatar="nameTagAvatar" />
+            <img
+              v-else-if="getStickerById(sticker.type)?.svgFile"
               :src="getStickerById(sticker.type)?.svgFile"
               :alt="getStickerById(sticker.type)?.id"
               class="p-editor__sticker-img"
@@ -433,16 +464,26 @@
             v-show="showStickerEditFrame && selectedStickerId === sticker.id"
             class="p-editor__edit-frame p-editor__edit-frame--sticker"
             :data-sticker-id="sticker.id"
-            :class="{ 
+            :class="{
+              'p-editor__edit-frame--name-tag': isNameTagSticker(sticker),
               'is-selected': selectedStickerId === sticker.id,
               'is-dragging': draggingStickerId === sticker.id,
               'is-transforming': transformingStickerId === sticker.id
             }"
-            :style="[getStickerStyle(sticker), { zIndex: NOTE_LAYER_Z.sticker }]"
+            :style="[getStickerStyle(sticker), { zIndex: stickerLayerZ(sticker) }]"
             @mousedown="onStickerMouseDown($event, sticker)"
             @touchstart="onStickerTouchStart($event, sticker)"
             @click.stop="onStickerClick(sticker.id)"
           >
+            <!-- 名牌的寬度跟著暱稱長度走，用一份看不見的名牌把編輯框撐成一樣大
+                 （跟文字框的 sizer 同一招）。雙指縮放算邊界也是量這個框。 -->
+            <NoteNameTag
+              v-if="isNameTagSticker(sticker)"
+              class="p-editor__edit-frame-name-tag-sizer"
+              aria-hidden="true"
+              :name="nameTagName"
+              :avatar="nameTagAvatar"
+            />
             <button
               class="p-editor__edit-frame-delete"
               @click.stop="removeSticker(sticker.id)"
@@ -658,6 +699,37 @@
         <div v-if="activeTab === 'sticker'" class="p-editor__tab-content">
           <div class="p-editor__control-section">
             <h3 class="p-editor__control-title">STEP 5. 挑選貼圖</h3>
+            <!-- 署名：把 LINE 頭貼與暱稱當成一張貼紙貼上去，不貼就是匿名。
+                 跟 STEP 3 的「＋ 新增文字」一樣自成一列放在格子上面。
+                 沒登入時這一列就是登入鈕：多數人要到送出才會登入，走到這裡時還沒有名牌，
+                 不給入口的話根本不會知道有這個選項。登入回來會自動貼上（見 handleLoginReturn）。 -->
+            <div class="p-editor__chip-row p-editor__signature-row">
+              <button
+                v-if="isMember"
+                type="button"
+                class="p-editor__chip-btn p-editor__signature-btn"
+                :class="{ 'is-active': hasNameTag }"
+                :aria-pressed="hasNameTag"
+                @click="onNameTagButton"
+              >
+                <img v-if="nameTagAvatar" :src="nameTagAvatar" alt="" class="p-editor__signature-avatar" />
+                <span v-else class="p-editor__signature-avatar p-editor__signature-avatar--initial" aria-hidden="true">{{ nameInitial(nameTagName) }}</span>
+                <span class="p-editor__signature-name">{{ nameTagName }}</span>
+                <span class="p-editor__signature-action">{{ hasNameTag ? '已署名' : '＋ 貼上署名' }}</span>
+              </button>
+              <button
+                v-else
+                type="button"
+                class="p-editor__chip-btn p-editor__signature-btn p-editor__signature-btn--login"
+                @click="loginForNameTag"
+              >
+                <svg class="p-editor__chip-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5" />
+                </svg>
+                用 LINE 登入，貼上頭貼與名字署名
+              </button>
+            </div>
             <div class="p-editor__sticker-grid">
             <button
               v-for="sticker in STICKER_LIBRARY"
@@ -727,8 +799,16 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import type { StickerInstance, DraftData, StickyNoteStyle, TextBlockInstance } from '~/types'
+import type { StickerInstance, DraftData, StickyNoteStyle, TextBlockInstance, NameTagDraft, NameTagPlacement } from '~/types'
 import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
+import {
+  NAME_TAG_STICKER_ID,
+  NAME_TAG_STICKER_TYPE,
+  isNameTagSticker,
+  defaultNameTagPlacement,
+  downscaleAvatar,
+  nameInitial
+} from '~/utils/name-tag'
 import { BACKGROUND_IMAGES, isColorMaterial } from '~/data/backgrounds'
 import { SELECTABLE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_STEPS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
@@ -751,6 +831,7 @@ import StickyNote from '~/components/StickyNote.vue'
 import AppModal from '~/components/AppModal.vue'
 import EditorTutorialModal from '~/components/EditorTutorialModal.vue'
 import MemberBadge from '~/components/MemberBadge.vue'
+import NoteNameTag from '~/components/NoteNameTag.vue'
 
 definePageMeta({ ssr: false })
 
@@ -773,8 +854,8 @@ const router = useRouter()
 const { $firestore } = useNuxtApp()
 const db = $firestore as any
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
-const { isMember, profile, startLogin, completeLogin, logout } = useMemberAuth()
-const { syncProfile } = useMemberProfile()
+const { user, isMember, profile, startLogin, completeLogin, logout } = useMemberAuth()
+const { syncProfile, getProfile } = useMemberProfile()
 
 const MAX_TEXT_BLOCKS = 3
 
@@ -869,9 +950,64 @@ const isSwatchUsable = (color: string) => isSwatchVisibleOn(backgroundImage.valu
 const selectionLineColor = computed(() => (isSwatchUsable('#ffffff') ? '#fff' : '#00A7C5'))
 
 const shape = ref(DEFAULT_SHAPE_ID)
+// 署名（名牌）也放在這個陣列裡，見 utils/name-tag.ts
 const stickers = ref<StickerInstance[]>([])
 const selectedStickerId = ref<string | null>(null)
 const draggingStickerId = ref<string | null>(null)
+
+// ====== 署名（名牌貼紙） ======
+
+/** 目前登入的 LINE 會員。後台帳號也算「登入」，但不能署名 */
+const memberUid = computed(() => (isMember.value ? user.value?.uid ?? null : null))
+const nameTagSticker = computed(() => stickers.value.find(isNameTagSticker) ?? null)
+const hasNameTag = computed(() => !!nameTagSticker.value)
+/** 一般貼紙。10 張上限與「上面有沒有內容」都只算這些，署名不算 */
+const regularStickers = computed(() => stickers.value.filter(s => !isNameTagSticker(s)))
+const nameTagName = computed(() => profile.value?.lineName ?? '')
+/** 縮圖後的頭貼（data URL），讀自 users/{uid}。沒有就是 null，名牌顯示暱稱第一個字 */
+const nameTagAvatar = ref<string | null>(null)
+
+const stickerLayerZ = (sticker: StickerInstance) =>
+  isNameTagSticker(sticker) ? NOTE_LAYER_Z.nameTag : NOTE_LAYER_Z.sticker
+
+/**
+ * 草稿裡讀出來、還沒套用的名牌位置。
+ *
+ * 要等確定是同一個人登入著才放回畫面上（見 NameTagDraft）。讀草稿的當下
+ * 登入狀態可能還沒回來 —— 從 LINE 回來時是先還原草稿、後完成登入 ——
+ * 所以先記著，由下面的 watch 在身分確定後決定要套用還是丟掉。
+ */
+const pendingDraftNameTag = ref<NameTagDraft | null>(null)
+
+/** 上次拿掉名牌時的位置：在確認畫面關掉又打開署名，應該回到使用者擺好的地方 */
+let lastNameTagPlacement: NameTagPlacement | null = null
+
+let avatarLoadSeq = 0
+const loadNameTagAvatar = async () => {
+  const seq = ++avatarLoadSeq
+  const raw = memberUid.value ? (await getProfile())?.avatar : null
+  const small = raw ? await downscaleAvatar(raw) : null
+  // 登入回來時會連續讀兩次（身分確定一次、會員資料寫完一次），只認最後一次
+  if (seq === avatarLoadSeq) nameTagAvatar.value = small
+}
+
+watch(memberUid, (uid, prevUid) => {
+  // 登出或換了一個人：名牌不能留著變成下一個人的署名
+  if (prevUid && uid !== prevUid && nameTagSticker.value) {
+    stickers.value = stickers.value.filter(s => !isNameTagSticker(s))
+    if (selectedStickerId.value === NAME_TAG_STICKER_ID) selectedStickerId.value = null
+    saveDraftData()
+  }
+  void loadNameTagAvatar()
+}, { immediate: true })
+
+watch([memberUid, pendingDraftNameTag], ([uid, pending]) => {
+  if (!pending || !uid) return
+  pendingDraftNameTag.value = null
+  if (pending.uid !== uid || nameTagSticker.value) return
+  const { x, y, scale, rotation } = pending
+  stickers.value.push({ id: NAME_TAG_STICKER_ID, type: NAME_TAG_STICKER_TYPE, x, y, scale, rotation })
+})
 
 // 多文字區塊
 const textBlocks = ref<TextBlockInstance[]>([])
@@ -1069,7 +1205,10 @@ const exportNodeRef = ref<HTMLElement | null>(null)
 // 分享／下載便利貼：實作在 ~/composables/useNoteExport
 const { isSharing, showExportNode, share: handleShare } = useNoteExport(exportNodeRef, {
   getBackgroundUrl: () => previewNoteData.value?.style?.backgroundImage,
-  getText: () => previewNoteData.value.content,
+  // 署名的暱稱也要算進去：匯出只嵌入這裡出現過的字，漏了的話分享圖上的名牌會掉字型
+  getText: () => [previewNoteData.value.content, previewNoteData.value.style.nameTag?.name]
+    .filter(Boolean)
+    .join('\n'),
   onError: (message) => showAlert(message)
 })
 
@@ -1527,7 +1666,7 @@ const cancelTextEditing = () => {
 const MAX_STICKERS = 10
 
 const addSticker = (stickerType: string) => {
-  if (stickers.value.length >= MAX_STICKERS) {
+  if (regularStickers.value.length >= MAX_STICKERS) {
     showAlert(
       `每張便利貼最多只能貼 ${MAX_STICKERS} 個貼紙喔！如果需要更多空間，可以先刪除一些。`,
       '貼紙數量達上限',
@@ -1678,9 +1817,10 @@ const deselectAll = () => {
 // saveDraftData 需在 composable 之前定義（作為 callback）
 const saveDraftData = () => {
   // 如果沒有任何有效內容（文字、貼紙、繪圖皆為空，且背景/形狀皆為預設值），不存草稿
+  // 只有一個署名不算內容：那樣存下來，下次進來會問要不要用一份什麼都沒有的草稿
   const hasContent =
     textBlocks.value.some(b => b.content.trim()) ||
-    stickers.value.length > 0 ||
+    regularStickers.value.length > 0 ||
     !!drawingData.value ||
     backgroundImage.value !== (BACKGROUND_IMAGES?.[0]?.url ?? '') ||
     shape.value !== DEFAULT_SHAPE_ID
@@ -1689,17 +1829,25 @@ const saveDraftData = () => {
   // 僅儲存有內容的文字區塊（空白內容的區塊不存入草稿）
   const nonEmptyTextBlocks = textBlocks.value.filter(b => b.content.trim())
 
+  // 署名只存位置與是誰貼的（見 NameTagDraft）。還沒套用的那份也要留著，
+  // 否則「還原草稿 → 身分還沒回來 → 存檔」這個空檔會把它弄丟
+  const tag = nameTagSticker.value
+  const nameTag: NameTagDraft | undefined = tag && memberUid.value
+    ? { uid: memberUid.value, x: tag.x, y: tag.y, scale: tag.scale, rotation: tag.rotation }
+    : pendingDraftNameTag.value ?? undefined
+
   const draft: DraftData = {
     content: nonEmptyTextBlocks.map(b => b.content).join('\n'),
     backgroundImage: backgroundImage.value,
     shape: shape.value,
     textColor: nonEmptyTextBlocks[0]?.color ?? '#ffffff',
     textAlign: nonEmptyTextBlocks[0]?.align ?? 'center',
-    stickers: stickers.value,
+    stickers: regularStickers.value,
     textTransform: nonEmptyTextBlocks[0] ? { x: nonEmptyTextBlocks[0].x, y: nonEmptyTextBlocks[0].y, scale: nonEmptyTextBlocks[0].scale, rotation: nonEmptyTextBlocks[0].rotation } : undefined,
     textBlocks: nonEmptyTextBlocks,
     drawing: drawingData.value ?? undefined,
     submissionId: submissionId.value,
+    nameTag,
     timestamp: Date.now()
   }
   saveDraft(draft)
@@ -1765,15 +1913,70 @@ const {
 })
 
 const removeSticker = (id: string) => {
+  const removed = stickers.value.find(s => s.id === id)
+  if (removed && isNameTagSticker(removed)) {
+    const { x, y, scale, rotation } = removed
+    lastNameTagPlacement = { x, y, scale, rotation }
+  }
   stickers.value = stickers.value.filter(s => s.id !== id)
   selectedStickerId.value = null
   saveDraftData()
 }
 
+/**
+ * 貼上署名。已經有了就回傳那一張 —— 一張便利貼最多一個名牌。
+ * 位置優先用上次拿掉時的，沒有就依造型放在下緣置中（見 defaultNameTagPlacement）。
+ */
+const addNameTag = (): StickerInstance | null => {
+  if (!memberUid.value) return null
+  const existing = nameTagSticker.value
+  if (existing) return existing
+  const tag: StickerInstance = {
+    id: NAME_TAG_STICKER_ID,
+    type: NAME_TAG_STICKER_TYPE,
+    ...(lastNameTagPlacement ?? defaultNameTagPlacement(shape.value))
+  }
+  stickers.value.push(tag)
+  saveDraftData()
+  return tag
+}
+
+const removeNameTag = () => {
+  const tag = nameTagSticker.value
+  if (tag) removeSticker(tag.id)
+}
+
+/** STEP 5 的署名鈕：還沒貼就貼上，已經貼了就選取它，讓人看到它在哪、可以拖 */
+const onNameTagButton = () => {
+  const tag = addNameTag()
+  if (tag) selectSticker(tag.id)
+}
+
+/** 確認畫面的署名開關 */
+const onSignatureToggle = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  if (input.checked) addNameTag()
+  else removeNameTag()
+  // 沒貼成功（例如剛好登出）時 hasNameTag 沒變，Vue 不會重畫，開關得自己撥回來
+  input.checked = hasNameTag.value
+}
+
+/** 確認畫面的「調整位置」：預覽不能拖，回到 STEP 5 並選取名牌 */
+const adjustNameTag = () => {
+  showSubmitModal.value = false
+  goToStep(EDITOR_STEPS.findIndex(s => s.id === 'sticker'))
+  nextTick(() => {
+    const tag = nameTagSticker.value
+    if (tag) selectSticker(tag.id)
+  })
+}
+
 const loadDraftData = async (draft: DraftData) => {
   backgroundImage.value = draft.backgroundImage
   shape.value = draft.shape
-  stickers.value = draft.stickers
+  stickers.value = (draft.stickers ?? []).filter(s => !isNameTagSticker(s))
+  // 署名等身分確定了才放回去，見 pendingDraftNameTag
+  pendingDraftNameTag.value = draft.nameTag ?? null
   drawingData.value = draft.drawing ?? null
   // 還原送出用的 ID —— 被導去 LINE 登入再回來時，就是靠這個值讓重送
   // 寫到同一筆，而不是多出一張便利貼
@@ -1814,6 +2017,8 @@ const resetEditorToInitial = () => {
   backgroundImage.value = BACKGROUND_IMAGES?.[0]?.url ?? ''
   shape.value = DEFAULT_SHAPE_ID
   stickers.value = []
+  pendingDraftNameTag.value = null
+  lastNameTagPlacement = null
   textBlocks.value = []
   selectedTextBlockId.value = null
   selectedStickerId.value = null
@@ -1859,12 +2064,13 @@ const isSubmitting = ref(false)
  *
  * 不強制一定要有文字 —— 只用畫的或只用貼紙的便利貼一樣是完整的應援。
  * 材質與造型刻意不算：只換了顏色、上面什麼都沒有的空白便利貼上牆沒有意義。
+ * 署名同理：只有一個名字的便利貼不算應援。
  * （hasAnyContent 有把材質／造型算進去，那是給「全部重來」判斷用的，兩者不同。）
  */
 const hasSubmittableContent = computed(() =>
   textBlocks.value.some(b => b.content.trim()) ||
   !!drawingData.value ||
-  stickers.value.length > 0
+  regularStickers.value.length > 0
 )
 
 /**
@@ -1889,11 +2095,25 @@ const previewNoteData = computed(() => {
     shape: shape.value,
     textColor: textBlocks.value[0]?.color ?? '#ffffff',
     textAlign: textBlocks.value[0]?.align ?? 'center',
-    stickers: stickers.value,
+    stickers: regularStickers.value,
     textTransform: textBlocks.value[0] ? { x: textBlocks.value[0].x, y: textBlocks.value[0].y, scale: textBlocks.value[0].scale, rotation: textBlocks.value[0].rotation } : undefined,
     textBlocks: textBlocks.value
   }
   if (drawingData.value) style.drawing = drawingData.value
+
+  // 署名在這裡才把暱稱與頭貼複製進去：預覽、分享圖、送出都讀這一份，
+  // 三邊看到的一定是同一個名字。暱稱必須等於登入身分的 lineName，規則會驗
+  const tag = nameTagSticker.value
+  if (tag && memberUid.value && nameTagName.value) {
+    style.nameTag = {
+      name: nameTagName.value,
+      ...(nameTagAvatar.value ? { avatar: nameTagAvatar.value } : {}),
+      x: tag.x,
+      y: tag.y,
+      scale: tag.scale,
+      rotation: tag.rotation
+    }
+  }
 
   return {
     id: 'preview',
@@ -1907,17 +2127,31 @@ const previewNoteData = computed(() => {
 /**
  * 要送去 `/api/moderation` 的文字。
  *
- * 定義是「這張便利貼上所有**由使用者控制、而且會公開展示**的文字」，
- * 不是「content 欄位」。兩者現在剛好相同，但**只要多出一種會上牆的使用者文字，
- * 就必須加進這裡**——審核是照這個值做的，沒加進來就等於沒審。
+ * 這兩個值加起來必須是「這張便利貼上所有**由使用者控制、而且會公開展示**的文字」，
+ * 不是「content 欄位」。**只要多出一種會上牆的使用者文字，就必須加進這裡**——
+ * 審核是照這兩個值做的，沒加進來就等於沒審。
  *
- * 目前已知的下一個：名牌貼紙的 LINE 暱稱。它不在 content 裡（會存進 style），
- * 忘了加就是一條「把 LINE 暱稱改成髒話就能直接上 LED 牆」的路。
+ * 署名的暱稱分開送審：它是在 LINE 上改的，使用者在這裡改不了。
+ * 跟內文混在一起的話，被擋時只能說「請修改文字」，他怎麼改都過不了。
+ * 分開之後就能告訴他問題出在名字、拿掉署名就能送。
  *
  * 這個檢查是 fail-open 而且只在前端做（沒金鑰、OpenAI 掛掉、或直接繞過 UI
  * 都會放行），真正的防線仍是後台即時下架——見 README 的「已知問題」。
  */
 const moderatableText = computed(() => previewNoteData.value.content)
+const moderatableName = computed(() => previewNoteData.value.style.nameTag?.name ?? '')
+
+/** 送審一段文字，回傳是否被擋。fail-open：空字串、沒金鑰、服務掛掉都當成沒問題 */
+const isTextFlagged = async (text: string): Promise<boolean> => {
+  if (!text.trim()) return false
+  try {
+    const res: any = await $fetch('/api/moderation', { method: 'POST', body: { text } })
+    return !!res?.flagged
+  } catch (err) {
+    console.warn('Moderation check failed or bypassed, proceeding...', err)
+    return false
+  }
+}
 
 const toRadians = (deg: number) => deg * (Math.PI / 180)
 
@@ -2093,6 +2327,8 @@ const redirectToLogin = () => {
  */
 const RESUME_STEP_QUERY = 'step'
 const TERMS_AGREED_QUERY = 'agreed'
+/** 從 STEP 5 的署名鈕去登入的：回來要自動貼上名牌 */
+const NAME_TAG_QUERY = 'nametag'
 
 /**
  * 右上角的登入（編輯到一半）。回來之後要回到同一步、同一份內容 ——
@@ -2102,6 +2338,18 @@ const TERMS_AGREED_QUERY = 'agreed'
 const loginFromBadge = () => {
   saveDraftData()
   startLogin(withQuery(route.fullPath, { [RESUME_STEP_QUERY]: String(step.value) }), 'edit')
+}
+
+/**
+ * STEP 5「用 LINE 登入，貼上署名」。跟右上角一樣回到同一步，另外帶上 nametag，
+ * 回來後直接把名牌貼上並選取 —— 他按這顆就是要署名，回來還得再按一次很怪。
+ */
+const loginForNameTag = () => {
+  saveDraftData()
+  startLogin(
+    withQuery(route.fullPath, { [RESUME_STEP_QUERY]: String(step.value), [NAME_TAG_QUERY]: '1' }),
+    'edit'
+  )
 }
 
 /**
@@ -2209,24 +2457,30 @@ const confirmSubmit = async () => {
       ? await checkTokenStatus(tokenForSubmit as string).catch(() => 'unknown')
       : 'valid'
     
-    // 中介檢查：OpenAI Moderation API 擋下不好的文字
-    const allText = moderatableText.value;
-    if (allText.trim()) {
-      try {
-        const modRes: any = await $fetch('/api/moderation', {
-          method: 'POST',
-          body: { text: allText }
-        });
-        
-        if (modRes.flagged) {
-          showSubmitModal.value = false;
-          showAlert('您的文字包含不妥適的內容，為維護良好環境，請修改後再試一次！', '內容安全檢查未通過', '🚫');
-          isSubmitting.value = false;
-          return;
-        }
-      } catch (err) {
-        console.warn('Moderation check failed or bypassed, proceeding...', err);
-      }
+    // 中介檢查：OpenAI Moderation API 擋下不好的文字。內文與署名同時送審
+    const [textFlagged, nameFlagged] = await Promise.all([
+      isTextFlagged(moderatableText.value),
+      isTextFlagged(moderatableName.value)
+    ])
+
+    if (textFlagged) {
+      showSubmitModal.value = false
+      showAlert('您的文字包含不妥適的內容，為維護良好環境，請修改後再試一次！', '內容安全檢查未通過', '🚫')
+      isSubmitting.value = false
+      return
+    }
+
+    // 名字的問題使用者在這裡改不了，直接替他拿掉署名，再按一次送出就是匿名投稿
+    if (nameFlagged) {
+      showSubmitModal.value = false
+      removeNameTag()
+      showAlert(
+        '你的 LINE 名稱無法顯示在便利貼上，署名已經先幫你拿掉了。不署名的話，再按一次送出就可以了。',
+        '署名無法使用',
+        '🚫'
+      )
+      isSubmitting.value = false
+      return
     }
 
     if (status === 'expired') {
@@ -2350,7 +2604,7 @@ const confirmSubmit = async () => {
 
 const goBack = () => {
   const hasContent = textBlocks.value.some(b => b.content.trim())
-  if (hasContent || stickers.value.length > 0) {
+  if (hasContent || regularStickers.value.length > 0) {
     showExitModal.value = true
   } else {
     router.push('/')
@@ -2444,6 +2698,7 @@ const handleLoginReturn = async (): Promise<void> => {
   const resumingEdit = pendingAction === 'edit'
   const returnStep = Number(route.query[RESUME_STEP_QUERY])
   const agreedBefore = route.query[TERMS_AGREED_QUERY] === '1'
+  const wantsNameTag = route.query[NAME_TAG_QUERY] === '1'
 
   // 網址上的登入結果讀完就清掉：重新整理不該再觸發一次，
   // 也不該把它連同 token 一起分享出去
@@ -2453,6 +2708,7 @@ const handleLoginReturn = async (): Promise<void> => {
   delete query[PENDING_ACTION_QUERY]
   delete query[RESUME_STEP_QUERY]
   delete query[TERMS_AGREED_QUERY]
+  delete query[NAME_TAG_QUERY]
   await router.replace({ query })
 
   if (resumingSubmit || resumingEdit) {
@@ -2496,8 +2752,16 @@ const handleLoginReturn = async (): Promise<void> => {
     return
   }
 
-  // 會員資料寫入是背景工作，寫失敗不影響送出
+  // 會員資料寫入是背景工作，寫失敗不影響送出。
+  // 名牌的頭貼讀自那份資料，第一次登入的人要等它寫完才有，寫完再讀一次
   void syncProfile(profile.value?.lineName ?? '', profile.value?.linePicture ?? null)
+    .then(loadNameTagAvatar)
+
+  // 從 STEP 5 的署名鈕來的：回到的就是 STEP 5，直接貼上並選取
+  if (wantsNameTag && resumingEdit) {
+    const tag = addNameTag()
+    if (tag) selectSticker(tag.id)
+  }
 
   // 刻意只開回確認畫面，**不自動送出**。
   // 自動送的話，使用者在這一刻按上一頁或重新整理都可能再觸發一次；

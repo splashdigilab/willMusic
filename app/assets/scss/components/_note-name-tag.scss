@@ -1,0 +1,58 @@
+/*
+  Component: Note Name Tag
+  便利貼上的署名（NoteNameTag.vue）：圓形頭貼＋暱稱的白色膠囊。
+  編輯器與所有顯示便利貼的地方共用，尺寸用 cqw 跟著便利貼的比例走，
+  外層（.c-sticky-note__name-tag、.p-editor__sticker-content.is-name-tag）負責定位與縮放。
+*/
+
+@use '../base/variables' as var;
+@use '../mixins/fonts' as *;
+
+.c-note-name-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  /* 基準字級是內文的 0.6 倍，預設再放大 1.5 倍（見 utils/name-tag.ts）。
+     雙指縮放的下限是 1 倍，縮到最小仍約是內文的六成，LED 牆上看得清楚 */
+  font-size: calc(var(--font-size-pct, 4) * 0.6cqw);
+  padding: 0.18em 0.75em 0.18em 0.18em;
+  border-radius: 999px;
+  background: #fff;
+  /* 白便利貼上白膠囊會融進去，靠陰影與一圈極淡的描邊把輪廓拉出來 */
+  box-shadow:
+    0 0 0 0.04em rgba(0, 0, 0, 0.08),
+    0 0.1em 0.35em rgba(0, 0, 0, 0.28);
+  white-space: nowrap;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
+
+  &__avatar {
+    display: block;
+    width: 1.6em;
+    height: 1.6em;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #ddd;
+
+    /* 沒有頭貼：暱稱第一個字，深灰底白字，跟右上角的登入圓鈕同色 */
+    &--initial {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var.$will-dark-deep;
+      color: #fff;
+      font-family: $font-sans;
+      font-weight: 700;
+    }
+  }
+
+  /* 暱稱是使用者輸入的，由內容字型供應，而內容字型只有 700（見 _sticky-note.scss） */
+  &__name {
+    font-family: $font-sans;
+    font-weight: 700;
+    color: #323232;
+    letter-spacing: 0.02em;
+  }
+}

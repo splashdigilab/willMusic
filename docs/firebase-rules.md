@@ -227,6 +227,24 @@ Firestore 才做得到，還牽涉測試／正式兩組名單），所以被封�
 測試站既有的測試便利貼還帶著 `uid`（正式站沒有這種資料，正式站一直是匿名投稿）。
 這批不會被新程式讀到；上正式站前清掉測試資料即可，不需要搬移。
 
+## 3d. 署名（`style.nameTag`）
+
+便利貼的 `style` 其他部分都只驗「是 map」，署名是唯一被細驗的欄位（`isValidNameTag`）：
+
+- `name` 必須等於 custom token 的 `lineName` claim，否則自己打 API 就能用別人的名字上牆
+- `avatar` 只收 `data:image/(jpeg|png|webp);base64,...`，上限 30000 字元。擋的是外部網址
+- 【過渡期】的匿名舊格式一律不收 `nameTag`（匿名請求沒有 `lineName` 可比對）
+
+另外 `queue_pending` 原本誰都不能 update，現在開一個口：**後台只准拿掉 `style.nameTag`**
+（`isNameTagRemovalByStaff`），給「刪除個人資料、保留便利貼」用。`queue_history`
+本來就開放後台寫入，不需要改。
+
+**上線順序沒有限制。** 線上規則本來就接受任何 `style`，程式先上、規則後上都不會擋到人；
+規則沒部署之前只是暱稱與頭貼沒被驗（顯示端也會擋掉非 data URL 的頭貼）。
+唯一會失敗的是後台「刪除個人資料」遇到還在待播佇列、帶署名的便利貼 ——
+規則部署前那一步會被拒，後台會顯示刪除失敗，個資不會刪到一半。
+**正式站開放署名之前一定要部署。**
+
 ## 4. 手繪圖改存 Storage
 
 新送出的便利貼，`style.drawing` 會從內嵌的 base64 變成 Storage 的網址。
