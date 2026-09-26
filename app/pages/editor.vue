@@ -34,8 +34,8 @@
           全部重來
         </button>
         <!-- 登入狀態（已登入是頭貼、沒登入是人像輪廓），放最右邊，與首頁同一個角落。
-             從這裡登入會整頁導去 LINE，所以先同步存草稿 -->
-        <MemberBadge :before-login="saveDraftData" />
+             從這裡登入要能回到同一步接著編輯，見 loginFromBadge -->
+        <MemberBadge :custom-login="loginFromBadge" />
       </div>
 
       <!-- 活動規範滿版 overlay：版面與首頁開場完全共用，只有文字不同 -->
@@ -112,24 +112,26 @@
                  （見 handleLoginReturn：這個入口不能跳過開場）。
                  排在 START 下面：START 才是這頁的主要動作，登入是可以略過的補充，
                  擺在上面會先把人攔下來做一個他其實不必現在做的決定。 -->
-            <p v-if="isMember" class="p-index__intro-line p-index__intro-line--done">
-              已用 LINE 登入{{ profile?.lineName ? `：${profile.lineName}` : '' }}
-              <button type="button" class="p-index__intro-line-logout" @click="logout">登出</button>
-            </p>
-            <!-- 已登入的人在開始畫之前就知道今天還能不能送（冷卻中每秒倒數），
-                 不必畫完按送出才被擋 -->
-            <p
-              v-if="isMember && quotaSummary"
-              class="p-index__intro-line p-index__intro-line--quota"
-              :class="{ 'is-warning': quotaBlocked }"
-            >
-              {{ quotaSummary }}
-            </p>
+            <template v-if="isMember">
+              <p class="p-index__intro-line p-index__intro-line--done">
+                已用 LINE 登入{{ profile?.lineName ? `：${profile.lineName}` : '' }}
+                <button type="button" class="p-index__intro-line-logout" @click="logout">登出</button>
+              </p>
+              <!-- 已登入的人在開始畫之前就知道今天還能不能送（冷卻中每秒倒數），
+                   不必畫完按送出才被擋 -->
+              <p
+                v-if="quotaSummary"
+                class="p-index__intro-line p-index__intro-line--quota"
+                :class="{ 'is-warning': quotaBlocked }"
+              >
+                {{ quotaSummary }}
+              </p>
+            </template>
             <button
               v-else
               type="button"
               class="p-index__intro-line p-index__intro-line--action"
-              @click="startLogin(route.fullPath)"
+              @click="loginFromIntro"
             >
               先用 LINE 登入（送出時才需要，也可以稍後再登）
             </button>
@@ -732,6 +734,7 @@ import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
 import { useNoteExport } from '~/composables/useNoteExport'
 import { PENDING_ACTION_QUERY, readPendingAction } from '~/composables/useMemberAuth'
+import { withQuery } from 'ufo'
 import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '#imports'
 import { doc, getDoc, onSnapshot } from 'firebase/firestore'
@@ -2074,6 +2077,34 @@ const redirectToLogin = () => {
   startLogin(route.fullPath, 'submit')
 }
 
+/**
+ * 登入往返時要一起帶回來的畫面狀態，放在回程網址上
+ * （跟 PENDING_ACTION_QUERY 同樣的理由：外部瀏覽器的回程可能開在新分頁，
+ * sessionStorage 會不見）。handleLoginReturn 讀完就從網址上清掉。
+ */
+const RESUME_STEP_QUERY = 'step'
+const TERMS_AGREED_QUERY = 'agreed'
+
+/**
+ * 右上角的登入（編輯到一半）。回來之後要回到同一步、同一份內容 ——
+ * 使用者只是想登入，不該被送回活動規範頁、再選一次「使用草稿」、從第一步重來。
+ * 草稿一樣要同步存，理由同 redirectToLogin。
+ */
+const loginFromBadge = () => {
+  saveDraftData()
+  startLogin(withQuery(route.fullPath, { [RESUME_STEP_QUERY]: String(step.value) }), 'edit')
+}
+
+/**
+ * 活動規範頁的「先用 LINE 登入」。回來之後還是停在規範頁，
+ * 但按登入之前已經勾了同意的話，回來要保持勾著，不必再勾一次。
+ */
+const loginFromIntro = () => {
+  startLogin(termsAccepted.value
+    ? withQuery(route.fullPath, { [TERMS_AGREED_QUERY]: '1' })
+    : route.fullPath)
+}
+
 const confirmSubmit = async () => {
   if (isSubmitting.value) return
 
@@ -2369,26 +2400,33 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
 }
 
 /**
- * 從 LINE 回來之後接續原本的動作。網址上沒有 login 參數就什麼都不做。
+ * 從 LINE 回來之後，回到按下登入時的狀態。網址上沒有 login 參數就什麼都不做。
  *
- * 登入有兩個入口，回來之後的處理不同：
+ * 登入有三個入口，回來之後的處理不同：
  *
- *   送出途中被導去登入（網址帶 resume=submit）
+ *   送出確認畫面（resume=submit）
  *     → 跳過開場流程（活動規範 → START → 問要不要用草稿），直接還原草稿、
  *       開回確認畫面。使用者幾秒前才剛按下送出，再讓他把那一串重看一次很奇怪，
  *       而且規範在按送出之前就已經同意過了。
  *
+ *   右上角，編輯到一半（resume=edit，另帶 step）
+ *     → 同樣跳過開場、直接還原草稿，再回到原本那一步。
+ *
  *   活動規範頁的「先用 LINE 登入」
  *     → 留在規範頁，照常勾同意、按 START。這個入口跟同意勾選是分開的，
  *       使用者很可能還沒勾就先按了登入；若也跳過開場，就等於沒勾同意也能進編輯器，
- *       第一次來的人也看不到教學。
+ *       第一次來的人也看不到教學。按登入之前已經勾了的話（帶 agreed=1），回來保持勾著。
  */
 const handleLoginReturn = async (): Promise<void> => {
   const outcome = route.query.login
   if (typeof outcome !== 'string') return
 
   const reason = typeof route.query.reason === 'string' ? route.query.reason : ''
-  const resumingSubmit = readPendingAction(route.query) === 'submit'
+  const pendingAction = readPendingAction(route.query)
+  const resumingSubmit = pendingAction === 'submit'
+  const resumingEdit = pendingAction === 'edit'
+  const returnStep = Number(route.query[RESUME_STEP_QUERY])
+  const agreedBefore = route.query[TERMS_AGREED_QUERY] === '1'
 
   // 網址上的登入結果讀完就清掉：重新整理不該再觸發一次，
   // 也不該把它連同 token 一起分享出去
@@ -2396,9 +2434,11 @@ const handleLoginReturn = async (): Promise<void> => {
   delete query.login
   delete query.reason
   delete query[PENDING_ACTION_QUERY]
+  delete query[RESUME_STEP_QUERY]
+  delete query[TERMS_AGREED_QUERY]
   await router.replace({ query })
 
-  if (resumingSubmit) {
+  if (resumingSubmit || resumingEdit) {
     showIntroOverlay.value = false
     termsAccepted.value = true
     await nextTick()
@@ -2410,6 +2450,10 @@ const handleLoginReturn = async (): Promise<void> => {
       await new Promise<void>(r => requestAnimationFrame(() => r()))
       await loadDraftData(draft)
     }
+    // 登入失敗或取消也一樣回到原本那一步：使用者只是沒登入成功，不是要重來
+    if (resumingEdit && Number.isInteger(returnStep)) goToStep(returnStep)
+  } else if (agreedBefore) {
+    termsAccepted.value = true
   }
 
   if (outcome === 'cancelled') {

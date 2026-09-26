@@ -76,10 +76,10 @@ import { computed, onUnmounted, ref, watch } from 'vue'
  */
 const props = defineProps<{
   /**
-   * 導去 LINE 之前要先做的事。編輯器用它同步存草稿 ——
-   * 登入往返會整頁重載，平常那些防抖存檔來不及跑。
+   * 取代預設的登入動作（預設是登入完回到同一頁）。編輯器用它先同步存草稿、
+   * 記下現在在第幾步，回來時才能接著編輯，而不是從活動規範頁重來。
    */
-  beforeLogin?: () => void
+  customLogin?: () => void
 }>()
 
 const route = useRoute()
@@ -121,10 +121,10 @@ const onLogout = async () => {
   await logout()
 }
 
-// 登入完回到原本這一頁（不帶「接著送出」—— 那是送出確認畫面的事）
+// 預設：登入完回到原本這一頁
 const onLogin = () => {
-  props.beforeLogin?.()
-  startLogin(route.fullPath)
+  if (props.customLogin) props.customLogin()
+  else startLogin(route.fullPath)
 }
 
 // 點外面或按 Esc 收起。只在打開時掛監聽

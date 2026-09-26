@@ -25,14 +25,22 @@ import { useMemberProfile } from '~/composables/useMemberProfile'
  */
 export const PENDING_ACTION_QUERY = 'resume'
 
-export type PendingAction = 'submit'
+/**
+ * 編輯器裡從哪裡去登入的：
+ *   submit → 送出確認畫面。回來還原草稿、開回確認畫面
+ *   edit   → 右上角（編輯到一半）。回來還原草稿、回到同一步
+ * 兩者都已經過了活動規範頁，回來時都跳過開場。
+ */
+export type PendingAction = 'submit' | 'edit'
 
 /** callback 會在網址上附註結果，前端讀完就把它從網址清掉 */
 export type LoginOutcome = 'ok' | 'cancelled' | 'error'
 
 /** 回程網址上的待續動作。讀完要連同 login／reason 一起從網址上清掉 */
-export const readPendingAction = (query: Record<string, unknown>): PendingAction | null =>
-  query[PENDING_ACTION_QUERY] === 'submit' ? 'submit' : null
+export const readPendingAction = (query: Record<string, unknown>): PendingAction | null => {
+  const value = query[PENDING_ACTION_QUERY]
+  return value === 'submit' || value === 'edit' ? value : null
+}
 
 export const useMemberAuth = () => {
   const { $auth } = useNuxtApp() as any

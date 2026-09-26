@@ -49,9 +49,18 @@
 登入。活動規範頁另外提供一個選填的「先登入」，讓願意的人不必在畫完之後才被
 導去 LINE。往返會整頁重載，所以 `redirectToLogin()` 一定是**同步**存完草稿才導向。
 
-兩個入口回來之後的處理不同，靠回程網址上的 `resume=submit` 分辨（不用 sessionStorage：
-外部瀏覽器走 LINE App 登入時回程可能開在新分頁）：送出途中去登入的人跳過活動規範頁、
-直接開回確認畫面；從規範頁登入的人留在規範頁，照常勾同意、按 START。
+**登入回來要回到按下登入時的狀態。** 需要帶回來的狀態都放在回程網址上
+（不用 sessionStorage：外部瀏覽器走 LINE App 登入時回程可能開在新分頁）：
+
+| 從哪裡登入 | 網址帶的 | 回來之後 |
+|---|---|---|
+| 送出確認畫面 | `resume=submit` | 跳過規範頁、還原草稿、開回確認畫面 |
+| 編輯器右上角（編輯到一半） | `resume=edit&step=N` | 跳過規範頁、還原草稿、回到第 N 步 |
+| 活動規範頁的「先用 LINE 登入」 | 已勾同意時 `agreed=1` | 留在規範頁，同意勾選維持原狀 |
+| 首頁右上角 | — | 回到牆上，不再看一次開場 |
+| `/my-notes` | — | 回到同一頁 |
+
+規範頁那個入口**不能**跳過開場：它跟同意勾選是分開的，跳過就等於沒勾同意也能進編輯器。
 
 首頁與編輯器的右上角一直有一顆登入狀態鈕（`MemberBadge`）：已登入是 LINE 頭貼，
 點開是暱稱、今天還能送幾張、「我的便利貼」、登出；沒登入是人像輪廓，點開說明
@@ -355,6 +364,17 @@ LINE Developers 後台的 **Callback URL 要把正式站與測試站兩個網域
 | `NUXT_PUBLIC_GTM_ID` | 正式容器編號 | `none` |
 
 其餘變數兩站共用（同一個 Firebase 專案）。
+
+> **LINE 登入的四個變數（`LINE_CHANNEL_ID`、`LINE_CHANNEL_SECRET`、`FIREBASE_CLIENT_EMAIL`、
+> `FIREBASE_PRIVATE_KEY`）要自己加上去，照抄正式站是抄不到的**：正式站還是匿名投稿的
+> 舊版，本來就沒有這四個。漏設的症狀是按了登入就跳「登入服務尚未設定完成」
+> （`/api/auth/line/start` 回 `reason=unconfigured`）。
+>
+> 這些值是**建置時**寫進 server bundle 的（`nuxt.config` 的 `runtimeConfig`），
+> 在 Amplify 改完環境變數之後要重新部署一次才會生效。
+
+本機開發的 LINE 登入只認 `localhost:3000`：舊的 dev server 還佔著 3000 的話，新開的會
+退到 3001，LINE 只會回一個看不出原因的 400 Invalid redirect_uri（見 `nuxt.config` 的 `devServer`）。
 
 > **`none` 不是 Nuxt 的慣例，是為了繞開 Amplify。** Amplify 的環境變數一律不接受
 > 空字串（連「所有分支」那一列也不行），所以本來用「留空」表達的「不加後綴」
