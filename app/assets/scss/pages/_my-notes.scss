@@ -10,13 +10,23 @@
   由上而下：額度卡（今天還能送幾張 + 製作按鈕）→ 排隊中 → 已上牆 → 頁尾（回到首頁）。
   排隊中做成一列一張、字放大，因為要讀的是「前面還有幾張」；
   已上牆做成兩欄的牆，那時候要看的是便利貼本身。
+
+  每一區都是一張白卡（跟額度卡同一套），深灰底只當背景。
+  原本只有額度卡是白的，底下的清單直接放在深灰上、字是半透明白，
+  上下兩半像兩個不同的頁面，清單也顯得鬆散。
 */
 
-/* 額度卡與清單卡片共用的內距／圓角 */
+/* 所有白卡共用：額度、排隊中、已上牆、空狀態、未登入 */
 $card-radius: 1.4rem;
-$tile-radius: 1.1rem;
-$tile-bg: rgba(255, 255, 255, 0.07);
-$tile-border: 1px solid rgba(255, 255, 255, 0.08);
+$tile-radius: 1rem;
+
+%card {
+  box-sizing: border-box;
+  border-radius: $card-radius;
+  background: linear-gradient(to bottom left, #FFFFFF 0%, #ECECEC 100%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  color: #323232;
+}
 
 /* 白底卡片上的文字色。品牌桃紅 #EA4C71 放在淡粉底上對比不夠，壓深一階 */
 $ink: #323232;
@@ -69,12 +79,8 @@ $ink-red: #D6335A;
 
 /* ── 額度卡 ── */
 .p-my-notes__quota {
-  box-sizing: border-box;
+  @extend %card;
   padding: 1.25rem 1.25rem 1.35rem;
-  border-radius: $card-radius;
-  background: linear-gradient(to bottom left, #FFFFFF 0%, #ECECEC 100%);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
-  color: $ink;
 }
 
 .p-my-notes__quota-row {
@@ -229,11 +235,13 @@ $ink-red: #D6335A;
   }
 }
 
-/* ── 區塊標題：「排隊中 2」「已上牆 5」 ── */
+/* ── 清單卡：「排隊中 2」「已上牆 5」，標題在卡片裡 ── */
 .p-my-notes__section {
+  @extend %card;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.9rem;
+  padding: 1.1rem 1.1rem 1.25rem;
 }
 
 .p-my-notes__section-title {
@@ -241,18 +249,19 @@ $ink-red: #D6335A;
   align-items: center;
   gap: 0.5rem;
   margin: 0;
-  padding-left: 0.25rem;
+  padding-left: 0.15rem;
   font-size: 0.95rem;
   font-weight: 800;
   letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.9);
+  color: $ink;
 
   span {
     min-width: 1.5rem;
     padding: 0.1rem 0.45rem;
     box-sizing: border-box;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(0, 0, 0, 0.07);
+    color: $ink-sub;
     font-size: 0.75rem;
     text-align: center;
     letter-spacing: 0;
@@ -260,16 +269,20 @@ $ink-red: #D6335A;
   }
 }
 
-/* 便利貼本身是寬 100%、正方形，給它一個固定寬度的框就好 */
+/* 便利貼本身是寬 100%、正方形，給它一個固定寬度的框就好。
+   外面再疊一圈很淡的陰影當輪廓：白底便利貼放在白卡上，只靠便利貼自己縮小後的
+   投影分不出邊界。drop-shadow 跟著形狀走，愛心、爆炸星也一樣 */
 .p-my-notes__thumb {
   flex-shrink: 0;
-  width: 84px;
+  width: 76px;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.22));
 }
 
 .p-my-notes__time {
   margin: 0.35rem 0 0;
   font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.55);
+  font-weight: 700;
+  color: $ink-sub;
   font-variant-numeric: tabular-nums;
 }
 
@@ -283,24 +296,26 @@ $ink-red: #D6335A;
   gap: 0.75rem;
 }
 
+/* 卡片裡的一列：淺灰底，跟白卡分得開又不搶便利貼。
+   框線先留透明的 2px，is-now 換色時高度不會跳 */
 .p-my-notes__ticket {
   display: flex;
   align-items: center;
-  gap: 1.1rem;
-  padding: 0.85rem 1rem 0.85rem 0.85rem;
+  gap: 1rem;
+  padding: 0.7rem 0.9rem 0.7rem 0.7rem;
+  border: 2px solid transparent;
   border-radius: $tile-radius;
-  border: $tile-border;
-  background: $tile-bg;
+  background: rgba(0, 0, 0, 0.04);
 
-  /* 正在播或下一張：現在就該抬頭看牆，用最醒目的黃，外圈慢慢呼吸。
-     底色不疊黃 —— 淡黃疊在深灰上會變成髒髒的橄欖色 */
+  /* 正在播或下一張：現在就該抬頭看牆。白底上黃字讀不到，改成淡黃底＋深黃框、
+     字維持深色，外圈慢慢呼吸 */
   &.is-now {
-    border-color: var.$will-yellow;
+    border-color: var.$will-yellow-deep;
+    background: rgba(var.$will-yellow, 0.25);
     animation: p-my-notes-glow 1.8s ease-in-out infinite;
 
     .p-my-notes__ticket-main {
       font-size: 1.3rem;
-      color: var.$will-yellow;
     }
   }
 }
@@ -314,12 +329,13 @@ $ink-red: #D6335A;
   font-size: 1rem;
   font-weight: 800;
   line-height: 1.3;
+  color: $ink;
   font-variant-numeric: tabular-nums;
 
   strong {
     margin: 0 0.1em;
     font-size: 1.6em;
-    color: var.$will-blue;
+    color: $ink-blue;
   }
 }
 
@@ -327,10 +343,11 @@ $ink-red: #D6335A;
   margin: 0.15rem 0 0;
   font-size: 0.95rem;
   font-weight: 700;
+  color: #555;
 }
 
 /* ── 已上牆：兩欄 ──
-   便利貼直接貼在頁面上，不再包灰框：便利貼本身已經有陰影，框中框很重；
+   便利貼直接貼在卡片上，不再各自包框：便利貼本身已經有陰影，框中框很重；
    只有一張的時候右邊空一格，看起來像少了什麼。 */
 .p-my-notes__gallery {
   margin: 0;
@@ -338,7 +355,7 @@ $ink-red: #D6335A;
   list-style: none;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.25rem 1rem;
+  gap: 1.1rem 0.9rem;
 }
 
 .p-my-notes__tile {
@@ -349,18 +366,17 @@ $ink-red: #D6335A;
   }
 
   .p-my-notes__time {
-    margin-top: 0.8rem;
+    margin-top: 0.6rem;
   }
 }
 
-/* ── 空狀態／未登入：置中在額度卡下方剩下的空間 ── */
+/* ── 空狀態／未登入：一樣是白卡 ── */
 .p-my-notes__empty {
-  flex: 1;
+  @extend %card;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 1rem 0.5rem 2rem;
+  padding: 2rem 1.25rem 2.25rem;
   text-align: center;
 }
 
@@ -376,7 +392,8 @@ $ink-red: #D6335A;
     width: 64px;
     height: 64px;
     border-radius: 6px;
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+    /* 白卡上陰影要比深灰底上淡，否則三張像浮在一團髒污上 */
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
 
     &:nth-child(1) {
       left: 4px;
@@ -432,15 +449,16 @@ $ink-red: #D6335A;
 .p-my-notes__empty-text {
   margin: 0.5rem 0 0;
   font-size: 0.88rem;
+  font-weight: 700;
   line-height: 1.7;
-  color: rgba(255, 255, 255, 0.6);
+  color: $ink-sub;
 }
 
 .p-my-notes__signin-error {
   margin: 1rem 0 0;
   font-size: 0.85rem;
   font-weight: 700;
-  color: var.$will-red;
+  color: $ink-red;
 }
 
 .p-my-notes__hint {
@@ -473,9 +491,10 @@ $ink-red: #D6335A;
   50% { opacity: 0.4; }
 }
 
+/* 白卡上淡黃的光暈幾乎看不到，用深一階的黃 */
 @keyframes p-my-notes-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(var.$will-yellow, 0); }
-  50% { box-shadow: 0 0 0 5px rgba(var.$will-yellow, 0.18); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var.$will-yellow-deep, 0); }
+  50% { box-shadow: 0 0 0 5px rgba(var.$will-yellow-deep, 0.3); }
 }
 
 @media (prefers-reduced-motion: reduce) {
