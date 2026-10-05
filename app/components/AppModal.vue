@@ -1,6 +1,8 @@
 <template>
   <Teleport to="body">
-    <Transition name="modal-fade">
+    <!-- opened：進場動畫跑完才發。進場時 .c-modal 帶著 transform，
+         裡面 position: fixed 的東西會被它框住，要等這之後才鋪得滿整個畫面 -->
+    <Transition name="modal-fade" @after-enter="emit('opened')">
       <div v-if="modelValue" class="c-modal-overlay" @click="handleOverlayClick">
         <div class="c-modal" @click.stop>
           
@@ -101,7 +103,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'confirm', 'cancel'])
+const emit = defineEmits(['update:modelValue', 'confirm', 'cancel', 'opened'])
 
 const handleOverlayClick = () => {
   if (props.closeOnOverlay && !props.loading) {

@@ -202,81 +202,132 @@
       :loading="isSubmitting"
       @confirm="confirmSubmit"
       @cancel="showSubmitModal = false"
+      @opened="submitModalEntered = true"
     >
       <template #preview>
         <StickyNote v-if="previewNoteData" :note="previewNoteData" />
       </template>
       <template #footnote>
         <template v-if="isMember">
-          <!-- 以誰的身分送出、今天第幾張。送不出去的狀態（停權、額度用完、冷卻中）
-               在按下去之前就用警示色講清楚，冷卻中的倒數每秒跳。 -->
-          <div class="p-editor__submit-identity">
-            <img
-              v-if="profile?.linePicture && !avatarBroken"
-              :src="profile.linePicture"
-              alt=""
-              class="p-editor__submit-avatar"
-              referrerpolicy="no-referrer"
-              @error="avatarBroken = true"
-            />
-            <!-- 沒有頭貼或讀不到：暱稱第一個字，跟右上角的 MemberBadge 一樣 -->
-            <span v-else class="p-editor__submit-avatar p-editor__submit-avatar--initial" aria-hidden="true">
-              {{ Array.from(profile?.lineName || '?')[0] }}
-            </span>
-            <span class="p-editor__submit-identity-text">
-              <!-- 暱稱獨立一行、不塞進「以…送出」的句子裡：一個字的暱稱夾在句子中間
-                   會變成「以 江 送出」，讀起來像三個詞。LINE 標籤負責說明這是哪種帳號 -->
-              <span class="p-editor__submit-identity-name">
-                <span class="p-editor__submit-identity-name-text">{{ profile?.lineName || 'LINE 帳號' }}</span>
-                <span class="p-editor__submit-identity-tag">LINE</span>
-              </span>
-              <span
-                v-if="quotaKind !== 'loading' && quotaKind !== 'unlimited'"
-                class="p-editor__submit-identity-quota"
-                :class="{ 'is-exhausted': quotaBlocked }"
+          <!-- 身分與署名收進同一張卡：兩件事都是「以誰、用什麼樣子送出」，
+               分成灰底一塊加底下散著一列，看起來像兩個不相干的設定。
+               兩列都是「左邊 40px 寬的圖（頭貼／開關）｜粗體一行＋灰字一行｜右邊細框膠囊」。
+
+               在這個畫面才登入的人，回來時用遮罩把這張卡框出來，分兩步（見 signatureTour）：
+                 toggle → 請他打開開關
+                 adjust → 打開之後，請他看預覽（這一步預覽也浮到遮罩上面）、需要的話按「調整位置」
+               卡片本身一直浮在遮罩上面，所以框著的時候開關照樣能按；
+               點開關由 onSignatureToggle 決定下一步，點卡片其他地方或遮罩就收掉。 -->
+          <div
+            ref="memberCardRef"
+            class="p-editor__submit-member"
+            :class="signatureTour && ['is-spotlit', `is-tour-${signatureTour}`]"
+            @click.capture="onMemberCardClick"
+          >
+            <!-- 換步驟時用 key 讓泡泡重新進場，尖角從開關移到「調整位置」 -->
+            <Transition name="p-editor-spotlight">
+              <div
+                v-if="signatureTour"
+                :key="signatureTour"
+                class="p-editor__submit-spotlight-tip"
+                :class="`p-editor__submit-spotlight-tip--${signatureTour}`"
+                role="status"
               >
-                <template v-if="quotaKind === 'banned'">這個帳號已停止投稿資格</template>
-                <template v-else-if="quotaKind === 'exhausted'">今天的 {{ quotaUsage?.dailyLimit }} 張已經送完了</template>
-                <template v-else-if="quotaKind === 'cooldown'">{{ quotaWaitText }} 後才能送出</template>
-                <template v-else>今天第 {{ quotaUsage?.nth }} 張，共 {{ quotaUsage?.dailyLimit }} 張</template>
-              </span>
-            </span>
-            <button
-              type="button"
-              class="p-editor__submit-logout"
-              :disabled="isSubmitting"
-              @click="logout"
-            >
-              登出
-            </button>
-          </div>
-          <!-- 署名的最後一道入口。多數人是在這個畫面才登入的，STEP 5 那一列他們看到時
-               還沒有名牌可貼。開關預設關：隱私權政策寫的是「主動放上才公開」，
-               從 LINE 回來的「登入成功」那一次也不自動打開。
-               這裡的預覽不能拖，所以另外給「調整位置」回 STEP 5。 -->
-          <div class="p-editor__submit-signature">
-            <label class="p-editor__submit-signature-toggle">
-              <input
-                type="checkbox"
-                role="switch"
-                class="p-editor__submit-signature-input"
-                :checked="hasNameTag"
-                :disabled="isSubmitting"
-                @change="onSignatureToggle"
+                <template v-if="signatureTour === 'adjust'">
+                  <strong>署名已經貼上</strong>
+                  上面的預覽就是上牆的樣子，想換位置就按「調整位置」。
+                </template>
+                <template v-else>
+                  <strong>要在便利貼上署名嗎？</strong>
+                  打開開關會貼上你的 LINE 頭貼與名字，不開就是匿名。
+                </template>
+                <span class="p-editor__submit-spotlight-dismiss">點任意處關閉</span>
+              </div>
+            </Transition>
+            <!-- 以誰的身分送出、今天第幾張。送不出去的狀態（停權、額度用完、冷卻中）
+                 在按下去之前就用警示色講清楚，冷卻中的倒數每秒跳。 -->
+            <div class="p-editor__submit-identity">
+              <img
+                v-if="profile?.linePicture && !avatarBroken"
+                :src="profile.linePicture"
+                alt=""
+                class="p-editor__submit-avatar"
+                referrerpolicy="no-referrer"
+                @error="avatarBroken = true"
               />
-              <span class="p-editor__submit-signature-switch" aria-hidden="true" />
-              <span class="p-editor__submit-signature-label">在便利貼上署名</span>
-            </label>
-            <button
-              v-if="hasNameTag"
-              type="button"
-              class="p-editor__submit-signature-adjust"
-              :disabled="isSubmitting"
-              @click="adjustNameTag"
-            >
-              調整位置
-            </button>
+              <!-- 沒有頭貼或讀不到：暱稱第一個字，跟右上角的 MemberBadge 一樣 -->
+              <span v-else class="p-editor__submit-avatar p-editor__submit-avatar--initial" aria-hidden="true">
+                {{ Array.from(profile?.lineName || '?')[0] }}
+              </span>
+              <span class="p-editor__submit-identity-text">
+                <!-- 暱稱獨立一行、不塞進「以…送出」的句子裡：一個字的暱稱夾在句子中間
+                     會變成「以 江 送出」，讀起來像三個詞。LINE 標籤負責說明這是哪種帳號 -->
+                <span class="p-editor__submit-identity-name">
+                  <span class="p-editor__submit-identity-name-text">{{ profile?.lineName || 'LINE 帳號' }}</span>
+                  <span class="p-editor__submit-identity-tag">LINE</span>
+                </span>
+                <span
+                  v-if="quotaKind !== 'loading' && quotaKind !== 'unlimited'"
+                  class="p-editor__submit-identity-quota"
+                  :class="{ 'is-exhausted': quotaBlocked }"
+                >
+                  <template v-if="quotaKind === 'banned'">這個帳號已停止投稿資格</template>
+                  <template v-else-if="quotaKind === 'exhausted'">今天的 {{ quotaUsage?.dailyLimit }} 張已經送完了</template>
+                  <template v-else-if="quotaKind === 'cooldown'">{{ quotaWaitText }} 後才能送出</template>
+                  <template v-else>今天第 {{ quotaUsage?.nth }} 張，共 {{ quotaUsage?.dailyLimit }} 張</template>
+                </span>
+              </span>
+              <button
+                type="button"
+                class="p-editor__submit-logout"
+                :disabled="isSubmitting"
+                @click="logout"
+              >
+                登出
+              </button>
+            </div>
+            <!-- 署名的最後一道入口。多數人是在這個畫面才登入的，STEP 5 那一列他們看到時
+                 還沒有名牌可貼。開關預設關：隱私權政策寫的是「主動放上才公開」，
+                 從 LINE 回來的「登入成功」那一次也不自動打開。
+                 這裡的預覽不能拖，所以另外給「調整位置」回 STEP 5。
+                 灰字講現在是哪一種：開關本身只有顏色，看不出關著等於匿名。 -->
+            <div class="p-editor__submit-signature">
+              <label class="p-editor__submit-signature-toggle">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  class="p-editor__submit-signature-input"
+                  :checked="hasNameTag"
+                  :disabled="isSubmitting"
+                  @change="onSignatureToggle"
+                />
+                <span class="p-editor__submit-signature-switch" aria-hidden="true" />
+                <span class="p-editor__submit-signature-text">
+                  <span class="p-editor__submit-signature-label">在便利貼上署名</span>
+                  <span class="p-editor__submit-signature-state">{{ hasNameTag ? '顯示頭貼與名字' : '匿名上牆' }}</span>
+                </span>
+              </label>
+              <button
+                v-if="hasNameTag"
+                type="button"
+                class="p-editor__submit-signature-adjust"
+                :disabled="isSubmitting"
+                @click="adjustNameTag"
+              >
+                調整位置
+              </button>
+            </div>
           </div>
+          <!-- 遮罩本身就是「點任意處關閉」的接收層：底下的上傳鈕被它蓋住，
+               不會因為使用者只是想關掉提示，就順手把便利貼送出去 -->
+          <Transition name="p-editor-spotlight">
+            <div
+              v-if="signatureTour"
+              class="p-editor__submit-spotlight"
+              aria-hidden="true"
+              @click="signatureTour = null"
+            />
+          </Transition>
         </template>
         <p v-else class="p-editor__submit-login-hint">
           送出需要 LINE 登入。登入後會回到這裡，便利貼會幫你留著，也可以選擇要不要署名。
@@ -1159,6 +1210,54 @@ const BANNED_ALERT_MESSAGE = '這個 LINE 帳號已被停止投稿資格，無�
 
 /** 剛從 LINE 登入回來、確認畫面是自動開回來的那一次。標題改成「登入成功」 */
 const justSignedIn = ref(false)
+
+/*
+ * 在確認畫面才登入的人，回來時用遮罩框出身分與署名那張卡，分兩步：
+ *   toggle → 請他打開開關。他登入前看到的只有「登入後也可以選擇要不要署名」一行字，
+ *            回來後卡片長出一個開關，沒人指一下很容易直接按上傳。
+ *   adjust → 打開之後名牌貼在預設位置（下緣置中），可能壓到他寫的字；
+ *            這一步把預覽也亮出來，請他看一眼、需要就按「調整位置」。
+ * 原本就有署名的人（登入過又登出再登入）直接從 adjust 開始。
+ *
+ * 只出現一次（pending 用掉就收），而且要等兩件事：
+ *   進場動畫跑完 → 動畫期間 .c-modal 帶 transform，遮罩鋪不滿整個畫面
+ *   額度讀完     → 停權或今天用完的人送不出去，署名問了也沒意義，就不框
+ */
+type SignatureTourStep = 'toggle' | 'adjust'
+const signatureTourPending = ref(false)
+const signatureTour = ref<SignatureTourStep | null>(null)
+const submitModalEntered = ref(false)
+const memberCardRef = ref<HTMLElement | null>(null)
+
+/**
+ * 矮螢幕上 modal 會捲動。把泡泡的下緣捲到畫面底邊：卡片與泡泡一定看得到，
+ * 上方也盡量多露出預覽 —— 第二步要看的就是名牌在便利貼下緣的位置。
+ * 內容本來就放得下的話 scrollTop 會被夾在 0，等於不動。
+ */
+const scrollTourIntoView = () => {
+  const tip = memberCardRef.value?.querySelector(`.p-editor__submit-spotlight-tip--${signatureTour.value}`)
+  const overlay = tip?.closest<HTMLElement>('.c-modal-overlay')
+  if (!tip || !overlay) return
+  const bottomGap = 16
+  overlay.scrollBy({
+    top: tip.getBoundingClientRect().bottom - (overlay.getBoundingClientRect().bottom - bottomGap),
+    behavior: 'smooth'
+  })
+}
+
+watch(signatureTour, async (step) => {
+  if (!step) return
+  await nextTick()
+  scrollTourIntoView()
+})
+
+/** 卡片裡的點擊。開關交給 onSignatureToggle 決定下一步；登出、調整位置、空白處都收掉提示 */
+const onMemberCardClick = (e: MouseEvent) => {
+  if (!signatureTour.value) return
+  if ((e.target as Element).closest('.p-editor__submit-signature-toggle')) return
+  signatureTour.value = null
+}
+
 /** LINE 頭貼網址在使用者換頭貼後會失效，破圖就收掉，只留文字 */
 const avatarBroken = ref(false)
 
@@ -1178,8 +1277,13 @@ const {
 // 兩個都沒開、或登出了，就停掉倒數。只是讓人按之前心裡有數，
 // 真正的檢查仍在 confirmSubmit 與規則。
 watch([showIntroOverlay, showSubmitModal, isMember], ([intro, open, member]) => {
-  // 「登入成功」只屬於登入回來的那一次開啟；關掉或登出就收回
-  if (!open || !member) justSignedIn.value = false
+  // 「登入成功」與遮罩只屬於登入回來的那一次開啟；關掉或登出就收回
+  if (!open || !member) {
+    justSignedIn.value = false
+    signatureTourPending.value = false
+    signatureTour.value = null
+  }
+  if (!open) submitModalEntered.value = false
   if (!member || (!intro && !open)) {
     resetQuota()
     return
@@ -1188,6 +1292,13 @@ watch([showIntroOverlay, showSubmitModal, isMember], ([intro, open, member]) => 
 }, { immediate: true })
 
 watch(() => profile.value?.linePicture, () => { avatarBroken.value = false })
+
+watch([submitModalEntered, quotaKind], ([entered, kind]) => {
+  if (!signatureTourPending.value || !entered || kind === 'loading') return
+  signatureTourPending.value = false
+  if (kind === 'banned' || kind === 'exhausted') return
+  signatureTour.value = hasNameTag.value ? 'adjust' : 'toggle'
+})
 
 const formatCooldownRemaining = (remainingMs: number): string => {
   const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000))
@@ -1956,6 +2067,8 @@ const onSignatureToggle = (e: Event) => {
   else removeNameTag()
   // 沒貼成功（例如剛好登出）時 hasNameTag 沒變，Vue 不會重畫，開關得自己撥回來
   input.checked = hasNameTag.value
+  // 導覽中：打開了就換下一步，請他看預覽、調整位置；關掉就是不要署名，收掉
+  if (signatureTour.value) signatureTour.value = hasNameTag.value ? 'adjust' : null
 }
 
 /** 確認畫面的「調整位置」：預覽不能拖，回到 STEP 5 並選取名牌 */
@@ -2766,6 +2879,7 @@ const handleLoginReturn = async (): Promise<void> => {
   // 標題換成「登入成功」，否則畫面跟導走之前一模一樣，看不出剛才的登入有沒有成功。
   if (resumingSubmit && hasSubmittableContent.value) {
     justSignedIn.value = true
+    signatureTourPending.value = true
     showSubmitModal.value = true
   }
 }

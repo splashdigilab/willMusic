@@ -1098,17 +1098,38 @@ body.is-editor-page #app {
    放在 AppModal 的 footnote 插槽裡。modal 是 teleport 到 body 的，
    所以這幾個 class 不能巢狀在 .p-editor 底下（寫成 &__ 產生的也是頂層 class，這裡直接寫明）。 */
 
-/* 已登入：頭貼｜暱稱＋今天第幾張｜登出，一整列。
+/* 已登入：身分與署名同一張卡，中間一條細線分成兩列。
    與下面的按鈕同寬，左緣右緣對齊；原本是置中、寬度跟著內容走的膠囊，
-   短暱稱時縮成一小顆飄在中間，跟上下都對不齊。 */
+   短暱稱時縮成一小顆飄在中間，跟上下都對不齊。
+
+   兩列的左欄都是 40px 寬（頭貼、開關），間距都是 0.75rem，
+   所以「暱稱」與「在便利貼上署名」從同一條線開始，右邊的兩顆膠囊也靠同一條線。
+
+   白底而且不透明：modal 是淺灰漸層，白卡才看得出這是一組；
+   被遮罩框出來時卡片浮在遮罩上面，半透明的底會透出遮罩的黑。 */
+.p-editor__submit-member {
+  position: relative;
+  /* 一直高於遮罩（.p-editor__submit-spotlight 是 1）。只在框著時才拉高的話，
+     遮罩淡出的那一下卡片會先掉到遮罩底下，閃一下黑 */
+  z-index: 2;
+  padding: 0 0.75rem;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
+  text-align: left;
+  transition: box-shadow 0.25s ease;
+
+  &.is-spotlit {
+    box-shadow: 0 0 0 3px var.$will-blue, 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* 頭貼｜暱稱＋今天第幾張｜登出 */
 .p-editor__submit-identity {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.65rem 0.75rem;
-  border-radius: 16px;
-  background: rgba(0, 0, 0, 0.045);
-  text-align: left;
+  padding: 0.7rem 0;
 }
 
 .p-editor__submit-avatar {
@@ -1155,7 +1176,9 @@ body.is-editor-page #app {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #323232;
-  font-size: 0.95rem;
+  /* 跟下一列的「在便利貼上署名」同一級。不用 0.95：360 寬時那一列旁邊有「調整位置」，
+     0.95 的七個字會剛好多出一點點、掉一個字到第二行 */
+  font-size: 0.92rem;
   /* 暱稱是使用者輸入的，多半不在介面字集裡、由內容字型供應，而內容字型只有 700。
      寫 800 的話介面字集裡有的字會比其他字粗一階，同一個名字粗細不一 */
   font-weight: 700;
@@ -1221,25 +1244,34 @@ body.is-editor-page #app {
   text-wrap: balance;
 }
 
-/* 署名開關：接在身分列下面，左右跟身分列對齊。
-   開關｜在便利貼上署名 ……… 調整位置 */
+/* 署名開關：卡片的第二列。
+   開關｜在便利貼上署名＋匿名／顯示頭貼 ……… 調整位置 */
 .p-editor__submit-signature {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-top: 0.6rem;
-  padding: 0 0.75rem;
-  min-height: 36px;
+  padding: 0.7rem 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
 }
 
 .p-editor__submit-signature-toggle {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  /* 跟身分列同一個間距，兩列的文字才會左緣對齊 */
+  gap: 0.75rem;
   min-width: 0;
   cursor: pointer;
   text-align: left;
+}
+
+/* 兩行字的排法跟身分列的暱稱＋張數一樣 */
+.p-editor__submit-signature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  line-height: 1.35;
 }
 
 /* 原生 checkbox 留著（鍵盤、報讀器都靠它），只是看不見，外觀由旁邊的 switch 負責 */
@@ -1293,7 +1325,14 @@ body.is-editor-page #app {
 
 .p-editor__submit-signature-label {
   color: #323232;
-  font-size: 0.9rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+/* 跟身分列的「今天第幾張」同一種灰字 */
+.p-editor__submit-signature-state {
+  color: #7A7A7A;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -1319,4 +1358,118 @@ body.is-editor-page #app {
     opacity: 0.5;
     cursor: not-allowed;
   }
+}
+
+/* ========== 登入回來時框出身分卡 ==========
+   遮罩是 .c-modal 裡的 position: fixed，跟卡片在同一個疊放層（.c-modal-overlay）：
+   遮罩 1、卡片 2，所以卡片以外的東西 —— 預覽、標題、上傳鈕、modal 外面 —— 全部壓暗。
+   要等 modal 進場動畫跑完才出現，動畫期間 .c-modal 帶 transform，fixed 會被它框住。 */
+.p-editor__submit-spotlight {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+}
+
+/* 說明泡泡掛在卡片下面、尖角朝上對著開關：泡泡講的是「打開開關」，
+   指著開關最清楚。底下那塊是被壓暗的上傳鈕，蓋住也無妨。 */
+.p-editor__submit-spotlight-tip {
+  position: absolute;
+  top: calc(100% + 14px);
+  left: 0;
+  right: 0;
+  padding: 0.85rem 1rem 0.7rem;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  color: #555;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.55;
+  text-align: left;
+  cursor: pointer;
+
+  strong {
+    display: block;
+    margin-bottom: 0.2rem;
+    color: #323232;
+    font-size: 1rem;
+    font-weight: 800;
+  }
+
+  /* 第一步：尖角對準左欄中線（卡片內距 0.75rem＋開關寬的一半 20px） */
+  &::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: calc(0.75rem + 20px - 8px);
+    border: 8px solid transparent;
+    border-bottom-color: #fff;
+  }
+
+  /* 第二步：尖角改對「調整位置」（膠囊約 78px 寬，取一半） */
+  &--adjust::before {
+    left: auto;
+    right: calc(0.75rem + 39px - 8px);
+  }
+}
+
+/* 第二步要看名牌貼在哪，預覽也浮到遮罩上面（跟卡片同一層 2）。
+   預覽在 AppModal 裡、不歸這一頁管，只能從外面用 :has 認出現在是第二步。
+   點擊要穿過去落在遮罩上：預覽本來就不能操作，浮起來之後點它也要能關掉提示 */
+.c-modal:has(.p-editor__submit-member.is-tour-adjust) .c-modal__preview-wrapper {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.p-editor__submit-spotlight-dismiss {
+  display: block;
+  margin-top: 0.4rem;
+  color: #9A9A9A;
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+/* 要按的那一顆外面一圈一圈往外擴，眼睛直接落在那裡：第一步是開關，第二步是「調整位置」 */
+.p-editor__submit-member.is-tour-toggle .p-editor__submit-signature-switch,
+.p-editor__submit-member.is-tour-adjust .p-editor__submit-signature-adjust {
+  animation: p-editor-spotlight-pulse 1.6s ease-out infinite;
+}
+
+/* 第二步的「調整位置」換成天藍的框與字，跟上面的「登出」分開。
+   字色跟 STEP 5 署名鈕「已署名」的同一個深天藍，同一件事用同一個顏色 */
+.p-editor__submit-member.is-tour-adjust .p-editor__submit-signature-adjust {
+  border-color: var.$will-blue;
+  color: #00879F;
+}
+
+@keyframes p-editor-spotlight-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(var.$will-blue, 0.6); }
+  100% { box-shadow: 0 0 0 10px rgba(var.$will-blue, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p-editor__submit-member.is-tour-toggle .p-editor__submit-signature-switch,
+  .p-editor__submit-member.is-tour-adjust .p-editor__submit-signature-adjust {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(var.$will-blue, 0.45);
+  }
+}
+
+.p-editor-spotlight-enter-active,
+.p-editor-spotlight-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.p-editor-spotlight-enter-from,
+.p-editor-spotlight-leave-to {
+  opacity: 0;
+}
+
+/* 淡出的 0.25 秒裡遮罩與泡泡仍然攔著點擊（不要加 pointer-events: none）：
+   泡泡正好蓋在上傳鈕上，連點兩下關提示，第二下會直接把便利貼送出去 */
+.p-editor__submit-spotlight-tip.p-editor-spotlight-enter-from,
+.p-editor__submit-spotlight-tip.p-editor-spotlight-leave-to {
+  transform: translateY(-6px);
 }
