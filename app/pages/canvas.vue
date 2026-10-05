@@ -14,27 +14,27 @@
     <p class="p-canvas-start__hint">請點擊「開始」以啟用播放（含插播影片聲音）。</p>
     <button type="button" class="p-canvas-start__btn" @click="beginCanvasSession">開始</button>
   </div>
-  <div v-show="isCanvasReady && hasUserStarted" class="p-canvas" ref="canvasRef" :style="{ '--display-scale': displayNoteScale }">
-
-    <!-- ─── 左側容器 ─── -->
-    <div class="p-canvas__half p-canvas__half--stack">
-      <!-- ─── 左半：隨機散落區 ─── -->
-      <div class="p-canvas__live-zone" ref="liveZoneRef">
-        <div
-          v-for="item in displayState.liveGrid"
-          :key="getId(item)"
-          class="p-canvas__scatter-slot"
-        >
-          <div
-            v-if="displayState.borrowedId !== getId(item)"
-            :data-flip-id="getId(item)"
-            class="p-canvas__note-wrap"
-            :style="getScatterStyle(getId(item))"
-          >
-            <StickyNote :note="item" />
-          </div>
-        </div>
+  <div
+    v-show="isCanvasReady && hasUserStarted"
+    class="p-canvas"
+    ref="canvasRef"
+    :style="{ '--display-scale': displayNoteScale, '--flow-size': `${flowSize}px` }"
+  >
+    <!-- ─── 底層：流動便利貼牆，橫跨左右兩個螢幕，由左往右流（位置由 useNoteFlow 每幀寫入） ─── -->
+    <div ref="flowLayerRef" class="p-canvas__flow" aria-hidden="true">
+      <div
+        v-for="item in wallNotes"
+        :key="getId(item)"
+        :ref="(el) => onFlowNoteRef(getId(item), el)"
+        class="p-canvas__flow-note"
+      >
+        <StickyNote :note="item" />
       </div>
+    </div>
+
+    <!-- ─── 左側容器：頂層只有徽章動畫與插播影片 ─── -->
+    <div class="p-canvas__half p-canvas__half--stack">
+      <CanvasPromo v-if="showPromo" class="p-canvas__promo p-canvas__promo--left" />
       <div
         v-show="showInterstitial && interstitialSrc"
         class="p-canvas__interstitial p-canvas__interstitial--left"
@@ -52,28 +52,30 @@
       </div>
     </div>
 
-    <!-- ─── 右側容器 ─── -->
+    <!-- ─── 右側容器：頂層是 highlight 的那一張 ───
+         換張時會同時有兩張：剛展示完、正在飛回牆上的，和剛拿起、正在飛過來的。
+         飛回去的用本尊不用複製品：複製出來的圖片要重新解碼，起飛那一下貼紙與手繪會閃掉 -->
     <div class="p-canvas__half p-canvas__half--stack">
-      <!-- ─── 右半：單張展示區 ─── -->
+      <!-- 平常蓋在右螢幕牆面上的深色漸層；圓形提醒期間換成左右一樣的深色色塊（徽章自己的底色） -->
+      <div class="p-canvas__dim" :class="{ 'is-off': promoDimming }" aria-hidden="true" />
       <div class="p-canvas__display-zone">
-        <!-- 標語 + QR：放在同一個容器用 flex 排，
-             各自絕對定位會互相重疊（標語與 QR 原本是同一張圖，拆開後才需要排版） -->
-        <div class="p-canvas__cta">
-          <p class="p-canvas__slogan">
-            <span>上傳便利貼</span>
-            <span>為你的本命<em>應援</em>！</span>
-          </p>
-          <img src="/qrcode.svg" alt="上傳便利貼 QR code" class="p-canvas__qr" />
-        </div>
         <div
-          v-if="displayState.nowPlaying"
-          :key="'display-' + getId(displayState.nowPlaying)"
-          :data-flip-id="getId(displayState.nowPlaying)"
+          v-for="item in displayItems"
+          :key="'display-' + getId(item)"
+          :data-note-id="getId(item)"
           class="p-canvas__note-wrap p-canvas__note-wrap--display"
         >
-          <StickyNote :note="displayState.nowPlaying" />
+          <StickyNote :note="item" />
         </div>
       </div>
+      <!-- 每輪播 promoEvery 張，左右兩個螢幕各插一次徽章動畫（同時掛上、同步播）。
+           兩個的時間軸一樣長，只聽右邊這個的 finished -->
+      <CanvasPromo
+        v-if="showPromo"
+        class="p-canvas__promo p-canvas__promo--right"
+        @leaving="promoDimming = false"
+        @finished="onPromoFinished"
+      />
       <div
         v-show="showInterstitial && interstitialSrc"
         class="p-canvas__interstitial p-canvas__interstitial--right"
@@ -93,46 +95,108 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, computed, watch, reactive } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { gsap } from 'gsap'
-import { Flip } from 'gsap/Flip'
 import { useRoute } from 'vue-router'
 import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import StickyNote from '~/components/StickyNote.vue'
-import { calculateScatterPositions } from '~/utils/scatter-layout'
+import CanvasPromo from '~/components/CanvasPromo.vue'
 import {
   useConductor,
   getInterstitialSlotKey,
   clampInterstitialIntervalMinutes,
   parseInterstitialScheduleEnabled
 } from '~/composables/useConductor'
+import type { StateChangeInfo } from '~/composables/useConductor'
+import { useNoteFlow, type FlowDirection, type FlowRect } from '~/composables/useNoteFlow'
 
 definePageMeta({ layout: false })
-gsap.registerPlugin(Flip)
 
 /* ─── 動畫時間設定（秒）───────────────────────────────────────
    調整這裡可以統一改變所有動畫的快慢
    ─────────────────────────────────────────────────────────── */
 const ANIM = {
-  /** 所有移動 / 飛行動畫（進場飛入、跨區飛行、live 重排、離場飛出）*/
-  moveDuration:  1.2,
+  /**
+   * 飛行時間（從左邊螢幕的牆飛到右邊、飛回牆上、新投稿飛入）依距離決定：
+   * 距離 ÷ flightSpeed，夾在 moveDuration 與 maxMoveDuration 之間。
+   * 拿起與放回都在左邊螢幕，每次都要橫跨接縫，固定時間的話遠的那幾次會飛得太快
+   */
+  moveDuration:    1.2,
+  maxMoveDuration: 2.0,
+  flightSpeed:     1100,
+  /** 飛行的速度曲線：sine 中段最快只有平均的 1.57 倍（power2 是 2 倍），長距離飛起來比較從容 */
+  flightEase:      'sine.inOut',
   /** 所有 scale 縮放（1→1.1 拿起 / 1.1→1 放下，時間相同）*/
   scaleDuration: 0.5,
+  /** 從牆上消失（後台下架、超過張數被擠掉）的淡出 */
+  fadeDuration:  0.4,
 } as const
 
+const flightDuration = (distance: number) =>
+  Math.min(ANIM.maxMoveDuration, Math.max(ANIM.moveDuration, distance / ANIM.flightSpeed))
+
 /**
- * 一輪動畫從頭到尾要多久：拿起 → 移動 → 放下，外加一點緩衝。
+ * 一輪動畫從頭到尾最久要多久：拿起 → 移動（最長的那種）→ 放下，外加一點緩衝。
  * 傳給 Conductor 當作「動畫進行中不要開始下一輪」的守衛長度。
  * 這個值必須跟著 ANIM 走，寫死就會在改動畫時間後悄悄失準。
  */
-const ANIM_TOTAL_MS = (ANIM.scaleDuration * 2 + ANIM.moveDuration) * 1000 + 50
+const ANIM_TOTAL_MS = (ANIM.scaleDuration * 2 + ANIM.maxMoveDuration) * 1000 + 50
 
 /* ─── URL 參數 ─── */
 const route = useRoute()
-const maxNotes   = computed(() => Number(route.query.count) || 16)
+/**
+ * 輪播的張數（載入最新的幾張）。沒填時依畫面大小算：排滿牆面再多每道一張在畫面外排隊，
+ * 換道才換得起來、每張輪到左邊螢幕的機會才平均（見 useNoteFlow 的 recommendedCount）
+ */
+const maxNotesParam = computed(() => Number(route.query.count) || 0)
 const displaySec = computed(() => Number(route.query.duration) || 15)
-const liveNoteScale = computed(() => Number(route.query.liveScale) || 0.95)
 const displayNoteScale = computed(() => Number(route.query.displayScale) || 0.9)
+/**
+ * 流動牆：
+ * - 方向：預設一欄一欄由下往上；?flow=left 改成一排一排由右往左
+ * - 道數：由下往上看 ?cols（預設 6 欄，每個螢幕 3 欄）；由右往左看 ?rows（預設 3 排）
+ * - ?flowScale：便利貼佔道寬的比例
+ * - ?flowSpeed：流速（1080 高的畫面每秒幾 px）。往上流預設比較慢：畫面高只有 1080，
+ *   照橫向的速度一張半分鐘就流完了，展示完它留下的空位也多半已經流出頂端、回不去原位
+ * - ?mess：排列的雜亂程度，0 = 整齊磚牆、1 = 最亂（大小不變，角度與前後左右的偏移差最多，
+ *   會互相壓到一些）。預設 0.8
+ * - ?speedVary：各道流速上下差多少（比例），預設 0.15 = 最慢 0.85 倍、最快 1.15 倍；0 = 全部同速
+ * - ?tilt：最多歪幾度（每張在 ±tilt 之間），0 = 完全不歪，最多 45。
+ *   沒填就跟著 mess 走（mess 0 → ±3°、1 → ±12°，預設 0.8 約 ±10°）；填了只管角度，偏移照樣看 mess
+ */
+const flowDirection = computed<FlowDirection>(() => (route.query.flow === 'left' ? 'left' : 'up'))
+const flowLanes = computed(() => {
+  const n = flowDirection.value === 'up' ? Number(route.query.cols) || 6 : Number(route.query.rows) || 3
+  return Math.max(1, Math.floor(n))
+})
+const flowScale = computed(() =>
+  Number(route.query.flowScale) || (flowDirection.value === 'up' ? 0.85 : 0.8)
+)
+const flowSpeed = computed(() =>
+  Number(route.query.flowSpeed) || (flowDirection.value === 'up' ? 30 : 45)
+)
+/** 0 是有意義的值（整齊），跟 promoEvery 一樣不能寫成 `||` */
+const flowMess = computed(() => {
+  const n = Number(route.query.mess)
+  return route.query.mess != null && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.8
+})
+const flowSpeedVary = computed(() => {
+  const n = Number(route.query.speedVary)
+  return route.query.speedVary != null && Number.isFinite(n) ? Math.min(0.9, Math.max(0, n)) : 0.15
+})
+/** 沒填就是 undefined，交給 useNoteFlow 依 mess 算 */
+const flowTilt = computed(() => {
+  const n = Number(route.query.tilt)
+  return route.query.tilt != null && Number.isFinite(n) ? Math.min(45, Math.max(0, n)) : undefined
+})
+/**
+ * 右側每展示幾張便利貼插一次徽章動畫。?promoEvery=0 關閉。
+ * 不能照上面寫成 `|| 10`：0 是有意義的值，會被當成沒填而變回 10
+ */
+const promoEvery = computed(() => {
+  const n = Number(route.query.promoEvery)
+  return route.query.promoEvery != null && Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 10
+})
 
 /* ─── Conductor + 插播影片 ─── */
 const { $firestore } = useNuxtApp()
@@ -152,7 +216,6 @@ const videoRightRef = ref<HTMLVideoElement | null>(null)
 const isCanvasReady = ref(false)
 /** 使用者點「開始」後才啟動 Conductor／插播排程，以符合瀏覽器自動播放（有聲影片）政策 */
 const hasUserStarted = ref(false)
-let stopRecalcWatch: (() => void) | null = null
 const interstitialPreloadMap = new Map<string, Promise<void>>()
 
 const {
@@ -161,8 +224,40 @@ const {
   displayState,
   armInterstitialSlot,
   finishInterstitial,
-  clearInterstitialArmQueue
+  clearInterstitialArmQueue,
+  finishPromo
 } = useConductor()
+
+/* ─── 徽章動畫 ─── */
+const showPromo = ref(false)
+/**
+ * 圓形提醒期間，右螢幕平常的漸層淡掉，換成徽章的深色色塊（左右一樣深）。
+ * 跟著徽章淡入就關、開始淡出就開，兩層交叉淡換，中間不會有一段沒蓋東西
+ */
+const promoDimming = ref(false)
+/**
+ * 保底：動畫一輪約 10 秒，超過 15 秒還沒收到 finished 就當作播完。
+ * 元件掛載失敗之類的狀況下 finished 永遠不會來，輪播會一直停在「右邊沒有便利貼」
+ */
+const PROMO_FALLBACK_MS = 15_000
+let promoFallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+const onPromoStart = () => {
+  showPromo.value = true
+  promoDimming.value = true
+  if (promoFallbackTimer) clearTimeout(promoFallbackTimer)
+  promoFallbackTimer = setTimeout(onPromoFinished, PROMO_FALLBACK_MS)
+}
+
+const onPromoFinished = () => {
+  if (promoFallbackTimer) {
+    clearTimeout(promoFallbackTimer)
+    promoFallbackTimer = null
+  }
+  showPromo.value = false
+  promoDimming.value = false
+  finishPromo()
+}
 
 /** 右側影片無音訊，依左側時間軸對齊 */
 const onInterstitialPrimaryTimeUpdate = () => {
@@ -296,154 +391,327 @@ const onInterstitialVideoEnded = () => {
   finishInterstitial()
 }
 
-const canvasRef   = ref<HTMLElement | null>(null)
-const liveZoneRef = ref<HTMLElement | null>(null)
+const canvasRef = ref<HTMLElement | null>(null)
+/** 底層流動牆的容器 */
+const flowLayerRef = ref<HTMLElement | null>(null)
 
 /** 取得便利貼唯一 ID */
 const getId = (item: any): string => item?.id ?? item?.token ?? ''
 
 /* ══════════════════════════════════════════════
-   隨機散落演算法 (Non-overlapping scatter)
+   底層流動牆
    ══════════════════════════════════════════════ */
 
-/** 已分配的位置快取 { flipId → { left, top, rot, size } } */
-const positionMap = reactive<Record<string, { left: number; top: number; rot: number; size: number }>>({})
-
-/** padding (px) 用於 live-zone 四邊內邊距 */
-const PADDING = 20
-/** live-zone 右側額外留白（px），便利貼不會出現在此區域 */
-const PADDING_RIGHT = 40
-/** live-zone 左側額外留白（px），便利貼不會出現在此區域 */
-const PADDING_LEFT = 10
-
-/** 虛擬座標系：便利貼邊長。先在此座標系排好，再整體縮放到 live-zone */
-const VIRTUAL_ITEM_SIZE = 550
-/** 便利貼間距：負值 = 更緊、正值 = 更鬆 */
-const VIRTUAL_MARGIN = -50
+/**
+ * 超過張數被擠出 liveGrid、但還在牆上流的舊便利貼。牆上一張都不憑空消失：
+ * 它們繼續流，流出出口（左邊或上面）才真的拿掉（useNoteFlow 的 onRetired）
+ */
+const retiringNotes = ref<any[]>([])
+/** 牆上要畫的：liveGrid 加上還在流出去途中的 */
+const wallNotes = computed(() => {
+  const ids = new Set(displayState.value.liveGrid.map(getId))
+  return [...displayState.value.liveGrid, ...retiringNotes.value.filter(n => !ids.has(getId(n)))]
+})
 
 /**
- * 為所有 liveGrid 便利貼分配不重疊位置。
- * 先用共用的散落演算法（~/utils/scatter-layout，與首頁同一套）在虛擬座標系排好，
- * 再依張數整體縮放到 live-zone 內，便利貼大小一併縮放。
+ * 流出去途中的那幾張，各自盯著它的 Firestore 文件：不在 liveGrid 裡了，
+ * conductor 不會再告訴我們它被刪，但後台下架必須當場從畫面上拿掉
  */
-function recalcPositions() {
-  const zone = liveZoneRef.value
-  if (!zone) return
-  const zoneW = zone.clientWidth - (PADDING + PADDING_LEFT) - (PADDING + PADDING_RIGHT) // 左右扣掉額外留白
-  const zoneH = zone.clientHeight - PADDING * 2
-
-  const items = displayState.value.liveGrid.map((n: any) => getId(n))
-  for (const id of Object.keys(positionMap)) {
-    if (!items.includes(id)) delete positionMap[id]
-  }
-
-  const count = items.length
-  if (!count) return
-
-  const positions = calculateScatterPositions(count, {
-    itemSize: VIRTUAL_ITEM_SIZE,
-    margin: VIRTUAL_MARGIN
-  })
-
-  let minX = positions[0]!.x - VIRTUAL_ITEM_SIZE / 2
-  let maxX = positions[0]!.x + VIRTUAL_ITEM_SIZE / 2
-  let minY = positions[0]!.y - VIRTUAL_ITEM_SIZE / 2
-  let maxY = positions[0]!.y + VIRTUAL_ITEM_SIZE / 2
-  for (let i = 1; i < positions.length; i++) {
-    const p = positions[i]!
-    minX = Math.min(minX, p.x - VIRTUAL_ITEM_SIZE / 2)
-    maxX = Math.max(maxX, p.x + VIRTUAL_ITEM_SIZE / 2)
-    minY = Math.min(minY, p.y - VIRTUAL_ITEM_SIZE / 2)
-    maxY = Math.max(maxY, p.y + VIRTUAL_ITEM_SIZE / 2)
-  }
-
-  let virtualW = maxX - minX
-  let virtualH = maxY - minY
-  const centerX = (minX + maxX) / 2
-  const centerY = (minY + maxY) / 2
-  const zoneAspect = zoneW / zoneH
-  const virtualAspect = virtualW / virtualH
-
-  // 將虛擬佈局長寬比對齊 live-zone，減少留白、提高空間利用
-  if (virtualAspect > zoneAspect) {
-    const factor = (zoneW * virtualH) / (zoneH * virtualW)
-    for (const p of positions) {
-      p.x = centerX + (p.x - centerX) * factor
+const cols = useCollections()
+const retiringWatchers = new Map<string, () => void>()
+const stopWatchingRetiring = (id: string) => {
+  retiringWatchers.get(id)?.()
+  retiringWatchers.delete(id)
+}
+const onRetired = (id: string) => {
+  stopWatchingRetiring(id)
+  retiringNotes.value = retiringNotes.value.filter(n => getId(n) !== id)
+}
+const watchRetiring = (id: string) => {
+  if (retiringWatchers.has(id)) return
+  retiringWatchers.set(id, onSnapshot(doc(db, cols.queueHistory, id), (snap) => {
+    if (snap.exists()) return
+    const el = flow.removeRetiring(id)
+    if (el) {
+      const copy = placeFadingCopy(el)
+      gsap.to(copy, { opacity: 0, duration: ANIM.fadeDuration, ease: 'power1.out', onComplete: () => copy.remove() })
     }
-    const halfW = (maxX - minX) / 2
-    minX = centerX - halfW * factor
-    maxX = centerX + halfW * factor
-    virtualW = maxX - minX
-  } else if (virtualAspect < zoneAspect) {
-    const factor = (zoneH * virtualW) / (zoneW * virtualH)
-    for (const p of positions) {
-      p.y = centerY + (p.y - centerY) * factor
-    }
-    const halfH = (maxY - minY) / 2
-    minY = centerY - halfH * factor
-    maxY = centerY + halfH * factor
-    virtualH = maxY - minY
-  }
-
-  // 所有 note 在同一次 recalcPositions 內尺寸完全一致，依張數軎小确保不重疊
-  const scale = Math.min((zoneW / virtualW) || 1, (zoneH / virtualH) || 1)
-  const size = Math.max(40, VIRTUAL_ITEM_SIZE * scale) * liveNoteScale.value
-
-  items.forEach((id, index) => {
-    const p = positions[index]!
-    const existing = positionMap[id]
-    const rot = existing ? existing.rot : (Math.random() - 0.5) * 12
-
-    const centerX = (p.x - minX) * scale
-    const centerY = (p.y - minY) * scale
-
-    const left = centerX - size / 2
-    const top = centerY - size / 2
-
-    positionMap[id] = {
-      left: Math.max(0, Math.min(left, zoneW - size)),
-      top: Math.max(0, Math.min(top, zoneH - size)),
-      rot,
-      size
-    }
-  })
+    onRetired(id)
+  }))
 }
 
-/** 返回每張便利貼的 inline style */
-function getScatterStyle(flipId: string) {
-  const pos = positionMap[flipId]
-  const size = pos?.size ?? 100
-  if (!pos) return { width: `${size}px`, height: `${size}px` }
-  return {
-    position: 'absolute' as const,
-    left: `${PADDING + PADDING_LEFT + pos.left}px`,
-    top: `${PADDING + pos.top}px`,
-    width: `${pos.size}px`,
-    height: `${pos.size}px`,
-    transform: `rotate(${pos.rot}deg)`
-  }
+const flow = useNoteFlow({
+  direction: flowDirection.value,
+  lanes: flowLanes.value,
+  scale: flowScale.value,
+  speed: flowSpeed.value,
+  speedVary: flowSpeedVary.value,
+  mess: flowMess.value,
+  tilt: flowTilt.value,
+  // 左右兩台螢幕：便利貼不跨在中間的接縫上
+  screens: 2,
+  onRetired: id => onRetired(id)
+})
+/** 牆上便利貼的邊長（px），寫進 --flow-size 給 CSS */
+const flowSize = ref(0)
+
+const onFlowNoteRef = (id: string, el: unknown) => {
+  flow.register(id, el instanceof Element ? el : null)
+}
+
+const liveGridIds = () => displayState.value.liveGrid.map(getId).filter(Boolean)
+
+/**
+ * 從牆上拿起、展示完放回，都只在左邊螢幕：右邊螢幕的頂層是 highlight，
+ * 在它底下拿起放回看不清楚，而且左→右的飛行才有「從牆上被挑中」的感覺。
+ * 範圍扣掉中間接縫的 30px，跟展示區、插播影片一致
+ */
+const SEAM = 30
+const leftScreenRight = () => (canvasRef.value?.clientWidth ?? window.innerWidth) / 2 - SEAM
+
+/** 按「開始」之後才切全螢幕之類的：牆照新的大小重排 */
+const onResize = () => {
+  const el = canvasRef.value
+  if (!el || !el.clientWidth) return
+  flowSize.value = flow.relayout(el.clientWidth, el.clientHeight)
 }
 
 /* ══════════════════════════════════════════════
-   FLIP 動畫相關
+   輪播動畫：牆上拿起一張 → 右邊 highlight → 展示完追著牆上的位置飛回去
    ══════════════════════════════════════════════ */
 
-let flipSnapshot: any = null
 /** 這一輪正在跑的主時間軸；下一輪開始前要先讓它收尾，避免兩輪動畫互相覆蓋 */
 let activeTimeline: gsap.core.Timeline | null = null
-let capturedElements: {
-  flipId: string; 
-  rect: DOMRect; 
-  offsetWidth: number; 
-  offsetHeight: number; 
-  transform: string; 
-  clone: HTMLElement 
-}[] = []
+
+/**
+ * 右邊展示區的便利貼。不直接用 nowPlaying：換張時上一張還要留著飛回牆上，
+ * 飛完才從這裡拿掉，所以會短暫同時有兩張
+ */
+const displayItems = ref<any[]>([])
+const removeDisplay = (id: string) => {
+  displayItems.value = displayItems.value.filter(n => getId(n) !== id)
+}
+const findDisplayEl = (id: string) =>
+  canvasRef.value?.querySelector<HTMLElement>(
+    `.p-canvas__display-zone > [data-note-id="${CSS.escape(id)}"]`
+  ) ?? null
+
+/** 換張之前右邊那一張 */
+let outgoing: { id: string; el: HTMLElement } | null = null
+
+/**
+ * 牆上被拿掉（下架、超過張數被擠掉）的便利貼：複製一份蓋在原位淡出。
+ * 本尊馬上會被 Vue 從 DOM 拿掉，只能用複製品；淡出只有 0.4 秒，圖片重新解碼也不明顯
+ */
+const placeFadingCopy = (el: HTMLElement) => {
+  const copy = el.cloneNode(true) as HTMLElement
+  copy.classList.add('is-fading')
+  // 放在牆那一層（本尊的 transform 原樣帶過來就是同一個位置），才會跟牆一起被右螢幕的漸層蓋住
+  flowLayerRef.value!.appendChild(copy)
+  return copy
+}
+
+/** highlight 那一張的起點（相對於它在右邊中間的最終位置） */
+const getDisplayStart = (from: FlowRect | null, final: DOMRect) => {
+  const cx = final.left + final.width / 2
+  const cy = final.top + final.height / 2
+  if (from) {
+    return {
+      x: from.x + from.size / 2 - cx,
+      y: from.y + from.size / 2 - cy,
+      scale: from.size / final.width,
+      rotation: from.rotation
+    }
+  }
+  // 新投稿（或借的那張剛好不在畫面上）：從右半邊下方的畫面外飛進來
+  const canvasH = canvasRef.value?.clientHeight ?? window.innerHeight
+  return { x: 0, y: canvasH + final.height / 2 - cy, scale: 1, rotation: 0 }
+}
+
+/** 改動前的 liveGrid：被擠掉的那張要留著它的資料，才能繼續畫在牆上流出去 */
+let gridBefore = new Map<string, any>()
+
+/* ── BEFORE：資料改動前，記下右邊那一張與 liveGrid ── */
+const onBeforeStateChange = () => {
+  // 上一輪動畫還沒跑完就進到下一輪時，先讓它瞬間走到結尾再丟掉。
+  // 不這樣做，這裡會拍到飛行途中的位置；舊時間軸收尾的 land()／清 transform
+  // 也會在新動畫進行中才觸發，畫面上看到的就是一次跳動
+  if (activeTimeline) {
+    activeTimeline.progress(1).kill()
+    activeTimeline = null
+  }
+  // 第一輪 tick 時 liveGrid 才剛載入：在這裡把牆排好，
+  // conductor 接下來挑第一張時（canBorrow）才判斷得出誰在畫面上
+  if (!flow.isInitialized()) flow.init(liveGridIds())
+
+  const current = displayState.value.nowPlaying
+  const id = current ? getId(current) : null
+  const el = id ? findDisplayEl(id) : null
+  outgoing = id && el ? { id, el } : null
+  gridBefore = new Map(displayState.value.liveGrid.map(n => [getId(n), n]))
+}
+
+/* ── AFTER：資料已修改，排這一輪的動畫 ── */
+const onAfterStateChange = async (info: StateChangeInfo) => {
+  const canvas = canvasRef.value
+  if (!canvas) return
+  const ids = liveGridIds()
+  const next = displayState.value.nowPlaying
+  const nextId = next ? getId(next) : null
+  const out = outgoing
+  outgoing = null
+  // 右邊那張沒換（例如只是牆上有便利貼被下架）就不重播進場動畫
+  const displayChanged = nextId !== (out?.id ?? null)
+
+  // 上一張：還在 liveGrid 裡就飛回牆上（idle 借出的，或 live 剛展示完被推進牆的）；
+  // 不在了（後台下架）就原地淡出
+  const returning = displayChanged && out && ids.includes(out.id) ? out : null
+  const vanishing = displayChanged && out && !returning ? out : null
+
+  // 輪播換張時從 liveGrid 消失的，只會是超過張數被擠掉的最舊那張：讓它繼續流、流出畫面才離開。
+  // 先把它的資料放進 retiringNotes（還在 nextTick 之前，Vue 不會拿掉它的 DOM），
+  // 當下不在畫面上的 sync 會立刻 onRetired 把它拿回去
+  const idSet = new Set(ids)
+  const retire = info.source === 'tick'
+    ? [...gridBefore.keys()].filter(id => !idSet.has(id))
+    : []
+  for (const id of retire) retiringNotes.value.push(gridBefore.get(id))
+
+  // 對齊牆的成員。這段在 nextTick 之前，DOM 還沒被 Vue 更新，
+  // 當場拿掉的（後台下架）趁現在複製一份在原地淡出
+  const fading = flow
+    .sync(ids, { hold: returning ? [returning.id] : [], retire })
+    .map(placeFadingCopy)
+  for (const id of retire) {
+    if (retiringNotes.value.some(n => getId(n) === id)) watchRetiring(id)
+  }
+
+  // 這一張若是從牆上借的：從牆上拿起，原位變成它的空位跟著流
+  const pickedFrom = displayChanged && nextId && displayState.value.borrowedId === nextId
+    ? flow.take(nextId)
+    : null
+  if (displayChanged && next && nextId) {
+    // 同一張還在飛回牆上的途中又被挑中（冷卻理論上會擋掉）：舊的那份直接收掉，key 才不會重複
+    removeDisplay(nextId)
+    displayItems.value.push(next)
+  }
+
+  await nextTick()
+
+  // 每個步驟都用絕對時間定位，不用 '<' 之類的相對位置 ——
+  // 相對位置會跟著「上一個被加進 timeline 的動畫」跑，改動順序就會錯位
+  const lift = ANIM.scaleDuration
+  const tl = gsap.timeline()
+  activeTimeline = tl
+
+  // ▸ 牆上消失的：原地淡出
+  for (const copy of fading) {
+    tl.to(copy, {
+      opacity: 0,
+      duration: ANIM.fadeDuration,
+      ease: 'power1.out',
+      onComplete: () => copy.remove()
+    }, 0)
+  }
+
+  // ▸ 展示中那張被下架：原地淡出
+  if (vanishing) {
+    tl.to(vanishing.el, {
+      opacity: 0,
+      duration: ANIM.fadeDuration,
+      ease: 'power1.out',
+      onComplete: () => removeDisplay(vanishing.id)
+    }, 0)
+  }
+
+  // ▸ 上一張飛回牆上：拿起 → 追著牆上保留給它的位置飛 → 落地交給牆接手。
+  //   那個位置本身也在流動，所以終點每幀重算：飛到最後的速度就跟牆一致，交接時看不出接縫
+  if (returning) {
+    const { id, el } = returning
+    const home = el.getBoundingClientRect()
+    const cx = home.left + home.width / 2
+    const cy = home.top + home.height / 2
+    // 落點在左邊螢幕；原位不在了要另找位置時，挑靠右（離這裡近）的，飛行距離比較短。
+    // 挑落點時用最長的飛行時間檢查「落地時還在左邊螢幕」，實際飛得比較快也只會更保險
+    // 落點那格若有便利貼，它會順著流向滑一格讓位：滑的時間用最短的飛行時間，落地前一定讓開
+    flow.reserveReturn(
+      id,
+      lift + ANIM.maxMoveDuration,
+      leftScreenRight(),
+      leftScreenRight() * 0.7,
+      lift + ANIM.moveDuration
+    )
+    const aim = flow.rectOf(id, gsap.ticker.time + lift + ANIM.moveDuration)
+    const move = aim
+      ? flightDuration(Math.hypot(aim.x + aim.size / 2 - cx, aim.y + aim.size / 2 - cy))
+      : ANIM.moveDuration
+    const inner = el.firstElementChild as HTMLElement | null
+    if (inner) {
+      tl.to(inner, { scale: 1.1, duration: lift, ease: 'power2.out' }, 0)
+      tl.to(inner, { scale: 1, duration: move, ease: 'power2.inOut' }, lift)
+    }
+    const progress = { k: 0 }
+    tl.to(progress, {
+      k: 1,
+      duration: move,
+      ease: ANIM.flightEase,
+      onUpdate: () => {
+        const target = flow.rectOf(id, gsap.ticker.time)
+        if (!target) return
+        const k = progress.k
+        gsap.set(el, {
+          x: (target.x + target.size / 2 - cx) * k,
+          y: (target.y + target.size / 2 - cy) * k,
+          scale: 1 + (target.size / home.width - 1) * k,
+          rotation: target.rotation * k
+        })
+      }
+    }, lift)
+    tl.call(() => {
+      flow.land(id)
+      // 牆上那張這一幀就會現身；展示區這份留到下一幀才拿掉，重疊一幀、中間不會有空檔
+      requestAnimationFrame(() => removeDisplay(id))
+    }, [], lift + move)
+  }
+
+  // ▸ 這一張飛到右邊 highlight：從牆上的位置拿起（新投稿從下方飛入）→ 飛到中間放大 → 放下
+  const displayEl = displayChanged && nextId ? findDisplayEl(nextId) : null
+  if (displayEl) {
+    const inner = displayEl.firstElementChild as HTMLElement | null
+    // 起點必須在這裡同步設好：Vue 剛把它插進 DOM 時在最終位置（右邊正中），
+    // 晚一幀才移到起點，就會看到它先閃一下再從牆上飛過來
+    const start = getDisplayStart(pickedFrom, displayEl.getBoundingClientRect())
+    gsap.set(displayEl, start)
+    const move = pickedFrom ? flightDuration(Math.hypot(start.x, start.y)) : ANIM.moveDuration
+    if (inner) {
+      if (pickedFrom) tl.to(inner, { scale: 1.1, duration: lift, ease: 'power2.out' }, 0)
+      else gsap.set(inner, { scale: 1.1 })
+      tl.to(inner, { scale: 1, duration: lift, ease: 'power2.inOut' }, lift + move)
+    }
+    // 牆上那張墊在底下，直到展示這份開始飛（它剛掛上，頭幾幀可能還沒畫好）
+    if (pickedFrom) tl.call(() => flow.release(nextId!), [], lift)
+    tl.to(displayEl, {
+      x: 0,
+      y: 0,
+      scale: 1,
+      rotation: 0,
+      duration: move,
+      ease: pickedFrom ? ANIM.flightEase : 'power3.out'
+    }, lift)
+    tl.call(() => { gsap.set(displayEl, { clearProps: 'transform' }) }, [], lift + move + lift)
+  }
+}
 
 const beginCanvasSession = async () => {
   if (hasUserStarted.value) return
   hasUserStarted.value = true
   await nextTick()
+
+  // 牆要先照畫面大小排好：沒指定張數時，就載入「排滿再多排一些」的張數（recommendedCount）
+  const el = canvasRef.value!
+  flowSize.value = flow.layout(el.clientWidth, el.clientHeight)
+  flow.start()
+  window.addEventListener('resize', onResize)
 
   interstitialArmTimer = setInterval(() => {
     if (!interstitialScheduleEnabled.value) return
@@ -457,287 +725,21 @@ const beginCanvasSession = async () => {
 
   await startConductor({
     loopIntervalMs: displaySec.value * 1000,
-    historyLimit:   maxNotes.value,
+    historyLimit:   maxNotesParam.value || flow.recommendedCount(),
     animationMs:    ANIM_TOTAL_MS,
     getInterstitialVideoUrl: () => interstitialSrc.value,
     onInterstitialStart: () => {
       showInterstitial.value = true
       void startInterstitialPlayback()
     },
-
-    /* ── BEFORE：拍快照 ── */
-    onBeforeStateChange() {
-      // 上一輪動畫還沒跑完就進到下一輪時，先讓它瞬間走到結尾再丟掉。
-      // 不這樣做有兩個後果：這裡會拍到動畫中途的位置，下一輪就從錯的地方起飛；
-      // 而且舊 timeline 末端「清掉 transform 殘留」那一步會在新動畫進行中才觸發，
-      // 把元素硬拉回定位，畫面上看到的就是一次跳動。
-      if (activeTimeline) {
-        activeTimeline.progress(1).kill()
-        activeTimeline = null
-      }
-
-      // 離場中的複製節點 class 仍是 p-canvas__note-wrap，若拍進快照，
-      // Flip 會把這些 position:fixed 的殘影一起納入計算（下面收集
-      // capturedElements 時是靠 data-flip-id 排除的，兩邊條件要一致）
-      flipSnapshot = Flip.getState('.p-canvas__note-wrap:not(.is-leaving)')
-
-      capturedElements = []
-      document.querySelectorAll('.p-canvas__note-wrap:not(.is-leaving)').forEach(el => {
-        const flipId = el.getAttribute('data-flip-id')
-        if (flipId) {
-          const rect = el.getBoundingClientRect()
-          capturedElements.push({
-            flipId,
-            rect,
-            offsetWidth: (el as HTMLElement).offsetWidth,
-            offsetHeight: (el as HTMLElement).offsetHeight,
-            transform: window.getComputedStyle(el).transform,
-            clone: el.cloneNode(true) as HTMLElement
-          })
-        }
-      })
-    },
-
-    /* ── AFTER：資料已修改，重算位置後執行動畫 ── */
-    async onAfterStateChange() {
-      // 重算散落位置（新的便利貼才會得到位置）
-      recalcPositions()
-
-      await nextTick()
-      if (!flipSnapshot || !canvasRef.value) return
-
-      // ▸ 手動 leave 動畫
-      const currentIds = new Set<string>()
-      document.querySelectorAll('.p-canvas__note-wrap').forEach(el => {
-        const id = el.getAttribute('data-flip-id')
-        if (id) currentIds.add(id)
-      })
-
-      // 動畫階層：1 進入 display > 2 display→live > 3 live 移出。先算出「之前在 display」的 ID
-      const wasInDisplayIds = new Set<string>()
-      for (const item of capturedElements) {
-        if (item.clone.classList.contains('p-canvas__note-wrap--display')) {
-          wasInDisplayIds.add(item.flipId)
-        }
-      }
-
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // 情境 4：離場飛出 (Leave)
-      //   - Phase 1：原地 scale 1→1.1（拿起感）
-      //   - Phase 2：維持 1.1，透明度不變，飛往 live 上方離開畫面
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      const liveLeaveRect = liveZoneRef.value!.getBoundingClientRect()
-      const leaveTargetX = liveLeaveRect.left + liveLeaveRect.width / 2
-      const leaveTargetY = -liveLeaveRect.height // 畫面上方完全超出視口
-
-      for (const item of capturedElements) {
-        if (!currentIds.has(item.flipId)) {
-          const clone = item.clone
-          clone.classList.add('is-leaving')
-          clone.removeAttribute('data-flip-id')
-
-          const centerX = item.rect.left + item.rect.width / 2
-          const centerY = item.rect.top + item.rect.height / 2
-          const fixedLeft = centerX - item.offsetWidth / 2
-          const fixedTop = centerY - item.offsetHeight / 2
-
-          clone.style.margin = '0'
-          Object.assign(clone.style, {
-            position: 'fixed',
-            left: `${fixedLeft}px`,
-            top: `${fixedTop}px`,
-            width: `${item.offsetWidth}px`,
-            height: `${item.offsetHeight}px`,
-            transform: item.transform,
-            zIndex: '50',
-            pointerEvents: 'none',
-          })
-          canvasRef.value!.appendChild(clone)
-
-          // Phase 1：原地放大到 1.1x（拿起感）
-          gsap.to(clone, {
-            scale: 1.1,
-            duration: ANIM.scaleDuration,
-            ease: 'power2.out',
-            onComplete: () => {
-              // Phase 2：維持 1.1，飛出畫面，透明度不變
-              gsap.to(clone, {
-                x: leaveTargetX - centerX,
-                y: leaveTargetY - centerY,
-                duration: ANIM.moveDuration,
-                ease: 'power3.in',
-                onComplete: () => clone.remove(),
-              })
-            },
-          })
-        }
-      }
-
-      // 依動畫類型設定 z-index（1 進入 display > 2 display→live > 靜態 live）
-      document.querySelectorAll('.p-canvas__note-wrap:not(.is-leaving)').forEach(el => {
-        const elEl = el as HTMLElement
-        const flipId = el.getAttribute('data-flip-id')
-        if (el.classList.contains('p-canvas__note-wrap--display')) {
-          elEl.style.zIndex = '300' // 1. 進入 display：最上層
-        } else if (flipId && wasInDisplayIds.has(flipId)) {
-          elEl.style.zIndex = '200' // 2. display→live：中層
-        } else {
-          elEl.style.zIndex = '100' // 3. 靜態 live：底層
-        }
-      })
-
-      // 找出所有需要 Flip 動畫的元素
-      const flipTargets: Element[] = []
-      const movingFlipTargets: Element[] = []       // 真正有產生位置變化的元素
-      const enteringTargets: HTMLElement[] = []     // 這一輪才出現在 DOM 的新便利貼
-
-      document.querySelectorAll('.p-canvas__note-wrap:not(.is-leaving)').forEach(el => {
-        const flipId = el.getAttribute('data-flip-id')
-        if (!flipId) return
-
-        const captured = capturedElements.find(c => c.flipId === flipId)
-
-        // 新進場的元素不交給 Flip：Flip 只在 onEnter 的「回傳值」會被併進它的
-        // 時間軸，起點何時套用不由我們決定。改成自己設起點、自己排進 timeline，
-        // 才能保證瀏覽器畫下一幀之前它已經在畫面外。
-        if (!captured) {
-          enteringTargets.push(el as HTMLElement)
-          return
-        }
-
-        flipTargets.push(el)
-
-        // 判斷是否真的有移動
-        const cur = el.getBoundingClientRect()
-        const hasMoved = (
-          Math.abs(cur.left   - captured.rect.left)   > 1 ||
-          Math.abs(cur.top    - captured.rect.top)    > 1 ||
-          Math.abs(cur.width  - captured.rect.width)  > 1 ||
-          Math.abs(cur.height - captured.rect.height) > 1
-        )
-
-        if (hasMoved) {
-          movingFlipTargets.push(el)
-        }
-      })
-
-      // ▸ 新進場元素：立刻擺到 display 區下方的畫面外
-      //   必須在這裡同步做完。Vue 剛把元素插進 DOM 時它在最終位置（display 正中），
-      //   晚一幀才移到起點就會看到它先閃一下再從下面飛上來。
-      if (enteringTargets.length) {
-        const dZone = document.querySelector('.p-canvas__display-zone') as HTMLElement
-        const dRect = dZone.getBoundingClientRect()
-        const displayCenterX = dRect.left + dRect.width / 2
-
-        enteringTargets.forEach(el => {
-          const inner = el.firstElementChild as HTMLElement
-          if (inner) gsap.set(inner, { scale: 1.1 })
-          const rect = el.getBoundingClientRect()
-          gsap.set(el, {
-            x: displayCenterX - (rect.left + rect.width / 2),
-            y: dRect.bottom + rect.height - (rect.top + rect.height / 2)
-          })
-        })
-      }
-
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // 主時間軸：1. 拿起(放大) → 2. 移動(既有的 Flip + 新便利貼飛入) → 3. 放下(縮小)
-      // 每個步驟都用絕對時間定位，不用 '<' 之類的相對位置 ——
-      // 相對位置會跟著「上一個被加進 timeline 的動畫」跑，改動順序就會錯位。
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      if (flipTargets.length || enteringTargets.length) {
-        // 既有元素的位置變化，交給單一 Flip.from()
-        const flipAnim = flipTargets.length
-          ? Flip.from(flipSnapshot, {
-              targets: flipTargets,
-              duration: ANIM.moveDuration,
-              ease: 'power2.inOut',
-              absolute: true,
-              scale: true, // 關鍵：讓元素以 transform scale 的方式變形，而非直接改 width/height，避免瞬間爆大
-              paused: true // 先暫停，由下面的主時間軸控制
-            })
-          : null
-
-        // 提取所有要移動的元素的內部節點（用來放大縮小）
-        const flipInnerTargets = movingFlipTargets.map(el => (el as HTMLElement).firstElementChild as HTMLElement).filter(Boolean)
-        const enteringInnerTargets = enteringTargets.map(el => el.firstElementChild as HTMLElement).filter(Boolean)
-
-        // 沒有東西要「拿起」時，移動就不必等
-        const moveStart = flipInnerTargets.length ? ANIM.scaleDuration : 0
-        const moveEnd = moveStart + ANIM.moveDuration
-
-        const tl = gsap.timeline()
-        activeTimeline = tl
-
-        // 步驟 1：所有要移動的元素原地放大 (拿起)
-        if (flipInnerTargets.length) {
-          tl.to(flipInnerTargets, {
-            scale: 1.1,
-            duration: ANIM.scaleDuration,
-            ease: 'power2.out',
-          }, 0)
-        }
-
-        // 步驟 2：既有元素的位置移動 (Live 重排 + 跨區移動)
-        if (flipAnim) {
-          tl.add(flipAnim.play(), moveStart)
-        }
-
-        // 步驟 2b：新便利貼從 display 區下方飛入（起點在上面已經設好）
-        if (enteringTargets.length) {
-          tl.to(enteringTargets, {
-            x: 0,
-            y: 0,
-            duration: ANIM.moveDuration,
-            ease: 'power3.out',
-          }, moveStart)
-        }
-
-        // 步驟 3：抵達目的地後縮小 (放下)
-        if (flipInnerTargets.length) {
-          tl.to(flipInnerTargets, {
-            scale: 1,
-            duration: ANIM.scaleDuration,
-            ease: 'power2.inOut',
-          }, moveEnd)
-        }
-        if (enteringInnerTargets.length) {
-          tl.to(enteringInnerTargets, {
-            scale: 1,
-            duration: ANIM.scaleDuration,
-            ease: 'power2.inOut',
-          }, moveEnd)
-        }
-
-        // 收尾：把 GSAP 寫進 transform 的殘留值清掉
-        tl.call(() => {
-          // display 區：CSS 沒有給 transform，歸零即可
-          document.querySelectorAll('.p-canvas__note-wrap--display').forEach(el => {
-            gsap.set(el, { x: 0, y: 0 })
-          })
-          // live 區：inline style 的 transform 只有 rotate()，但動畫期間會被 GSAP
-          // 覆寫成帶 translate 的值。Vue 只在「綁定值」改變時才 patch style，
-          // rot 沒變它就不會重寫，於是 translate 殘留下來，下一輪便從錯的位置起跳
-          // —— 症狀就是便利貼先閃現在右下角，再飛向左半邊。
-          document.querySelectorAll('.p-canvas__note-wrap:not(.p-canvas__note-wrap--display):not(.is-leaving)').forEach(el => {
-            const flipId = el.getAttribute('data-flip-id')
-            const pos = flipId ? positionMap[flipId] : null
-            if (pos) gsap.set(el, { x: 0, y: 0, scale: 1, rotation: pos.rot })
-          })
-        })
-      }
-
-      flipSnapshot = null
-      capturedElements = []
-    }
+    promoEvery: promoEvery.value,
+    onPromoStart,
+    // 只借左邊螢幕上的；而且盡量挑展示完時留下的空位還在左邊螢幕的，才回得去原位
+    canBorrow: id => flow.isPickable(id, leftScreenRight()),
+    preferBorrow: id => flow.isPickable(id, leftScreenRight(), displaySec.value + ANIM_TOTAL_MS / 1000),
+    onBeforeStateChange,
+    onAfterStateChange
   })
-
-  stopRecalcWatch?.()
-  stopRecalcWatch = watch(
-    () => [displayState.value.liveGrid.length, liveNoteScale.value],
-    () => { recalcPositions() },
-    { immediate: true }
-  )
 }
 
 onMounted(async () => {
@@ -785,13 +787,18 @@ onUnmounted(() => {
   // 動畫還在跑就離開頁面時，GSAP 的 ticker 會繼續驅動已經卸載的節點
   activeTimeline?.kill()
   activeTimeline = null
-  stopRecalcWatch?.()
-  stopRecalcWatch = null
+  flow.stop()
+  for (const id of [...retiringWatchers.keys()]) stopWatchingRetiring(id)
+  window.removeEventListener('resize', onResize)
   unsubCanvasVideo?.()
   unsubCanvasVideo = null
   if (interstitialArmTimer) {
     clearInterval(interstitialArmTimer)
     interstitialArmTimer = null
+  }
+  if (promoFallbackTimer) {
+    clearTimeout(promoFallbackTimer)
+    promoFallbackTimer = null
   }
   stopConductor()
   document.body.style.margin = ''

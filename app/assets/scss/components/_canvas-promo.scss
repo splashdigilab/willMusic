@@ -1,0 +1,148 @@
+/*
+  Component: Canvas Promo
+  大螢幕右半每輪播幾張便利貼就插播一次的徽章動畫（CanvasPromo.vue）。
+
+  只有中間的圓形徽章，影片裡的造型背景不做，底下透出流動的便利貼牆。
+  徽章內的尺寸照設計影片量到的數字寫（徽章直徑 460），用 b() 換成徽章寬的比例，
+  徽章本身多大由外層決定（--canvas-promo-size）。
+*/
+
+@use 'sass:math';
+@use '../base/variables' as var;
+@use '../mixins/fonts' as *;
+
+/** 徽章座標（直徑 460）→ 徽章寬度的 cqw */
+@function b($n) {
+  @return math.div($n, 4.6) * 1cqw;
+}
+
+// 徽章圓面的漸層：左上亮、右下深，45° 斜向。
+// 兩端色是從影片擬合出來、再外推到 420 方框的角落（漸層線的兩端在方框角上，不在圓周上）
+$disc-light: #84D4E1;
+$disc-deep: #00A4C4;
+// 膠囊上的字：特別色藍（見 variables 的 $will-blue 註解），影片裡量到的就是這個值
+$pill-text: #00ABC6;
+
+.c-canvas-promo {
+  position: absolute;
+  inset: 0;
+  z-index: 400;
+  // 用 flex 置中而不是絕對定位：外層加 padding 時，left: 50% 會算進 padding，flex 只在內容框裡置中
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // 讓徽章的預設大小能用 cqw / cqh 拿到這一塊（內容框）的大小
+  container-type: size;
+  // 淡入前先藏起來，避免掛上去的第一幀閃一下（GSAP 的 autoAlpha 會接手）
+  visibility: hidden;
+  pointer-events: none;
+
+  /* ─── 徽章 ─────────────────────────────────────────────────
+     影片裡的徽章是一片沒有厚度的圓片：正好側面朝前（90°）的那一幀整個消失。
+     翻到一半時靠鏡頭那側的黃邊看起來特別粗，是透視放大，不是厚度。
+
+     影片裡翻面途中兩面的圖文會交疊淡入淡出，這裡照使用者的要求改成轉到 90° 那一刻直接切換：
+     正反兩面的圓片與圖文都設 backface-visibility: hidden，背對鏡頭的那面自然不畫。
+     圓片和圖文分成兩組各自 preserve-3d 翻轉（外面的 __badge 不是 preserve-3d），
+     兩組各自壓平後照 DOM 順序疊，圖文那組一定在圓片上面，不用擔心同平面時誰蓋誰。 */
+  &__badge {
+    position: relative;
+    flex-shrink: 0;
+    // 大小由外層用 --canvas-promo-size 指定；沒指定時照影片的比例（佔寬 85%），高度最多 90%。
+    // 這裡的 cqw / cqh 是外層的大小（容器單位不會參照自己），裡面的 b() 才是徽章的寬
+    --size: var(--canvas-promo-size, min(85.185cqw, 90cqh));
+    width: var(--size);
+    height: var(--size);
+    container-type: size;
+    // 鏡頭距離 750（徽章直徑 460）：拿影片翻到 42° 與 69° 那兩幀、左右兩半的寬度比反推的
+    perspective: calc(var(--size) * 750 / 460);
+  }
+
+  &__flip {
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
+  }
+
+  // 正反兩面各一片、背對背疊在同一個平面，轉到背面時換另一片露出來。
+  // 不用一片雙面的原因：背面的漸層在影片裡一樣是左上亮，一片翻過去會變成右上亮
+  &__plate {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var.$will-yellow;
+    backface-visibility: hidden;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: b(20);
+      border-radius: 50%;
+      background: linear-gradient(135deg, $disc-light, $disc-deep);
+    }
+
+    &--back {
+      transform: rotateY(180deg);
+    }
+  }
+
+  // 圖文跟圓片一樣只畫朝向鏡頭的那面：轉過 90° 就換另一面，不交疊
+  &__face {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    backface-visibility: hidden;
+    font-family: $font-sans;
+    font-weight: 800;
+
+    &--back {
+      transform: rotateY(180deg);
+    }
+  }
+
+  // 以下字級都是徽章 SVG（viewBox 460）裡的單位，跟著徽章一起縮放
+  &__arc-text {
+    fill: #fff;
+    font-size: 28.4px;
+    letter-spacing: 0.5px;
+    text-anchor: middle;
+  }
+
+  // 影片裡這行比 START 細一階，是 Bold 不是 ExtraBold
+  &__title {
+    fill: #fff;
+    font-size: 61px;
+    font-weight: 700;
+    letter-spacing: 5px;
+    text-anchor: middle;
+  }
+
+  &__pill {
+    fill: var.$will-yellow;
+  }
+
+  &__pill-label {
+    fill: $pill-text;
+    font-size: 46.7px;
+    text-anchor: middle;
+  }
+
+  &__scan-icon {
+    fill: var.$will-yellow;
+  }
+
+  &__scan-corners,
+  &__scan-ring {
+    fill: none;
+    stroke: var.$will-yellow;
+    stroke-width: 4.4;
+    stroke-linecap: round;
+  }
+
+  &__qr {
+    fill: #fff;
+    fill-rule: evenodd;
+  }
+}

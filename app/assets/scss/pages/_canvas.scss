@@ -1,36 +1,10 @@
 /*
   Canvas Page Layout
-  100vw = 左 50vw (live-zone 隨機散落) + 右 50vw (display-zone)
+  底層：流動便利貼牆，鋪滿左右兩個螢幕（100vw），由左往右流
+  頂層：左 50vw（徽章動畫、插播影片）+ 右 50vw（highlight 的那一張、徽章動畫、插播影片）
 */
 @use '../components/sticky-note' as sn;
 @use '../base/variables' as var;
-
-/* 下方 slogan：放大縮小兩次後間隔 2 秒再重複（單次脈衝約 2s，總週期 6s） */
-@keyframes canvas-cta-pulse {
-    0% {
-        transform: translateX(-50%) scale(1);
-    }
-
-    10% {
-        transform: translateX(-50%) scale(1.04);
-    }
-
-    20% {
-        transform: translateX(-50%) scale(1);
-    }
-
-    30% {
-        transform: translateX(-50%) scale(1.04);
-    }
-
-    40% {
-        transform: translateX(-50%) scale(1);
-    }
-
-    100% {
-        transform: translateX(-50%) scale(1);
-    }
-}
 
 @keyframes canvas-loading-spin {
     to {
@@ -130,6 +104,31 @@
     position: relative;
     align-items: center;
     justify-content: center;
+    /* 深灰牆面，左右兩個螢幕同色 */
+    background-color: var.$will-dark;
+}
+
+/* ─── 底層：流動便利貼牆 ───
+   左右兩個螢幕當成一整面，由右往左（或 ?flow=up 由下往上）流，整齊的磚牆排法。每張的位置與角度由 useNoteFlow
+   每幀寫進 transform。左右兩半的容器是透明的，照 DOM 順序疊在它上面 */
+.p-canvas__flow {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.p-canvas__flow-note {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--flow-size);
+    height: var(--flow-size);
+    /* 還沒排進格子（或在隊伍裡、被拿去展示）時藏著，由 useNoteFlow 切換。
+       用 opacity 不用 visibility，原因見 useNoteFlow 的 setShown */
+    opacity: 0;
+    will-change: transform, opacity;
 }
 
 /* 佈局容器，各佔一半 */
@@ -166,6 +165,38 @@
     padding-left: 30px;
 }
 
+/* 右螢幕平常的深色漸層：蓋在流動牆上、highlight 底下，靠接縫那側淡、越往右越深，
+   讓右螢幕的 highlight 跳出來。圓形提醒期間淡掉（is-off），換成徽章的深色色塊 */
+.p-canvas__dim {
+    position: absolute;
+    inset: 0;
+    z-index: 150;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.8));
+    // 跟徽章的淡入淡出一樣長，兩層交叉淡換
+    transition: opacity 0.5s linear;
+
+    &.is-off {
+        opacity: 0;
+    }
+}
+
+/* 徽章動畫（CanvasPromo）：左右兩個螢幕各一個，大小與 highlight 的便利貼相同。
+   底色是整塊深色半透明，蓋住兩邊的牆面（跟著徽章一起淡入淡出）。
+   兩邊都避開中間接縫的 30px（跟插播影片一樣），置中在剩下的範圍 */
+.p-canvas__promo {
+    --canvas-promo-size: calc(min(60vh, 40vw) * var(--display-scale, 1));
+    background: rgba(0, 0, 0, 0.55);
+
+    &--left {
+        padding-right: 30px;
+    }
+
+    &--right {
+        padding-left: 30px;
+    }
+}
+
 .p-canvas__interstitial__video {
     width: 100%;
     height: 100%;
@@ -173,29 +204,15 @@
     display: block;
 }
 
-/* ─── 左半：隨機散落區 ─── */
-.p-canvas__live-zone {
-    width: 100%;
-    height: 100%;
-    position: relative;
-    /* 內部 note-wrap 用 position:absolute */
-    box-sizing: border-box;
-    /* ⚠️ 不可加 overflow:hidden，否則 FLIP 跨區飛行動畫會被裁切 */
-    /* 新視覺：牆面是深灰純色，原本的近白紙紋底圖已不使用 */
-    background-color: var.$will-dark;
-}
-
-/* scatter-slot: 只是 v-for 的容器殼，不做排版（內部 note-wrap 自己 absolute）*/
-
-/* 便利貼外層包裝（FLIP 追蹤目標） */
+/* 便利貼外層包裝（GSAP 飛行動畫的對象） */
 .p-canvas__note-wrap {
     display: flex;
     align-items: center;
     justify-content: center;
-    /* ⚠️ 不加 transition：GSAP FLIP 自行接管 */
+    /* ⚠️ 不加 transition：GSAP 自行接管 */
 }
 
-/* ─── 右半：單張展示區 ─── */
+/* ─── 右半頂層：highlight 的那一張 ─── */
 .p-canvas__display-zone {
     width: 100%;
     height: 100%;
@@ -204,74 +221,17 @@
     justify-content: center;
     box-sizing: border-box;
     position: relative;
-    /* 新視覺：與左半同為深灰牆面 */
-    background-color: var.$will-dark;
-    /* 右側留白：flex 置中會將便利貼往左推，不會進入右側空白區 */
+    /* 左側避開中間接縫：flex 置中會將便利貼往右推 */
     padding-left: 30px;
-
-    /* 畫面中間上方字標 */
-    &::before {
-        content: '';
-        position: absolute;
-        top: 8%;
-        left: calc(50% + 15px);
-        transform: translateX(-50%);
-        width: 34%;
-        height: 8%;
-        background-image: url('/willMusicLogo.png');
-        background-size: contain;
-        background-position: center top;
-        background-repeat: no-repeat;
-        pointer-events: none;
-    }
-
-    /* 下方的標語與 QR 由 .p-canvas__cta 負責，不再用偽元素 */
 }
 
-/* 大螢幕下方的行動呼籲：左標語、右 QR，整組置中 */
-.p-canvas__cta {
-    position: absolute;
-    bottom: 6%;
-    left: calc(50% + 15px);
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    gap: 2vw;
-    pointer-events: none;
-    z-index: 1;
-    animation: canvas-cta-pulse 6s ease-in-out infinite;
-}
-
-/* 大螢幕標語：取代舊的泡泡字圖，改用 LINE Seed ExtraBold */
-.p-canvas__slogan {
-    margin: 0;
-    text-align: right;
-    color: #fff;
-    font-weight: 800;
-    font-size: 2.2vw;
-    line-height: 1.35;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
-
-    span {
-        display: block;
-    }
-
-    em {
-        font-style: normal;
-        color: var.$will-yellow;
-    }
-}
-
-.p-canvas__qr {
-    width: 9vw;
-    height: auto;
-    display: block;
-    flex-shrink: 0;
-}
-
-/* 展示區便利貼放大 */
+/* highlight 放大。換張時會同時有兩張（飛回牆上的、飛過來的），所以用絕對定位疊在同一個位置，
+   置中在接縫 30px 以外的範圍。從左邊螢幕的牆上飛過來時要蓋過所有東西（包含淡出用的複製品 z-index 250） */
 .p-canvas__note-wrap--display {
+    position: absolute;
+    inset: 0 0 0 30px;
+    margin: auto;
+    z-index: 300;
     width: calc(min(60vh, 40vw) * var(--display-scale, 1));
     height: calc(min(60vh, 40vw) * var(--display-scale, 1));
 }
