@@ -77,7 +77,7 @@
 ### 登入流程
 
 ```
-/api/auth/line/start      產 state + nonce 存 httpOnly cookie，302 到 LINE
+/api/auth/line/start      產帶簽章的 state（內含回程頁面與到期時間）與 nonce，302 到 LINE
         ↓
 LINE 授權頁（在 LINE 內建瀏覽器裡會自動登入，一鍵就過）
         ↓                 第一次授權時，同意後另跳一頁邀請加官方帳號好友（bot_prompt=aggressive）
@@ -100,6 +100,10 @@ signInWithCustomToken     之後的登入狀態由 Firebase SDK 自己維護
 - **id_token 交給 LINE 官方的 `/oauth2/v2.1/verify` 驗**，不自己驗簽。簽章演算法
   會隨 channel 設定在 HS256 與 ES256 之間變動，自己處理很容易寫成只認其中一種，
   而那種錯誤在本機測得過、換個 channel 就整個登不進來。
+- **state 不存 cookie，自己帶著回程資訊、用 HMAC 簽章。** 原本存 cookie，但外部瀏覽器
+  按登入時 LINE App 會跳出來接手，回程可能開在另一個瀏覽器，cookie 不在那裡，
+  使用者只看到「登入逾時」（2026-10-08 測試站換 channel 後出現）。
+  代價是擋不住 login CSRF，取捨寫在 `server/utils/line-login.ts` 的 `createLoginState` 上方。
 - **custom token 走 cookie，不走網址。** query 會進瀏覽器歷史與伺服器紀錄；
   fragment 雖然不外送，但留在網址列，使用者複製分享就把憑證一起送出去了。
 - **會員資料 `users/{uid}` 由前端自己寫。** 之所以安全，是規則把 `displayName`

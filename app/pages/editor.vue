@@ -2818,8 +2818,8 @@ const checkInitialModals = async () => {
 /** LINE 登入失敗的原因對應到使用者看得懂的說法 */
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   unconfigured: '登入服務尚未設定完成，請聯絡店員。',
-  state_missing: '登入逾時了，請再試一次。',
-  state_mismatch: '登入逾時了，請再試一次。',
+  state_expired: '登入逾時了，請再試一次。',
+  state_invalid: '這次登入沒有成功，請再按一次登入。',
   token_exchange_failed: '與 LINE 連線失敗，請稍後再試。',
   id_token_invalid: '無法驗證你的 LINE 身分，請再試一次。'
 }

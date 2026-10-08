@@ -3,17 +3,16 @@
  *
  * 呼叫端帶 `?r=<站內相對路徑>` 指定登入完成後要回到哪裡（預設 /editor）。
  */
-import { randomUUID } from 'node:crypto'
 import { defineEventHandler, getQuery, sendRedirect } from 'h3'
 import { withQuery } from 'ufo'
 import {
   LINE_AUTHORIZE_URL,
   LINE_BOT_PROMPT,
   LINE_SCOPE,
+  createLoginState,
   getLineLoginConfig,
   resolveRedirectUri,
-  sanitizeReturnTo,
-  savePendingState
+  sanitizeReturnTo
 } from '~~/server/utils/line-login'
 
 export default defineEventHandler(async (event) => {
@@ -33,9 +32,8 @@ export default defineEventHandler(async (event) => {
     )
   }
 
-  const state = randomUUID()
-  const nonce = randomUUID()
-  savePendingState(event, { state, nonce, returnTo })
+  // 回程頁面與到期時間都封在 state 裡，不存 cookie —— 原因見 line-login.ts 的 createLoginState
+  const { state, nonce } = createLoginState(config.channelSecret, returnTo)
 
   const params = new URLSearchParams({
     response_type: 'code',

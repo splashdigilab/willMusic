@@ -2,13 +2,14 @@
  * LINE Login（OAuth 2.0 / OIDC）的設定與共用工具。
  *
  * 流程分成兩個 route：
- *   /api/auth/line/start    產 state + nonce 存進 httpOnly cookie，302 到 LINE
+ *   /api/auth/line/start    產一個帶簽章的 state（裡面有回程頁面與到期時間），302 到 LINE
  *   /api/auth/line/callback 驗 state、用 code 換 token、驗 id_token、簽 Firebase token
  *
- * 所有值都在 cookie 與 query 之間來回，server 本身不存任何 session ——
- * Amplify 的 Lambda 沒有共用記憶體，兩次請求不保證落在同一個執行實體上。
+ * server 本身不存任何 session —— Amplify 的 Lambda 沒有共用記憶體，
+ * 兩次請求不保證落在同一個執行實體上。需要帶過去的東西全部在 state 裡。
  */
-import { getRequestURL, setCookie, getCookie, deleteCookie, type H3Event } from 'h3'
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { getRequestURL, setCookie, type H3Event } from 'h3'
 
 export const LINE_AUTHORIZE_URL = 'https://access.line.me/oauth2/v2.1/authorize'
 export const LINE_TOKEN_URL = 'https://api.line.me/oauth2/v2.1/token'
@@ -44,8 +45,6 @@ export const LINE_BOT_PROMPT = 'aggressive'
 /** 用使用者的 access token 查他是不是 channel 所連結官方帳號的好友 */
 export const LINE_FRIENDSHIP_URL = 'https://api.line.me/friendship/v1/status'
 
-/** OAuth 往返用的暫存 cookie，callback 一進來就清掉 */
-export const OAUTH_STATE_COOKIE = 'wm_oauth'
 /** 簽好的 Firebase custom token，等前端來領。壽命只要夠撐完一次 302 + 一次 fetch */
 export const CUSTOM_TOKEN_COOKIE = 'wm_ct'
 export const CUSTOM_TOKEN_TTL_SECONDS = 120
@@ -112,13 +111,6 @@ export const resolveRedirectUri = (event: H3Event): string => {
   return `${url.origin}/api/auth/line/callback`
 }
 
-interface OAuthPendingState {
-  state: string
-  nonce: string
-  /** 登入完成後要回到哪裡。只收站內相對路徑 */
-  returnTo: string
-}
-
 const isSecureRequest = (event: H3Event): boolean =>
   getRequestURL(event, { xForwardedProto: true }).protocol === 'https:'
 
@@ -133,32 +125,98 @@ export const sanitizeReturnTo = (raw: unknown): string => {
   return raw
 }
 
-export const savePendingState = (event: H3Event, pending: OAuthPendingState) => {
-  setCookie(event, OAUTH_STATE_COOKIE, JSON.stringify(pending), {
-    httpOnly: true,
-    sameSite: 'lax', // callback 是 top-level GET 轉址，lax 會帶上；strict 不會
-    secure: isSecureRequest(event),
-    path: '/',
-    maxAge: 10 * 60
-  })
+// ── state：自己帶著回程資訊、用簽章防偽造 ─────────────────────────
+//
+// 原本 state 與 nonce 存在 httpOnly cookie，callback 拿 cookie 比對。2026-10-08 測試站
+// 換了新 channel 後一直出現「登入逾時」（state_missing / state_mismatch）：
+// 在外部瀏覽器按登入、手機上又登入著 LINE 時，LINE App 會自動跳出來接手授權，
+// 授權完的回程可能開在**另一個瀏覽器**（例如從 Chrome 出發、回到 Safari 或 LINE 內建瀏覽器），
+// 那裡沒有出發時寫的 cookie。新 channel 每個人都要重走一次同意畫面、同意後還多一頁加好友，
+// 跳轉的機會比以前多。同時開兩次登入、舊的那個先完成，也會對不上。
+//
+// 所以 state 改成自帶「到期時間＋回程頁面」並用 channel secret 做 HMAC 簽章，
+// callback 只驗簽章與時效，不再需要 cookie；nonce 由 state 推導，同樣不必存。
+//
+// 取捨：cookie 版能確認「回來的瀏覽器就是出發的那個」，擋得住 login CSRF
+// （騙使用者用攻擊者的 LINE 身分登入）。在這個活動裡後果只是使用者用別人的身分送便利貼，
+// 而右上角與送出確認畫面都顯示著那個身分的暱稱，認為可以接受。
+//
+// 格式只用小寫十六進位：LINE 規定 state 是英數字、不能是 URL 編碼過的字串。
+//   [到期時間 8][隨機 16][回程頁面 UTF-8 的 hex，可為空][簽章 32]
+
+const STATE_TTL_SECONDS = 10 * 60
+const STATE_EXP_LENGTH = 8
+const STATE_ID_LENGTH = 16
+const STATE_SIG_LENGTH = 32
+/** 回程頁面太長就不帶（回到預設的 /editor），免得 state 長到 LINE 不收 */
+const RETURN_TO_MAX_BYTES = 200
+
+const hmacHex = (secret: string, data: string, length: number): string =>
+  createHmac('sha256', secret).update(data).digest('hex').slice(0, length)
+
+/** nonce 由 state 推導：每個 state 對應唯一的 nonce，callback 用同一條算式就能還原 */
+const nonceFor = (channelSecret: string, state: string): string =>
+  hmacHex(channelSecret, `nonce:${state}`, 32)
+
+export interface LoginState {
+  state: string
+  nonce: string
+  /** 登入完成後要回到哪裡。只收站內相對路徑 */
+  returnTo: string
 }
 
-export const takePendingState = (event: H3Event): OAuthPendingState | null => {
-  const raw = getCookie(event, OAUTH_STATE_COOKIE)
-  deleteCookie(event, OAUTH_STATE_COOKIE, { path: '/' })
-  if (!raw) return null
+export const createLoginState = (channelSecret: string, returnTo: string): LoginState => {
+  const expiresAt = Math.floor(Date.now() / 1000) + STATE_TTL_SECONDS
+  const exp = expiresAt.toString(16).padStart(STATE_EXP_LENGTH, '0')
+  const id = randomBytes(STATE_ID_LENGTH / 2).toString('hex')
+  const returnBytes = Buffer.from(returnTo, 'utf8')
+  const ret = returnBytes.length <= RETURN_TO_MAX_BYTES ? returnBytes.toString('hex') : ''
 
-  try {
-    const parsed = JSON.parse(raw)
-    if (typeof parsed?.state !== 'string' || typeof parsed?.nonce !== 'string') return null
-    return {
-      state: parsed.state,
-      nonce: parsed.nonce,
-      returnTo: sanitizeReturnTo(parsed.returnTo)
-    }
-  } catch {
-    return null
+  const body = exp + id + ret
+  const state = body + hmacHex(channelSecret, `state:${body}`, STATE_SIG_LENGTH)
+  return { state, nonce: nonceFor(channelSecret, state), returnTo }
+}
+
+export type LoginStateResult =
+  | { ok: true, value: LoginState }
+  | { ok: false, reason: 'state_invalid' | 'state_expired' }
+
+export const readLoginState = (channelSecret: string, raw: unknown): LoginStateResult => {
+  const minLength = STATE_EXP_LENGTH + STATE_ID_LENGTH + STATE_SIG_LENGTH
+  if (
+    typeof raw !== 'string'
+    || !/^[0-9a-f]+$/.test(raw)
+    || raw.length < minLength
+    || (raw.length - minLength) % 2 !== 0
+  ) {
+    return { ok: false, reason: 'state_invalid' }
   }
+
+  const body = raw.slice(0, -STATE_SIG_LENGTH)
+  const signature = Buffer.from(raw.slice(-STATE_SIG_LENGTH))
+  const expected = Buffer.from(hmacHex(channelSecret, `state:${body}`, STATE_SIG_LENGTH))
+  if (!timingSafeEqual(signature, expected)) return { ok: false, reason: 'state_invalid' }
+
+  const expiresAt = parseInt(body.slice(0, STATE_EXP_LENGTH), 16)
+  if (Date.now() / 1000 > expiresAt) return { ok: false, reason: 'state_expired' }
+
+  const ret = body.slice(STATE_EXP_LENGTH + STATE_ID_LENGTH)
+  const returnTo = sanitizeReturnTo(ret ? Buffer.from(ret, 'hex').toString('utf8') : undefined)
+  return { ok: true, value: { state: raw, nonce: nonceFor(channelSecret, raw), returnTo } }
+}
+
+/**
+ * 不驗簽章、只把回程頁面讀出來。給「設定不全、連驗都沒辦法驗」的錯誤路徑用：
+ * 至少把人送回他按登入的那一頁。sanitizeReturnTo 已經擋掉站外網址，偽造也導不出去。
+ */
+export const peekReturnTo = (raw: unknown): string => {
+  const minLength = STATE_EXP_LENGTH + STATE_ID_LENGTH + STATE_SIG_LENGTH
+  if (typeof raw !== 'string' || !/^[0-9a-f]+$/.test(raw) || raw.length <= minLength) {
+    return sanitizeReturnTo(undefined)
+  }
+  const ret = raw.slice(STATE_EXP_LENGTH + STATE_ID_LENGTH, -STATE_SIG_LENGTH)
+  if (ret.length % 2 !== 0) return sanitizeReturnTo(undefined)
+  return sanitizeReturnTo(Buffer.from(ret, 'hex').toString('utf8'))
 }
 
 export const setCustomTokenCookie = (event: H3Event, token: string) => {

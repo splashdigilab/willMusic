@@ -15,10 +15,10 @@ import {
   LINE_TOKEN_URL,
   LINE_VERIFY_URL,
   getLineLoginConfig,
+  peekReturnTo,
+  readLoginState,
   resolveRedirectUri,
-  sanitizeReturnTo,
   setCustomTokenCookie,
-  takePendingState,
   truncateDisplayName
 } from '~~/server/utils/line-login'
 import { signFirebaseCustomToken } from '~~/server/utils/firebase-custom-token'
@@ -43,9 +43,9 @@ interface LineVerifyResponse {
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
-  const pending = takePendingState(event)
-  // pending 掉了就不知道該回哪，退回編輯器
-  const returnTo = pending?.returnTo ?? sanitizeReturnTo(undefined)
+  // 錯誤路徑也要把人送回他按登入的那一頁。這裡還沒驗簽章，
+  // 但 peekReturnTo 只會吐出站內路徑，偽造的 state 也導不出站外
+  let returnTo = peekReturnTo(query.state)
 
   // returnTo 本身可能已經帶 query（例如 /editor?token=…），用 withQuery 併上去，
   // 直接字串相接會拼出兩個問號的網址
@@ -65,22 +65,22 @@ export default defineEventHandler(async (event) => {
     return fail('line_error', `${query.error} / ${query.error_description}`)
   }
 
-  // state 對不起來代表這不是我們發起的請求（CSRF），或 cookie 在往返途中掉了。
-  // LINE 內建瀏覽器偶爾會出現後者，訊息要讓使用者知道「再試一次」通常就好。
-  if (!pending) return fail('state_missing')
-  if (typeof query.state !== 'string' || query.state !== pending.state) {
-    return fail('state_mismatch')
-  }
-
-  const code = typeof query.code === 'string' ? query.code : ''
-  if (!code) return fail('code_missing')
-
   let config
   try {
     config = getLineLoginConfig()
   } catch (error: any) {
     return fail('unconfigured', error?.message)
   }
+
+  // 簽章不對：不是我們發出去的 state（偽造，或換過 channel secret 之前發的）。
+  // 過期：在 LINE 那邊停留超過 10 分鐘。兩種都請使用者重來一次就好
+  const loginState = readLoginState(config.channelSecret, query.state)
+  if (!loginState.ok) return fail(loginState.reason, `state=${String(query.state).slice(0, 80)}`)
+  const pending = loginState.value
+  returnTo = pending.returnTo
+
+  const code = typeof query.code === 'string' ? query.code : ''
+  if (!code) return fail('code_missing')
 
   // ── 1. code 換 token ──────────────────────────────────────
   let tokenResult: LineTokenResponse
