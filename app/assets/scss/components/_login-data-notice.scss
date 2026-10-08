@@ -8,6 +8,11 @@
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1.6;
+
+  /* 上方間距是用來跟登入鈕拉開的；確認視窗裡它直接接在預覽下面，預覽自己已經留了 */
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
 .c-login-data-notice__link {

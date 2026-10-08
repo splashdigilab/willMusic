@@ -1235,15 +1235,6 @@ body.is-editor-page #app {
   }
 }
 
-/* 未登入：預告主按鈕按下去會發生什麼事 */
-.p-editor__submit-login-hint {
-  margin: 0;
-  color: #666;
-  font-size: 0.85rem;
-  line-height: 1.6;
-  text-wrap: balance;
-}
-
 /* 行銷信的勾選：在身分卡下面、卡片外面，字比卡片裡小一級。
    它不是這個畫面在問的事（這裡問的是「要不要送出、要不要署名」），
    所以不做成跟署名一樣的開關，用一般的勾選框，不搶眼但看得懂。 */

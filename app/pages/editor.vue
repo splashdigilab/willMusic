@@ -347,12 +347,8 @@
             />
           </Transition>
         </template>
-        <template v-else>
-          <p class="p-editor__submit-login-hint">
-            送出需要 LINE 登入。登入後會回到這裡，便利貼會幫你留著，也可以選擇要不要署名。
-          </p>
-          <LoginDataNotice />
-        </template>
+        <!-- 未登入不另外說明「要登入」：主按鈕的字就是「LINE 登入並上傳大螢幕」 -->
+        <LoginDataNotice v-else />
       </template>
       <template #secondary-action>
         <button

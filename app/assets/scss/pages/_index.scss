@@ -209,14 +209,28 @@ $edge-inset: 1rem;
         margin: 0;
     }
 
-    /* 編輯器的活動規範用條列，首頁沒有 */
+    /* 編輯器的活動規範用條列，首頁沒有。
+       編號自己畫在 li 的內距裡，不用瀏覽器的 marker：Safari 把 marker 畫在 li 外面、
+       離文字又比 Chrome 遠，而規範區為了捲動設了 overflow-x: hidden，
+       超出的部分被切掉（「2」比「1」寬，所以 2 先被切到）。 */
     ol {
         margin: 0;
-        padding-left: 1.4em;
+        padding: 0;
+        list-style: none;
+        counter-reset: rule;
     }
 
     li {
+        position: relative;
+        padding-left: 1.4em;
         margin-bottom: 0.7em;
+        counter-increment: rule;
+
+        &::before {
+            content: counter(rule) '.';
+            position: absolute;
+            left: 0;
+        }
 
         &:last-child {
             margin-bottom: 0;
