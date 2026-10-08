@@ -283,7 +283,7 @@ doc ID 同樣是 Firebase uid：
 ```
 
 每人每 N 分鐘 1 張、每天 M 張（預設 5／3，後台「上傳控管」可改，
-設定在 `system/editor_rate_limit`）。取代了原本綁在 localStorage 的 3 分鐘冷卻
+設定在 `system/editor_rate_limit`，測試站是 `editor_rate_limit_dev`）。取代了原本綁在 localStorage 的 3 分鐘冷卻
 ——那個清一下瀏覽器資料就沒了。
 
 **這是「預約」不是「計數」，順序很重要。** 直覺的做法是送出後累加、下次檢查，
@@ -317,7 +317,8 @@ doc ID 即 `YYYY-MM-DD`（瀏覽器本地時區）：
 |---|---|---|---|
 | `editor_token_requirement` | admin | editor | `{ enabled }` 上傳是否需要 Token |
 | `editor_geo_fence` | admin | editor | `{ enabled, latitude, longitude, radiusMeters }` |
-| `editor_rate_limit` | admin | editor + rules | `{ enabled, cooldownMinutes, dailyLimit }` 投稿頻率 |
+| `editor_rate_limit` | admin | editor + rules | `{ enabled, cooldownMinutes, dailyLimit }` 投稿頻率（正式站） |
+| `editor_rate_limit_dev` | admin | editor + rules | 同上，測試站專用 |
 | `canvas_video` | admin | canvas | `{ videoUrl, interstitialIntervalMinutes, interstitialScheduleEnabled }` |
 | `active_token` | admin | qrcode | `{ token, expiresAt }` 廣播給店內掃碼頁 |
 
@@ -325,6 +326,10 @@ doc ID 即 `YYYY-MM-DD`（瀏覽器本地時區）：
 > 不是放行。** GPS 圍籬設錯會把使用者鎖在門外，所以寧可放行；頻率限制放行
 > 等於完全沒有限制，那才是不該預設的狀態。預設值在規則與
 > `app/types/index.ts` 的 `DEFAULT_RATE_LIMIT` 各寫了一份，改的時候兩邊都要動。
+
+> **`system` 裡只有頻率設定是兩站分開的**（文件 ID 跟著 `NUXT_PUBLIC_FIRESTORE_SUFFIX`
+> 加後綴，見 `useCollections().rateLimitConfig`）。測試站要能關掉限流反覆送，
+> 但正式站不能跟著關。兩站的後台各改各的那一份。
 
 > **`editor_geo_fence` 的開關是真的會生效的**（這點在 2026-09 之前曾經失效，
 > 因為 `editor.vue` 寫死了旗標）。文件不存在、`enabled` 非 `true`、或經緯度與

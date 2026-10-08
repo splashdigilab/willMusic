@@ -12,6 +12,9 @@
  * 刻意不加後綴的是 `system` 集合：它放的是設定（啟用中的 token、GPS 圍籬、
  * 大螢幕影片等），測試時通常希望沿用同一份設定，分開反而要重設一次。
  * 若日後需要連設定也分離，再把 system 一併納入即可。
+ *
+ * 例外是投稿頻率限制（`rateLimitConfig`）：測試站要能關掉限流反覆送，
+ * 正式站不能跟著關，所以這一份設定的文件 ID 帶後綴（editor_rate_limit_dev）。
  */
 
 export const SYSTEM_COLLECTION = 'system'
@@ -25,6 +28,8 @@ export interface FirestoreCollections {
   userQuota: string
   bannedUsers: string
   noteOwners: string
+  /** system 底下投稿頻率設定的文件 ID（不是集合名稱） */
+  rateLimitConfig: string
 }
 
 export const useCollections = (): FirestoreCollections => {
@@ -50,6 +55,9 @@ export const useCollections = (): FirestoreCollections => {
     // 停權名單跟著分組：在測試站試封鎖，不該連正式站的顧客一起擋掉
     bannedUsers: `banned_users${suffix}`,
     // 便利貼的投稿者。跟著便利貼分組，因為 doc ID 就是便利貼的 ID
-    noteOwners: `note_owners${suffix}`
+    noteOwners: `note_owners${suffix}`,
+    // 頻率設定兩站分開：測試站關掉限流不會連正式站一起關。
+    // 規則裡 user_quota_dev 讀的也是 _dev 這一份，兩邊要對得上
+    rateLimitConfig: `editor_rate_limit${suffix}`
   }
 }

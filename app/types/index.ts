@@ -231,7 +231,7 @@ export interface UserQuota {
   pendingNoteId: string
 }
 
-/** system/editor_rate_limit —— 後台可調的投稿頻率限制 */
+/** system/editor_rate_limit（測試站是 editor_rate_limit_dev）—— 後台可調的投稿頻率限制 */
 export interface RateLimitConfig {
   enabled: boolean
   cooldownMinutes: number

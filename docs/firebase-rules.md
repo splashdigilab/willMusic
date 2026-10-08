@@ -178,6 +178,9 @@ Firebase Console 的 Firestore／Storage → 規則 → 「查看歷史記錄」
   前端 `useSubmissionQuota` 的同名函式必須算出一模一樣的字串（含「不補零」）。
 - **`system/editor_rate_limit` 不存在時採用預設值，不是放行。** 這與 GPS 圍籬
   相反——圍籬設錯會把人鎖在門外所以寧可放行；頻率限制放行等於完全沒有限制。
+- **測試組讀的是 `system/editor_rate_limit_dev`。** `canWriteQuota` 的設定路徑由
+  呼叫端傳入，`user_quota_dev` 傳 `_dev` 那一份。前端 `useCollections().rateLimitConfig`
+  算出來的文件 ID 要跟這裡對得上，否則前端顯示的額度與規則實際擋的不一樣。
 
 ## 3b. 停權名單
 

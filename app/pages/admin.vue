@@ -294,6 +294,9 @@
           <p class="p-admin__video-hint p-admin__video-hint--compact">
             每日額度以台灣時間的午夜為界重置。修改後請按下方「儲存頻率設定」。
           </p>
+          <p v-if="isTestRateLimit" class="p-admin__video-hint p-admin__video-hint--compact">
+            這裡是測試站的設定，只影響測試站，正式站的頻率限制要到正式站後台改。
+          </p>
 
           <label class="p-admin__switch-label p-admin__switch-label--block">
             <input
@@ -1474,9 +1477,11 @@ const saveGpsFenceSettings = async () => {
 }
 
 // ── 投稿頻率限制 ──────────────────────────────────────────
-// 寫入 system/editor_rate_limit。**文件不存在時規則會套用預設值而不是放行**
+// 寫入 system/editor_rate_limit（測試站是 editor_rate_limit_dev，兩站各一份）。
+// **文件不存在時規則會套用預設值而不是放行**
 // ——這與 GPS 圍籬相反，理由寫在 firestore.rules。所以這裡顯示的預設值
 // 與規則裡寫死的那一組必須一致，兩邊都引用 DEFAULT_RATE_LIMIT。
+const isTestRateLimit = cols.rateLimitConfig !== 'editor_rate_limit'
 const rateLimitEnabled = ref(DEFAULT_RATE_LIMIT.enabled)
 const rateCooldownInput = ref(String(DEFAULT_RATE_LIMIT.cooldownMinutes))
 const rateDailyLimitInput = ref(String(DEFAULT_RATE_LIMIT.dailyLimit))
@@ -1484,7 +1489,7 @@ const isSavingRateLimit = ref(false)
 let unsubRateLimit: (() => void) | null = null
 
 const startRateLimitListener = () => {
-  unsubRateLimit = onSnapshot(doc(db, 'system', 'editor_rate_limit'), (snap) => {
+  unsubRateLimit = onSnapshot(doc(db, 'system', cols.rateLimitConfig), (snap) => {
     if (!snap.exists()) {
       rateLimitEnabled.value = DEFAULT_RATE_LIMIT.enabled
       rateCooldownInput.value = String(DEFAULT_RATE_LIMIT.cooldownMinutes)
@@ -1525,7 +1530,7 @@ const saveRateLimitSettings = async () => {
   isSavingRateLimit.value = true
   try {
     await setDoc(
-      doc(db, 'system', 'editor_rate_limit'),
+      doc(db, 'system', cols.rateLimitConfig),
       { enabled: rateLimitEnabled.value, cooldownMinutes, dailyLimit },
       { merge: true }
     )

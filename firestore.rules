@@ -218,6 +218,8 @@ service cloud.firestore {
     //
     // 規則：每人每 N 分鐘最多 1 張、每天最多 M 張（預設 5 分鐘／3 張）。
     // 設定放 system/editor_rate_limit，後台可改，見 adjustable 的三個欄位。
+    // 測試組讀的是 system/editor_rate_limit_dev：system 其他設定兩站共用，
+    // 唯獨這一份分開，測試站關掉限流才不會連正式站一起關。
     //
     // ── 為什麼是「預約制」而不是「寫完再算」──────────────────
     // 直覺的做法是在 canCreateNote 裡 get() 使用者的計數器來判斷。那行不通：
@@ -231,10 +233,8 @@ service cloud.firestore {
     // 跳過第 1 步，第 2 步就過不了。預約指名 doc ID，所以一張預約只能換一張
     // 便利貼；而 queue_pending 只開放 create 不開放 update，同一個 ID 也寫不了第二次。
 
-    function rateLimitConfig() {
-      return exists(/databases/$(database)/documents/system/editor_rate_limit)
-             ? get(/databases/$(database)/documents/system/editor_rate_limit).data
-             : {};
+    function rateLimitConfig(cfgRef) {
+      return exists(cfgRef) ? get(cfgRef).data : {};
     }
 
     // request.time 是 UTC。直接取 day() 的話每日額度會在台灣時間早上 8 點重置，
@@ -246,8 +246,9 @@ service cloud.firestore {
     }
 
     // ── 預約的寫入條件 ────────────────────────────────────
-    function canWriteQuota(uid) {
-      let cfg = rateLimitConfig();
+    // cfgRef 由呼叫端傳入：正式組指向 editor_rate_limit、測試組指向 editor_rate_limit_dev
+    function canWriteQuota(uid, cfgRef) {
+      let cfg = rateLimitConfig(cfgRef);
       let today = taipeiDateKey();
       let prev = resource == null ? {} : resource.data;
       // 跨日就把今天的用量歸零，不管文件裡留著的是哪一天
@@ -443,7 +444,10 @@ service cloud.firestore {
     match /user_quota/{uid} {
       // 前端要先讀目前用量才算得出下一個 submitCount；後台要看有沒有人在灌
       allow read: if isStaff() || (isMember() && request.auth.uid == uid);
-      allow create, update: if canWriteQuota(uid);
+      allow create, update: if canWriteQuota(
+                                 uid,
+                                 /databases/$(database)/documents/system/editor_rate_limit
+                               );
       // 使用者不能自己清掉配額；後台刪除個資時會一起清
       allow delete: if isStaff();
     }
@@ -469,7 +473,7 @@ service cloud.firestore {
     }
 
     // ══ 測試資料（NUXT_PUBLIC_FIRESTORE_SUFFIX=_dev）══════════
-    // 條件與正式組完全相同，只有集合名稱與 tokens 路徑帶了 _dev。
+    // 條件與正式組完全相同，只有集合名稱、tokens 路徑與頻率設定帶了 _dev。
 
     match /queue_pending_dev/{noteId} {
       allow read: if true;
@@ -512,7 +516,10 @@ service cloud.firestore {
 
     match /user_quota_dev/{uid} {
       allow read: if isStaff() || (isMember() && request.auth.uid == uid);
-      allow create, update: if canWriteQuota(uid);
+      allow create, update: if canWriteQuota(
+                                 uid,
+                                 /databases/$(database)/documents/system/editor_rate_limit_dev
+                               );
       allow delete: if isStaff();
     }
 
@@ -528,7 +535,7 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
-    // ── system/*：設定文件（正式與測試共用）────────────────────
+    // ── system/*：設定文件（正式與測試共用，editor_rate_limit_dev 例外）──
     match /system/{docId} {
       // 前台要讀 editor_token_requirement 與 editor_geo_fence，
       // 大螢幕要讀 canvas_video，掃碼頁要讀 active_token

@@ -80,7 +80,7 @@ export const useSubmissionQuota = () => {
 
   const loadConfig = async (): Promise<RateLimitConfig> => {
     try {
-      const snap = await getDoc(doc($firestore, SYSTEM_COLLECTION, 'editor_rate_limit'))
+      const snap = await getDoc(doc($firestore, SYSTEM_COLLECTION, cols.rateLimitConfig))
       if (!snap.exists()) return DEFAULT_RATE_LIMIT
       const data = snap.data() as Partial<RateLimitConfig>
       return {
