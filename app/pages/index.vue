@@ -151,11 +151,8 @@ import { gsap } from 'gsap'
 import type { QueueHistoryItem } from '~/types'
 import { useFirestore } from '~/composables/useFirestore'
 import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
-import {
-  calculateScatterPositions,
-  boundingBoxOf,
-  type ScatterPosition
-} from '~/utils/scatter-layout'
+import { calculateScatterPositions, type ScatterPosition } from '~/utils/scatter-layout'
+import { WALL_LOOK, randomWallLook, turnFactor, type WallLook } from '~/utils/wall-look'
 import StickyNote from '~/components/StickyNote.vue'
 import MemberBadge from '~/components/MemberBadge.vue'
 import AppModal from '~/components/AppModal.vue'
@@ -177,10 +174,21 @@ const loading = ref(true)
 const HISTORY_FETCH_LIMIT = 100
 
 // ====== 散落佈局 ======
-// 演算法與 /canvas 共用，見 ~/utils/scatter-layout
+// 跟 /canvas 的流動牆同一種凌亂感、同一組參數（WALL_LOOK），見 ~/utils/scatter-layout
 const ITEM_SIZE = 150
-const MARGIN = -20
-const MAX_BOUNDING_BOX = boundingBoxOf(ITEM_SIZE)
+/** 歪了角度之後的外接框邊長，算拖曳範圍用 */
+const MAX_BOUNDING_BOX = ITEM_SIZE * turnFactor(WALL_LOOK.tilt)
+
+/** 每張的角度與偏移第一次看到時決定，之後有新的便利貼加入、整面重排時只換格子 */
+const looks = new Map<string, WallLook>()
+const lookOf = (id: string) => {
+  let look = looks.get(id)
+  if (!look) {
+    look = randomWallLook()
+    looks.set(id, look)
+  }
+  return look
+}
 
 const layoutCache = ref<ScatterPosition[]>([])
 
@@ -230,18 +238,18 @@ const { centerContent, isCentered } = usePanZoom(containerRef, canvasRef, {
   boundsPadding: 0.9 // allow 70% of the screen width/height empty space margin
 })
 
-const calculatePositions = (itemCount: number) => {
-  layoutCache.value = calculateScatterPositions(itemCount, {
+const calculatePositions = (ids: string[]) => {
+  layoutCache.value = calculateScatterPositions(ids.map(lookOf), {
     itemSize: ITEM_SIZE,
-    margin: MARGIN
+    ...WALL_LOOK
   })
 }
 
-const getStoredPosition = (index: number) => {
+const getStoredPosition = (index: number): ScatterPosition => {
   if (layoutCache.value[index]) {
     return layoutCache.value[index]
   }
-  return { x: 0, y: 0 }
+  return { x: 0, y: 0, rotation: 0 }
 }
 
 // ====== Animation Logic ======
@@ -260,20 +268,21 @@ const playReflowSequence = async () => {
     return
   }
 
-  const elements = Array.from(canvasEl.querySelectorAll('.p-index__note-wrap'))
+  const elements = Array.from(canvasEl.querySelectorAll('.p-index__note-wrap')) as HTMLElement[]
   if (!elements.length) {
     isReflowing = false
     return
   }
+  const ids = elements.map(el => el.dataset.id ?? '')
 
   if (isFirstRender) {
-    calculatePositions(displayItems.value.length)
+    calculatePositions(ids)
 
     elements.forEach((el, index) => {
       const pos = getStoredPosition(index)
       const element = el as HTMLElement
       element.style.zIndex = `${1000 - index}`
-      const rotation = (Math.random() - 0.5) * 15
+      const rotation = pos.rotation
 
       if (index < ENTRY_ANIMATION_COUNT) {
         // 前 30 張：fly-in 動畫，延遲上限避免 iOS 負擔
@@ -305,7 +314,7 @@ const playReflowSequence = async () => {
   }
 
   // Reflow: 直接從目前位置動畫到新位置（不再先收斂到原點）
-  calculatePositions(displayItems.value.length)
+  calculatePositions(ids)
 
   elements.forEach((el, index) => {
     const pos = getStoredPosition(index)
@@ -317,7 +326,7 @@ const playReflowSequence = async () => {
       y: pos.y,
       scale: 1,
       opacity: 1,
-      rotation: (Math.random() - 0.5) * 15,
+      rotation: pos.rotation,
       duration: 1.0 + Math.random() * 0.4,
       ease: 'power3.out',
       delay: Math.random() * 0.1

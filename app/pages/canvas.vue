@@ -109,6 +109,7 @@ import {
 } from '~/composables/useConductor'
 import type { StateChangeInfo } from '~/composables/useConductor'
 import { useNoteFlow, type FlowDirection, type FlowRect } from '~/composables/useNoteFlow'
+import { WALL_LOOK } from '~/utils/wall-look'
 
 definePageMeta({ layout: false })
 
@@ -155,14 +156,15 @@ const displayNoteScale = computed(() => Number(route.query.displayScale) || 0.9)
  * 流動牆：
  * - 方向：預設一欄一欄由下往上；?flow=left 改成一排一排由右往左
  * - 道數：由下往上看 ?cols（預設 6 欄，每個螢幕 3 欄）；由右往左看 ?rows（預設 3 排）
- * - ?flowScale：便利貼佔道寬的比例
+ * - ?flowScale：便利貼佔道寬的比例，往上流預設 0.85
  * - ?flowSpeed：流速（1080 高的畫面每秒幾 px）。往上流預設比較慢：畫面高只有 1080，
  *   照橫向的速度一張半分鐘就流完了，展示完它留下的空位也多半已經流出頂端、回不去原位
- * - ?mess：排列的雜亂程度，0 = 整齊磚牆、1 = 最亂（大小不變，角度與前後左右的偏移差最多，
- *   會互相壓到一些）。預設 0.8
- * - ?speedVary：各道流速上下差多少（比例），預設 0.15 = 最慢 0.85 倍、最快 1.15 倍；0 = 全部同速
- * - ?tilt：最多歪幾度（每張在 ±tilt 之間），0 = 完全不歪，最多 45。
- *   沒填就跟著 mess 走（mess 0 → ±3°、1 → ±12°，預設 0.8 約 ±10°）；填了只管角度，偏移照樣看 mess
+ * - ?mess：排列的雜亂程度，0 = 整齊磚牆、1 = 最亂（大小不變，前後左右的偏移差最多，
+ *   會互相壓到一些），超過 1 當 1。預設 1
+ * - ?speedVary：各道流速上下差多少（比例），例如 0.15 = 最慢 0.85 倍、最快 1.15 倍。預設 0 = 全部同速
+ * - ?tilt：最多歪幾度（每張在 ±tilt 之間），0 = 完全不歪，最多 45。預設 5；只管角度，偏移看 mess
+ *
+ * mess、tilt、往上流的 flowScale 的預設值跟首頁的便利貼牆共用（WALL_LOOK），兩邊才是同一種凌亂感
  */
 const flowDirection = computed<FlowDirection>(() => (route.query.flow === 'left' ? 'left' : 'up'))
 const flowLanes = computed(() => {
@@ -170,7 +172,7 @@ const flowLanes = computed(() => {
   return Math.max(1, Math.floor(n))
 })
 const flowScale = computed(() =>
-  Number(route.query.flowScale) || (flowDirection.value === 'up' ? 0.85 : 0.8)
+  Number(route.query.flowScale) || (flowDirection.value === 'up' ? WALL_LOOK.scale : 0.8)
 )
 const flowSpeed = computed(() =>
   Number(route.query.flowSpeed) || (flowDirection.value === 'up' ? 30 : 45)
@@ -178,16 +180,15 @@ const flowSpeed = computed(() =>
 /** 0 是有意義的值（整齊），跟 promoEvery 一樣不能寫成 `||` */
 const flowMess = computed(() => {
   const n = Number(route.query.mess)
-  return route.query.mess != null && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.8
+  return route.query.mess != null && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : WALL_LOOK.mess
 })
 const flowSpeedVary = computed(() => {
   const n = Number(route.query.speedVary)
-  return route.query.speedVary != null && Number.isFinite(n) ? Math.min(0.9, Math.max(0, n)) : 0.15
+  return route.query.speedVary != null && Number.isFinite(n) ? Math.min(0.9, Math.max(0, n)) : 0
 })
-/** 沒填就是 undefined，交給 useNoteFlow 依 mess 算 */
 const flowTilt = computed(() => {
   const n = Number(route.query.tilt)
-  return route.query.tilt != null && Number.isFinite(n) ? Math.min(45, Math.max(0, n)) : undefined
+  return route.query.tilt != null && Number.isFinite(n) ? Math.min(45, Math.max(0, n)) : WALL_LOOK.tilt
 })
 /**
  * 右側每展示幾張便利貼插一次徽章動畫。?promoEvery=0 關閉。

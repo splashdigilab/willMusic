@@ -123,15 +123,25 @@ signInWithCustomToken     之後的登入狀態由 Firebase SDK 自己維護
 `/canvas` 可用網址參數調整：
 
 ```
-/canvas?count=16&duration=15&liveScale=0.95&displayScale=0.9
+/canvas?duration=15&displayScale=0.9&flow=up&cols=6&flowScale=0.85&flowSpeed=30&mess=1&tilt=5&speedVary=0
 ```
 
 | 參數 | 預設 | 說明 |
 |---|---|---|
-| `count` | 16 | 左側散落區最多幾張 |
+| `count` | 依畫面大小 | 輪播幾張（最新的幾張）。沒填就是排滿牆面再多每道一張在畫面外排隊 |
 | `duration` | 15 | 每張在右側放大展示幾秒 |
-| `liveScale` | 0.95 | 左側便利貼縮放 |
 | `displayScale` | 0.9 | 右側便利貼縮放 |
+| `flow` | `up` | 流動牆的方向：`up` 一欄一欄由下往上、`left` 一排一排由右往左 |
+| `cols` / `rows` | 6 / 3 | 幾道：往上流看 `cols`（每個螢幕 3 欄），往左流看 `rows` |
+| `flowScale` | 0.85（往左 0.8） | 便利貼佔道寬的比例 |
+| `flowSpeed` | 30（往左 45） | 流速，1080 高的畫面每秒幾 px |
+| `mess` | 1 | 雜亂程度，0 = 整齊磚牆、1 = 最亂（超過 1 當 1） |
+| `tilt` | 5 | 最多歪幾度（±），0 = 不歪，最多 45 |
+| `speedVary` | 0 | 各道流速上下差多少（比例），0 = 全部同速 |
+| `promoEvery` | 10 | 每展示幾張插一次徽章動畫，0 = 關閉 |
+
+`mess`、`tilt`、往上流的 `flowScale` 的預設值跟首頁共用（`app/utils/wall-look.ts` 的 `WALL_LOOK`），
+首頁的便利貼牆也照這組參數排，兩邊是同一種凌亂感。
 
 ## Firestore 結構
 

@@ -24,7 +24,7 @@
  * 整面牆才不會像一塊板子一起往前推。同一道裡的便利貼一律同速，前後永遠不會撞在一起；
  * 相鄰兩道壓到一起的，會慢慢錯開、一張從另一張上面滑過去（圖層固定，不會閃）。
  * 上面再看 mess 加雜亂：大小一律相同，每張各自歪一個角度、前後左右偏一段，
- * 前後間距有疏有密，左右可以壓到隔壁道，欄（排）就不再筆直。
+ * 前後間距有疏有密，左右可以壓到隔壁道，欄（排）就不再筆直（跟首頁共用，見 ~/utils/wall-look）。
  * 只有兩個地方不能壓過去：畫面邊緣，以及直排時兩個螢幕中間的接縫（screens）——
  * 跨在接縫上的便利貼會被兩台螢幕的邊框切成兩半。
  * 會互相壓到，所以每張進場時給一個固定的圖層（越晚進場越上面），飛回來落地的放最上面；
@@ -48,6 +48,14 @@
  * 牆不會一口氣跳一大段，也跟 canvas 的 GSAP 飛行動畫用同一個時鐘，落點才追得準。
  */
 import { gsap } from 'gsap'
+import {
+  ALONG_JITTER,
+  CROSS_JITTER,
+  maxTiltOf,
+  randomWallLook,
+  turnFactor,
+  type WallLook
+} from '~/utils/wall-look'
 
 export type FlowDirection = 'left' | 'up'
 
@@ -120,23 +128,6 @@ interface Lane {
   v: number
 }
 
-/**
- * 每張自己的樣子：第一次看到這張時擲一次骰子，之後不變（換道也跟著走）。
- * 都是 -1～1 的亂數，實際的角度與偏移在 toRect 依當下的版面與 mess 換算，換畫面大小也成立
- */
-interface Look {
-  tilt: number
-  along: number
-  cross: number
-}
-
-/** 沒指定 tilt 時傾斜的範圍：整齊時 ±3°（完全不歪太死板），最亂時 ±12° */
-const TILT_NEAT = 3
-const TILT_MESSY = 12
-/** 最亂時順著流向偏多少（格距的 ±25%）：前後兩張有的擠、有的鬆，相鄰幾道也不會排成一橫線 */
-const ALONG_JITTER = 0.25
-/** 最亂時往兩側偏多少（道寬的 ±40%）：可以壓到隔壁道，但不出畫面、不跨螢幕接縫 */
-const CROSS_JITTER = 0.4
 /** 轉了角度、放大之後，四個角離畫面邊緣與螢幕接縫至少留這麼多（道寬的比例） */
 const EDGE_MARGIN = 0.01
 /**
@@ -186,16 +177,15 @@ const pickSpeedRanks = (n: number) => {
 export function useNoteFlow(opts: NoteFlowOptions) {
   const vertical = opts.direction === 'up'
   const mess = Math.min(1, Math.max(0, opts.mess ?? 0))
-  // 上限 45°：外接框（turnFactor）在 45° 最大，超過就算不準，溢出量會估太小
-  const maxTilt =
-    opts.tilt != null ? Math.min(45, Math.max(0, opts.tilt)) : TILT_NEAT + (TILT_MESSY - TILT_NEAT) * mess
+  const maxTilt = maxTiltOf(mess, opts.tilt)
   const screens = Math.max(1, Math.floor(opts.screens ?? 1))
   const speedVary = Math.min(0.9, Math.max(0, opts.speedVary ?? 0))
   /** 名次開場決定一次，換畫面大小重排時不變（不然每次重排快慢都換） */
   const speedRanks = pickSpeedRanks(Math.max(1, Math.floor(opts.lanes)))
 
   const elements = new Map<string, HTMLElement>()
-  const looks = new Map<string, Look>()
+  /** 每張的樣子，換道也跟著走；角度與偏移在 toRect 依當下的版面換算，換畫面大小也成立 */
+  const looks = new Map<string, WallLook>()
   /** 每張元素目前寫上去的 z-index，沒變就不重寫 */
   const appliedZ = new Map<string, number>()
   let zTop = 0
@@ -245,17 +235,10 @@ export function useNoteFlow(opts: NoteFlowOptions) {
   const lookOf = (id: string) => {
     let look = looks.get(id)
     if (!look) {
-      const r = () => Math.random() * 2 - 1
-      look = { tilt: r(), along: r(), cross: r() }
+      look = randomWallLook()
       looks.set(id, look)
     }
     return look
-  }
-
-  /** 轉了 deg 度的正方形，外接框的邊長是原本的幾倍 */
-  const turnFactor = (deg: number) => {
-    const rad = (Math.abs(deg) * Math.PI) / 180
-    return Math.cos(rad) + Math.sin(rad)
   }
 
   /** 格子前緣在 t 時的 along（不含讓位的滑動）。入口在畫面外 overhang 的地方 */

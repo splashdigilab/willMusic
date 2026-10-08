@@ -1,113 +1,62 @@
 /**
- * 不重疊的散落排版：費馬螺旋 + 空間網格碰撞偵測。
+ * 首頁（`/`）便利貼牆的排版：跟大螢幕的流動牆同一種凌亂感（見 ~/utils/wall-look），
+ * 只是不流動，從中間往外排成一團。
  *
- * 首頁（`/`）與大螢幕（`/canvas`）都用這套佈局，差別只在座標系的尺度：
- * 首頁直接用 px、大螢幕先在虛擬座標系排好再整體縮放到播放區。
- *
- * 特性：
- * - 完全決定性（沒有亂數），同樣的輸入永遠得到同樣的結果
- * - 第 0 個元素一定落在原點 (0, 0)
- * - 碰撞偵測用網格分割，只比對相鄰 9 格，避免 O(n²)
+ * - 底子是磚牆：一欄一欄，格子是正方形，奇數欄往下錯開半格（跟大螢幕由下往上流的欄一樣）
+ * - 格子照離原點的距離排，第 0 張在正中間 (0, 0)，越後面越外圈
+ * - 每張再依自己的樣子（WallLook）歪一個角度、前後左右偏一段，會互相壓到一些
  */
+import { ALONG_JITTER, CROSS_JITTER, maxTiltOf, type WallLook } from '~/utils/wall-look'
 
 export interface ScatterPosition {
+  /** 便利貼中心，相對於原點 */
   x: number
   y: number
+  rotation: number
 }
 
 export interface ScatterOptions {
-  /** 元素邊長。碰撞半徑會以「旋轉 45° 後的外接框」計算，所以元素可以自由旋轉不重疊 */
+  /** 便利貼邊長（px） */
   itemSize: number
-  /** 元素間距：負值排得更緊、正值更鬆 */
-  margin: number
-  /** 螺旋步進係數，越大整體越鬆散 */
-  spiralStep?: number
+  /** 便利貼佔格距的比例，其餘是間距 */
+  scale: number
+  /** 雜亂程度，0 = 整齊磚牆、1 = 最亂 */
+  mess: number
+  /** 最多歪幾度；沒給就跟著 mess 走 */
+  tilt?: number
 }
 
-/** 黃金角，讓螺旋上的點分布得最均勻 */
-const GOLDEN_ANGLE_DEG = 137.508
-
-export const DEFAULT_SPIRAL_STEP = 35
-
-/**
- * 元素旋轉後的最大外接框邊長。
- * 例如 150×150 的方塊轉 45° 後對角線是 150 × √2 ≈ 212。
- */
-export const boundingBoxOf = (itemSize: number): number => itemSize * Math.SQRT2
-
-/** 碰撞半徑：外接框加上間距後的一半 */
-export const collisionRadiusOf = (itemSize: number, margin: number): number =>
-  (boundingBoxOf(itemSize) + margin) / 2
-
-const gridKey = (x: number, y: number, cellSize: number): string =>
-  `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`
-
-const isColliding = (
-  pos: ScatterPosition,
-  grid: Map<string, ScatterPosition[]>,
-  cellSize: number,
-  diameterSq: number
-): boolean => {
-  const cellX = Math.floor(pos.x / cellSize)
-  const cellY = Math.floor(pos.y / cellSize)
-
-  // 只檢查自己與周圍 8 格：任何更遠的元素都不可能碰到
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      const neighbours = grid.get(`${cellX + dx},${cellY + dy}`)
-      if (!neighbours) continue
-      for (const other of neighbours) {
-        const distX = pos.x - other.x
-        const distY = pos.y - other.y
-        if (distX * distX + distY * distY < diameterSq) return true
-      }
+/** 從原點往外最近的 count 個格子中心 */
+const brickCells = (count: number, pitch: number) => {
+  // 每格佔 pitch²，排成圓大約要這個半徑（格數）；多抓兩格，圓周附近的格子才不會漏掉
+  const reach = Math.ceil(Math.sqrt(count / Math.PI)) + 2
+  const cells: { x: number; y: number; d: number; angle: number }[] = []
+  for (let col = -reach; col <= reach; col++) {
+    const offset = col % 2 ? 0.5 : 0
+    for (let row = -reach; row <= reach; row++) {
+      const x = col * pitch
+      const y = (row + offset) * pitch
+      cells.push({ x, y, d: x * x + y * y, angle: Math.atan2(y, x) })
     }
   }
-  return false
+  // 距離一樣的照角度排，同樣的張數永遠排出同樣的形狀
+  cells.sort((p, q) => p.d - q.d || p.angle - q.angle)
+  return cells.slice(0, count)
 }
 
-/**
- * 算出 `count` 個互不重疊的位置。
- * 沿費馬螺旋往外找，碰撞就跳到螺旋上的下一點。
- */
+/** 依序排好每一張的位置與角度，looks[i] 是第 i 張的樣子 */
 export function calculateScatterPositions(
-  count: number,
-  { itemSize, margin, spiralStep = DEFAULT_SPIRAL_STEP }: ScatterOptions
+  looks: WallLook[],
+  { itemSize, scale, mess, tilt }: ScatterOptions
 ): ScatterPosition[] {
-  const positions: ScatterPosition[] = []
-  if (count <= 0) return positions
-
-  const collisionRadius = collisionRadiusOf(itemSize, margin)
-  const cellSize = collisionRadius * 2
-  const diameterSq = cellSize * cellSize
-
-  const grid = new Map<string, ScatterPosition[]>()
-  let spiralIndex = 0
-
-  for (let i = 0; i < count; i++) {
-    if (i === 0) {
-      const origin = { x: 0, y: 0 }
-      positions.push(origin)
-      grid.set(gridKey(origin.x, origin.y, cellSize), [origin])
-      spiralIndex++
-      continue
+  const pitch = itemSize / scale
+  const maxTilt = maxTiltOf(mess, tilt)
+  return brickCells(looks.length, pitch).map((cell, i) => {
+    const look = looks[i]!
+    return {
+      x: cell.x + look.cross * CROSS_JITTER * pitch * mess,
+      y: cell.y + look.along * ALONG_JITTER * pitch * mess,
+      rotation: look.tilt * maxTilt
     }
-
-    let placed: ScatterPosition = { x: 0, y: 0 }
-    for (;;) {
-      const radius = spiralStep * Math.sqrt(spiralIndex)
-      const theta = spiralIndex * GOLDEN_ANGLE_DEG * (Math.PI / 180)
-      placed = { x: radius * Math.cos(theta), y: radius * Math.sin(theta) }
-      spiralIndex++
-      if (!isColliding(placed, grid, cellSize, diameterSq)) break
-    }
-
-    positions.push(placed)
-    const key = gridKey(placed.x, placed.y, cellSize)
-    const bucket = grid.get(key)
-    if (bucket) bucket.push(placed)
-    else grid.set(key, [placed])
-  }
-
-  return positions
+  })
 }
