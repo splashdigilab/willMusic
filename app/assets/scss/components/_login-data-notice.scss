@@ -1,0 +1,18 @@
+/* 登入鈕旁邊的資料告知（LoginDataNotice）。
+   放在三個地方（確認視窗、右上角小卡、我的便利貼的白卡），三處都是淺底，
+   用比旁邊說明再淡、再小一級的灰：它是補充說明，不是那一塊在問的事。
+   不指定對齊，跟著所在位置走：確認視窗與我的便利貼置中，小卡靠左 */
+.c-login-data-notice {
+  margin: 0.6rem 0 0;
+  color: #888;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.c-login-data-notice__link {
+  margin-left: 0.25em;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}

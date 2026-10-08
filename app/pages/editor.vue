@@ -318,6 +318,24 @@
               </button>
             </div>
           </div>
+          <!-- 行銷信的同意。不放進上面那張卡：卡片講的是「以誰、用什麼樣子送出」，
+               這是另一件事；而且登入回來的導覽泡泡掛在卡片正下方、尖角對著署名開關，
+               卡片多一列的話尖角就指錯了。
+               預設不勾，只有本人勾了才寄。LINE 沒給 email（後台權限還沒核准、
+               或使用者在 LINE 的同意畫面上不給）時不出現：沒有地址，勾了也沒用。 -->
+          <label v-if="profile?.lineEmail" class="p-editor__submit-marketing">
+            <input
+              type="checkbox"
+              class="p-editor__submit-marketing-input"
+              :checked="marketingOptIn"
+              :disabled="isSubmitting || marketingSaving"
+              @change="onMarketingToggle"
+            />
+            <span class="p-editor__submit-marketing-text">
+              我願意收到微樂客的活動與優惠資訊
+              <span class="p-editor__submit-marketing-email">寄到 {{ profile.lineEmail }}</span>
+            </span>
+          </label>
           <!-- 遮罩本身就是「點任意處關閉」的接收層：底下的上傳鈕被它蓋住，
                不會因為使用者只是想關掉提示，就順手把便利貼送出去 -->
           <Transition name="p-editor-spotlight">
@@ -329,9 +347,12 @@
             />
           </Transition>
         </template>
-        <p v-else class="p-editor__submit-login-hint">
-          送出需要 LINE 登入。登入後會回到這裡，便利貼會幫你留著，也可以選擇要不要署名。
-        </p>
+        <template v-else>
+          <p class="p-editor__submit-login-hint">
+            送出需要 LINE 登入。登入後會回到這裡，便利貼會幫你留著，也可以選擇要不要署名。
+          </p>
+          <LoginDataNotice />
+        </template>
       </template>
       <template #secondary-action>
         <button
@@ -903,7 +924,7 @@ const { $firestore } = useNuxtApp()
 const db = $firestore as any
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
 const { ready: authReady, user, isMember, profile, startLogin, completeLogin, logout } = useMemberAuth()
-const { syncProfile, getProfile } = useMemberProfile()
+const { syncProfile, getProfile, setMarketingOptIn } = useMemberProfile()
 
 const MAX_TEXT_BLOCKS = 3
 
@@ -1030,13 +1051,36 @@ const pendingDraftNameTag = ref<NameTagDraft | null>(null)
 /** 上次拿掉名牌時的位置：在確認畫面關掉又打開署名，應該回到使用者擺好的地方 */
 let lastNameTagPlacement: NameTagPlacement | null = null
 
+/** 確認畫面「收活動與優惠資訊」的勾選狀態，存在 users/{uid}.marketingOptIn */
+const marketingOptIn = ref(false)
+const marketingSaving = ref(false)
+
+/**
+ * 讀 users/{uid}：名牌的頭貼、行銷勾選。兩個都在同一份文件，一次讀完。
+ * 函式名沿用名牌那邊的叫法，因為頭貼是讀這份資料的原因，行銷勾選是順便。
+ */
 let avatarLoadSeq = 0
 const loadNameTagAvatar = async () => {
   const seq = ++avatarLoadSeq
-  const raw = memberUid.value ? (await getProfile())?.avatar : null
-  const small = raw ? await downscaleAvatar(raw) : null
+  const stored = memberUid.value ? await getProfile() : null
+  const small = stored?.avatar ? await downscaleAvatar(stored.avatar) : null
   // 登入回來時會連續讀兩次（身分確定一次、會員資料寫完一次），只認最後一次
-  if (seq === avatarLoadSeq) nameTagAvatar.value = small
+  if (seq !== avatarLoadSeq) return
+  nameTagAvatar.value = small
+  // 正在存的時候不要被讀回來的舊值蓋掉
+  if (!marketingSaving.value) marketingOptIn.value = stored?.marketingOptIn === true
+}
+
+/** 先換畫面、再存；存失敗就把勾選退回去，畫面上看到的永遠是存進去的那個 */
+const onMarketingToggle = async (e: Event) => {
+  const email = profile.value?.lineEmail
+  if (!email) return
+  const next = (e.target as HTMLInputElement).checked
+  marketingOptIn.value = next
+  marketingSaving.value = true
+  const saved = await setMarketingOptIn(next, profile.value?.lineName ?? '', email)
+  marketingSaving.value = false
+  if (!saved) marketingOptIn.value = !next
 }
 
 watch(memberUid, (uid, prevUid) => {
@@ -2864,8 +2908,11 @@ const handleLoginReturn = async (): Promise<void> => {
 
   // 會員資料寫入是背景工作，寫失敗不影響送出。
   // 名牌的頭貼讀自那份資料，第一次登入的人要等它寫完才有，寫完再讀一次
-  void syncProfile(profile.value?.lineName ?? '', profile.value?.linePicture ?? null)
-    .then(loadNameTagAvatar)
+  void syncProfile(
+    profile.value?.lineName ?? '',
+    profile.value?.linePicture ?? null,
+    profile.value?.lineEmail ?? null
+  ).then(loadNameTagAvatar)
 
   // 從 STEP 5 的署名鈕來的：回到的就是 STEP 5，直接貼上並選取
   if (wantsNameTag && resumingEdit) {

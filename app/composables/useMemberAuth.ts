@@ -109,7 +109,11 @@ export const useMemberAuth = () => {
     if (outcome === 'cancelled') return 'cancelled'
     if (outcome === 'ok' && await completeLogin()) {
       // 會員資料寫入是背景工作，寫失敗不影響登入
-      void syncProfile(claims.value?.lineName ?? '', claims.value?.linePicture ?? null)
+      void syncProfile(
+        claims.value?.lineName ?? '',
+        claims.value?.linePicture ?? null,
+        claims.value?.lineEmail ?? null
+      )
       return 'ok'
     }
     return 'error'

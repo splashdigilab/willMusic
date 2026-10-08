@@ -1244,6 +1244,54 @@ body.is-editor-page #app {
   text-wrap: balance;
 }
 
+/* 行銷信的勾選：在身分卡下面、卡片外面，字比卡片裡小一級。
+   它不是這個畫面在問的事（這裡問的是「要不要送出、要不要署名」），
+   所以不做成跟署名一樣的開關，用一般的勾選框，不搶眼但看得懂。 */
+.p-editor__submit-marketing {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  /* 跟卡片拉開一點、跟下面的上傳鈕不另外留：這一列加上去之後確認畫面變高，
+     矮螢幕本來就要捲（見 .c-modal-overlay），能省的高度就省 */
+  margin-top: 0.7rem;
+  padding: 0 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 原生勾選框只換顏色：鍵盤、報讀器、iOS 的點擊區都不用自己補 */
+.p-editor__submit-marketing-input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0.1rem 0 0;
+  accent-color: #00A7C5;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.p-editor__submit-marketing-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  color: #555;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+/* email 可能很長，斷在任何地方都比撐破版面好 */
+.p-editor__submit-marketing-email {
+  color: #8A8A8A;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
 /* 署名開關：卡片的第二列。
    開關｜在便利貼上署名＋匿名／顯示頭貼 ……… 調整位置 */
 .p-editor__submit-signature {

@@ -21,6 +21,7 @@
         <button type="button" class="p-my-notes__btn p-my-notes__btn--line" @click="startLogin(route.path)">
           LINE 登入
         </button>
+        <LoginDataNotice />
       </section>
 
       <template v-else>

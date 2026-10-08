@@ -27,6 +27,8 @@ export type AuthRole = 'staff' | 'member'
 export interface MemberClaims {
   lineName: string
   linePicture: string | null
+  /** channel 還沒有 email 權限、或使用者在 LINE 同意畫面上不給時是 null */
+  lineEmail: string | null
 }
 
 export interface AuthSessionState {
@@ -72,7 +74,8 @@ export const useAuthSession = () => {
           role: 'member',
           claims: {
             lineName: typeof claims.lineName === 'string' ? claims.lineName : '',
-            linePicture: typeof claims.linePicture === 'string' ? claims.linePicture : null
+            linePicture: typeof claims.linePicture === 'string' ? claims.linePicture : null,
+            lineEmail: typeof claims.lineEmail === 'string' ? claims.lineEmail : null
           }
         }
       }

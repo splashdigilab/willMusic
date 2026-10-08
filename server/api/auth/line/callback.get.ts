@@ -34,6 +34,8 @@ interface LineVerifyResponse {
   sub?: string
   name?: string
   picture?: string
+  /** channel 沒有 email 權限、或使用者在 LINE 同意畫面上不給，就沒有這個欄位 */
+  email?: string
   error?: string
   error_description?: string
 }
@@ -131,6 +133,9 @@ export default defineEventHandler(async (event) => {
       {
         lineName: displayName,
         ...(profile.picture ? { linePicture: profile.picture } : {}),
+        // 跟 lineName 同樣的理由簽進 token：firestore.rules 用它比對 users/{uid}.email，
+        // 前端寫不進別人的信箱
+        ...(profile.email ? { lineEmail: profile.email } : {}),
         role: 'member'
       },
       { clientEmail: config.clientEmail, privateKey: config.privateKey }

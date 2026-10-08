@@ -20,8 +20,14 @@ export const LINE_TOKEN_URL = 'https://api.line.me/oauth2/v2.1/token'
  */
 export const LINE_VERIFY_URL = 'https://api.line.me/oauth2/v2.1/verify'
 
-/** 只要 openid profile，不要 email —— 沒有用到的個資就不要蒐集 */
-export const LINE_SCOPE = 'openid profile'
+/**
+ * email 用於活動聯繫，以及本人同意後寄送行銷資訊（2026-10-08 決定）。
+ *
+ * 要拿得到 email，LINE 後台的 channel 必須先通過「Email address permission」審核；
+ * 沒通過前照樣帶這個 scope 也不會出錯（實測授權頁照常導向登入），只是 id_token
+ * 裡不會有 email。使用者也可以在 LINE 的同意畫面上不給 —— 所以下游一律當作選填。
+ */
+export const LINE_SCOPE = 'openid profile email'
 
 /** OAuth 往返用的暫存 cookie，callback 一進來就清掉 */
 export const OAUTH_STATE_COOKIE = 'wm_oauth'

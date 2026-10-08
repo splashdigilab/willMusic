@@ -185,6 +185,12 @@ export interface UserProfile {
   displayName: string
   /** 頭貼的 base64 data URL。沒抓到就沒有這個欄位 */
   avatar?: string
+  /** LINE 帳號的 email，必須等於 custom token 的 lineEmail。LINE 沒給就沒有 */
+  email?: string
+  /** 本人勾選要收微樂客的活動與優惠資訊。沒有這個欄位＝沒同意，不寄 */
+  marketingOptIn?: boolean
+  /** 最近一次勾選或取消的時間 */
+  marketingUpdatedAt?: Timestamp
   createdAt: Timestamp
   updatedAt: Timestamp
 }

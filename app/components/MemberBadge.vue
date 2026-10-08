@@ -52,6 +52,7 @@
           瀏覽和製作都不用登入，送出便利貼時才需要。登入後可以看到自己送出的便利貼，以及今天還能送幾張。
         </p>
         <button type="button" class="c-member-badge__login" @click="onLogin">LINE 登入</button>
+        <LoginDataNotice />
       </div>
     </Transition>
   </div>

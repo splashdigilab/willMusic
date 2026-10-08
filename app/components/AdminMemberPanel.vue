@@ -32,6 +32,12 @@
                 <p v-if="profile" class="p-admin__member-uid">
                   首次登入 {{ formatDateTime(profile.createdAt) }} · 最近登入 {{ formatDateTime(profile.updatedAt) }}
                 </p>
+                <!-- 行銷名單要看的就是這兩個：有沒有 email、本人有沒有勾同意。
+                     沒勾的人只能用來聯繫活動事項，不能寄行銷信 -->
+                <p v-if="profile?.email" class="p-admin__member-uid">
+                  {{ profile.email }} ·
+                  {{ profile.marketingOptIn ? '同意收行銷資訊' : '未同意收行銷資訊' }}<template v-if="profile.marketingUpdatedAt">（{{ formatDateTime(profile.marketingUpdatedAt) }}）</template>
+                </p>
               </div>
             </div>
             <button type="button" class="p-admin__panel-close" aria-label="關閉" @click="close">×</button>

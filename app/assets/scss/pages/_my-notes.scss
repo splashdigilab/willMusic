@@ -454,6 +454,11 @@ $ink-red: #D6335A;
   color: $ink-sub;
 }
 
+/* 登入鈕底下的資料告知，跟按鈕拉開一點 */
+.p-my-notes__empty .c-login-data-notice {
+  margin-top: 0.9rem;
+}
+
 .p-my-notes__signin-error {
   margin: 1rem 0 0;
   font-size: 0.85rem;

@@ -48,6 +48,8 @@ export interface CustomTokenClaims {
   lineName: string
   /** LINE 頭貼網址。之後名牌貼紙要用，先隨 token 帶著 */
   linePicture?: string
+  /** LINE 帳號的 email。沒拿到就不放。firestore.rules 會拿它比對 users/{uid}.email */
+  lineEmail?: string
   /**
    * 目前的權限判斷是看 sign_in_provider（custom = 會員、password = 後台），
    * 這個 claim 還沒有人讀。先簽進去是為了萬一之後出現「不是後台但用帳密」的帳號，

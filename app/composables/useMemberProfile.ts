@@ -1,5 +1,5 @@
 /**
- * 把 LINE 會員資料寫進 users/{uid}。
+ * 把 LINE 會員資料寫進 users/{uid}：暱稱、頭貼、email，以及本人勾選的行銷同意。
  *
  * server 只負責簽 custom token、完全不碰 Firestore（那樣才不必把 service account
  * 的寫入權限搬進 Nitro），所以這份資料由前端自己寫。之所以敢這樣做，是因為
@@ -50,16 +50,18 @@ export const useMemberProfile = () => {
    */
   const syncProfile = async (
     displayName: string,
-    pictureUrl: string | null
+    pictureUrl: string | null,
+    email: string | null
   ): Promise<void> => {
     const uid = $auth?.currentUser?.uid
     if (!uid) return
 
     const ref = doc($firestore, cols.users, uid)
+    let existingData: UserProfile | undefined
 
     try {
       const existing = await getDoc(ref)
-      const existingData = existing.data() as UserProfile | undefined
+      existingData = existing.data() as UserProfile | undefined
 
       // 頭貼只在沒有、或使用者改了暱稱時重抓 —— 每次登入都抓一張圖
       // 對只是要送張便利貼的人來說是白等
@@ -72,11 +74,51 @@ export const useMemberProfile = () => {
       await setDoc(ref, {
         displayName,
         ...(avatar ? { avatar } : {}),
-        createdAt: existingData ? existing.get('createdAt') : serverTimestamp(),
+        // 文件可能是行銷勾選先建的（登入回來馬上就勾），那份沒有 createdAt
+        createdAt: existing.get('createdAt') ?? serverTimestamp(),
         updatedAt: serverTimestamp()
       }, { merge: true })
     } catch (e) {
       console.warn('[MemberProfile] 寫入會員資料失敗', e)
+      return
+    }
+
+    // email 分開寫：規則還沒部署新版時這一筆會被擋，但不能連累上面那筆 ——
+    // 名牌的頭貼讀的是上面寫的 avatar。
+    // 沒拿到 email 時不去刪舊的：可能只是這次 LINE 沒給，不代表使用者要我們忘掉
+    if (!email || existingData?.email === email) return
+    try {
+      await setDoc(ref, { email }, { merge: true })
+    } catch (e) {
+      console.warn('[MemberProfile] 寫入 email 失敗', e)
+    }
+  }
+
+  /**
+   * 要不要收行銷信。只有本人勾了才寄，所以預設是沒有這個欄位（＝不寄）。
+   *
+   * 暱稱與 email 一起帶上：這份文件可能還不存在（登入回來馬上就勾，syncProfile 還沒寫完），
+   * 規則要求文件裡一定要有對得上 token 的暱稱，勾「要收」時也一定要有 email。
+   * `marketingUpdatedAt` 是同意或取消的時間，日後被問「什麼時候同意的」要拿得出來。
+   */
+  const setMarketingOptIn = async (
+    optIn: boolean,
+    displayName: string,
+    email: string
+  ): Promise<boolean> => {
+    const uid = $auth?.currentUser?.uid
+    if (!uid) return false
+    try {
+      await setDoc(doc($firestore, cols.users, uid), {
+        displayName,
+        email,
+        marketingOptIn: optIn,
+        marketingUpdatedAt: serverTimestamp()
+      }, { merge: true })
+      return true
+    } catch (e) {
+      console.warn('[MemberProfile] 寫入行銷同意失敗', e)
+      return false
     }
   }
 
@@ -92,5 +134,5 @@ export const useMemberProfile = () => {
     }
   }
 
-  return { syncProfile, getProfile }
+  return { syncProfile, getProfile, setMarketingOptIn }
 }

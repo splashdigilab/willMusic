@@ -179,15 +179,39 @@ service cloud.firestore {
     // claim 一字不差 —— 那個值是 server 從 LINE 的 id_token 取出、截斷後簽進去的，
     // 前端改不了。頭貼是 base64，規則沒辦法驗內容，只能限大小；這與手繪圖
     // 同樣沒有審核路徑，靠後台即時下架處理。
+    //
+    // email 同樣綁 custom token（lineEmail claim）。只在這一次有動到 email 時才比對：
+    // 使用者下次登入時 LINE 可能沒給 email（在同意畫面上取消了），token 裡就沒有
+    // lineEmail；要是每次都比，文件裡的舊 email 會讓他之後的暱稱更新全被擋下。
+    //
+    // 行銷同意（marketingOptIn）只有本人能改，時間戳必須是伺服器時間，
+    // 而且沒有 email 時不能是「要收」—— 同意了卻沒有地址可寄，名單會對不起來。
     function canWriteUserProfile(uid) {
       return isMember()
              && request.auth.uid == uid
              && incoming().displayName == request.auth.token.lineName
              && incoming().keys().hasOnly(
-                  ['displayName', 'avatar', 'createdAt', 'updatedAt']
+                  ['displayName', 'avatar', 'email', 'marketingOptIn', 'marketingUpdatedAt',
+                   'createdAt', 'updatedAt']
                 )
              && (!incoming().keys().hasAll(['avatar'])
-                 || incoming().avatar.size() <= 30000);
+                 || incoming().avatar.size() <= 30000)
+             && (!touchesUserField('email')
+                 || incoming().email == request.auth.token.get('lineEmail', null))
+             && ((!touchesUserField('marketingOptIn') && !touchesUserField('marketingUpdatedAt'))
+                 || (incoming().marketingOptIn is bool
+                     && incoming().marketingUpdatedAt == request.time
+                     && (incoming().marketingOptIn == false
+                         || incoming().keys().hasAll(['email']))));
+    }
+
+    // 這一次寫入有沒有動到某個欄位。新建時文件裡的每個欄位都算。
+    // 用 request.method 分流而不是 resource == null：新建那一支完全不碰 resource，
+    // 不必依賴「新建時 resource 是 null」這個細節（Rules API 的測試端點就不是這樣模擬的）
+    function touchesUserField(key) {
+      return (request.method == 'create' && incoming().keys().hasAny([key]))
+             || (request.method != 'create'
+                 && incoming().diff(resource.data).affectedKeys().hasAny([key]));
     }
 
     // ══ 投稿配額 ═══════════════════════════════════════════

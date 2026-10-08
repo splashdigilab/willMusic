@@ -194,8 +194,22 @@ transaction 內先檢查 history 是否已存在，所以同一張便利貼重�
 doc ID 就是 Firebase uid（`line:<LINE userId>`）：
 
 ```ts
-{ displayName: string, avatar?: string, createdAt: Timestamp, updatedAt: Timestamp }
+{
+  displayName: string, avatar?: string,
+  email?: string,                 // LINE 帳號的 email，沒給就沒有
+  marketingOptIn?: boolean,       // 本人勾了才是 true；沒有這個欄位＝不寄
+  marketingUpdatedAt?: Timestamp, // 勾選或取消的時間
+  createdAt: Timestamp, updatedAt: Timestamp
+}
 ```
+
+**email 與行銷同意**（2026-10-08 加上）。LINE 要先在後台核准 channel 的
+「Email address permission」才會給 email，核准前登入照常、只是沒有這個欄位；
+使用者也能在 LINE 的同意畫面上不給，所以一律當選填。
+email 跟暱稱一樣簽進 custom token（`lineEmail` claim），規則比對它，前端寫不進別人的信箱。
+行銷信**只寄 `marketingOptIn == true` 的人**：勾選在送出確認畫面、身分卡下面，預設不勾。
+送出確認畫面、右上角小卡、我的便利貼的登入鈕旁有 `LoginDataNotice`，說明登入會取得什麼、
+email 做什麼用（活動規範頁則寫在規範摘要第一條）。那段文案改了，隱私權政策要跟著改。
 
 `avatar` 存的是 **base64 data URL**，不是 LINE 的 CDN 網址。三個原因：使用者換頭貼
 之後舊網址會失效，牆上就破圖；LINE 的 profile CDN 沒有承諾提供 CORS 標頭，
