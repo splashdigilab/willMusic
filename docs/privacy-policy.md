@@ -45,6 +45,14 @@
 我們**不會**取得您的電話號碼、LINE 好友名單、聊天記錄，
 也**無法**代您發送任何 LINE 訊息。
 
+登入時，LINE 會詢問您是否將本公司的 LINE 官方帳號「微樂客 WillMusic」加為好友，
+**加不加由您決定，不影響參加**。我們也會向 LINE 確認您是否已是好友，只用來決定
+要不要顯示「加入好友」按鈕，不會儲存。加為好友後，本公司可透過官方帳號傳送訊息給您；
+您可以隨時在 LINE 上封鎖或刪除。
+
+> 內部說明：好友狀態是 callback 用使用者的 access token 查 `friendship/v1/status`，
+> 結果只簽進 custom token 的 `lineFriend` claim，不寫進 Firestore。
+
 > 內部說明（2026-10-08）：電子郵件是為了活動聯繫與行銷資訊加上的。
 > LINE 要先在後台核准 channel 的「Email address permission」才拿得到，
 > 申請時附的截圖是送出確認畫面上 `LoginDataNotice` 那段說明，

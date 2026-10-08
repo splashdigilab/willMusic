@@ -44,6 +44,7 @@
         <NuxtLink to="/my-notes" class="c-member-badge__link" @click="open = false">
           我的便利貼 <span aria-hidden="true">›</span>
         </NuxtLink>
+        <LineFriendPrompt />
         <button type="button" class="c-member-badge__logout" @click="onLogout">登出</button>
       </div>
       <div v-else-if="open" class="c-member-badge__card" role="dialog" aria-label="登入狀態">

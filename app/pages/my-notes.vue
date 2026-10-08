@@ -61,6 +61,7 @@
           </template>
 
           <NuxtLink v-if="canMakeMore" to="/editor" class="p-my-notes__btn">＼ 製作便利貼 ／</NuxtLink>
+          <LineFriendPrompt />
         </section>
 
         <div v-if="notesLoading" class="p-my-notes__hint">載入中…</div>

@@ -51,6 +51,11 @@ export interface CustomTokenClaims {
   /** LINE 帳號的 email。沒拿到就不放。firestore.rules 會拿它比對 users/{uid}.email */
   lineEmail?: string
   /**
+   * 登入那一刻是不是官方帳號好友。查不到就不放。只給前端決定要不要提醒加好友，
+   * 規則沒有用到 —— 之後加了好友，這個值要等下次登入才會變。
+   */
+  lineFriend?: boolean
+  /**
    * 目前的權限判斷是看 sign_in_provider（custom = 會員、password = 後台），
    * 這個 claim 還沒有人讀。先簽進去是為了萬一之後出現「不是後台但用帳密」的帳號，
    * 那時 sign_in_provider 就不夠用了，屆時只要改 rules，不必請所有人重新登入。

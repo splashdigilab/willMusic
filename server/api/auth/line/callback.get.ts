@@ -1,7 +1,7 @@
 /**
  * LINE 授權完成後的落點。
  *
- * 驗 state → 用 code 換 token → 驗 id_token → 簽 Firebase custom token
+ * 驗 state → 用 code 換 token → 驗 id_token → 查是不是官方帳號好友 → 簽 Firebase custom token
  * → 放進短命的 httpOnly cookie → 導回原頁，由前端向 /api/auth/session 領取。
  *
  * custom token 走 cookie 而不是網址的 query 或 fragment：query 會進瀏覽器歷史、
@@ -11,6 +11,7 @@
 import { defineEventHandler, getQuery, sendRedirect } from 'h3'
 import { withQuery } from 'ufo'
 import {
+  LINE_FRIENDSHIP_URL,
   LINE_TOKEN_URL,
   LINE_VERIFY_URL,
   getLineLoginConfig,
@@ -125,7 +126,26 @@ export default defineEventHandler(async (event) => {
     return fail('id_token_invalid', error)
   }
 
-  // ── 3. 簽 Firebase custom token ───────────────────────────
+  // ── 3. 是不是官方帳號好友 ──────────────────────────────────
+  // 給前端決定要不要顯示「加入好友」。查不到（channel 沒連結官方帳號、LINE 暫時出錯）
+  // 就不放這個 claim，前端當作不知道、不去吵使用者 —— 這不值得擋住登入。
+  // 不用 callback 網址上的 friendship_status_changed：它只說「這次有沒有變」，
+  // 而且同意畫面沒出現時（之前授權過的人）根本不會帶。
+  let isFriend: boolean | undefined
+  if (tokenResult.access_token) {
+    try {
+      const res = await fetch(LINE_FRIENDSHIP_URL, {
+        headers: { Authorization: `Bearer ${tokenResult.access_token}` }
+      })
+      const body = await res.json() as { friendFlag?: boolean }
+      if (res.ok && typeof body.friendFlag === 'boolean') isFriend = body.friendFlag
+      else console.warn('[LINE Login] 查不到好友狀態:', body)
+    } catch (error) {
+      console.warn('[LINE Login] 查不到好友狀態:', error)
+    }
+  }
+
+  // ── 4. 簽 Firebase custom token ───────────────────────────
   try {
     const displayName = truncateDisplayName(profile.name || '')
     const customToken = signFirebaseCustomToken(
@@ -136,6 +156,7 @@ export default defineEventHandler(async (event) => {
         // 跟 lineName 同樣的理由簽進 token：firestore.rules 用它比對 users/{uid}.email，
         // 前端寫不進別人的信箱
         ...(profile.email ? { lineEmail: profile.email } : {}),
+        ...(isFriend !== undefined ? { lineFriend: isFriend } : {}),
         role: 'member'
       },
       { clientEmail: config.clientEmail, privateKey: config.privateKey }

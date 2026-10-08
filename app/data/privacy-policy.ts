@@ -53,6 +53,10 @@ export const POLICY_SECTIONS: LegalSection[] = [
         type: 'note',
         text: '我們不會取得您的電話號碼、LINE 好友名單或聊天記錄，也無法代您發送任何 LINE 訊息。'
       },
+      {
+        type: 'p',
+        text: '登入時，LINE 會詢問您是否將本公司的 LINE 官方帳號「微樂客 WillMusic」加為好友，加不加由您決定，不影響參加。我們也會向 LINE 確認您是否已是好友，只用來決定要不要顯示「加入好友」按鈕，不會儲存。加為好友後，本公司可透過官方帳號傳送訊息給您；您可以隨時在 LINE 上封鎖或刪除。'
+      },
 
       { type: 'h3', text: '2. 您是否同意收到活動與優惠資訊' },
       {

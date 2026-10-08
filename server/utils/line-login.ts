@@ -29,6 +29,21 @@ export const LINE_VERIFY_URL = 'https://api.line.me/oauth2/v2.1/verify'
  */
 export const LINE_SCOPE = 'openid profile email'
 
+/**
+ * 登入時順便邀請加「微樂客 WillMusic」官方帳號好友（2026-10-08 Kevin 要求）。
+ * 前提是 LINE 後台的 Login channel 已連結官方帳號（Add friend option → Linked LINE
+ * Official Account），而且兩者在同一個 provider 底下。
+ *
+ * 用 aggressive（同意之後另開一頁問）而不是 normal（同意畫面上多一個勾選）：
+ * normal 的勾選只有「認證過的 provider」才會預設打勾，否則要使用者自己勾，幾乎沒人勾。
+ * 不管哪一種都只在同意畫面出現時才會問 —— 每個人第一次登入這個 channel 那一次；
+ * 已經是好友的人不會被問。之後再問靠的是前端的 LineFriendPrompt。
+ */
+export const LINE_BOT_PROMPT = 'aggressive'
+
+/** 用使用者的 access token 查他是不是 channel 所連結官方帳號的好友 */
+export const LINE_FRIENDSHIP_URL = 'https://api.line.me/friendship/v1/status'
+
 /** OAuth 往返用的暫存 cookie，callback 一進來就清掉 */
 export const OAUTH_STATE_COOKIE = 'wm_oauth'
 /** 簽好的 Firebase custom token，等前端來領。壽命只要夠撐完一次 302 + 一次 fetch */

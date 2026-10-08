@@ -23,6 +23,9 @@
         </div>
       </div>
 
+      <!-- 送出之後、等上牆的這段空檔邀請加好友。已經是好友、或按過一次的人不會出現 -->
+      <LineFriendPrompt variant="banner" />
+
       <NuxtLink to="/" class="p-queue-status__btn-home">＼ 回到首頁 ／</NuxtLink>
       <!-- 離開這頁之後，還能在「我的便利貼」看到自己那張排到第幾 -->
       <NuxtLink to="/my-notes" class="p-queue-status__link">查看我的便利貼</NuxtLink>

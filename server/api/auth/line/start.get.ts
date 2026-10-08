@@ -8,6 +8,7 @@ import { defineEventHandler, getQuery, sendRedirect } from 'h3'
 import { withQuery } from 'ufo'
 import {
   LINE_AUTHORIZE_URL,
+  LINE_BOT_PROMPT,
   LINE_SCOPE,
   getLineLoginConfig,
   resolveRedirectUri,
@@ -42,7 +43,8 @@ export default defineEventHandler(async (event) => {
     redirect_uri: resolveRedirectUri(event),
     state,
     nonce,
-    scope: LINE_SCOPE
+    scope: LINE_SCOPE,
+    bot_prompt: LINE_BOT_PROMPT
     // 不帶 disable_auto_login：在 LINE 內建瀏覽器裡自動登入是預設行為，
     // 使用者一鍵就過，這正是我們選擇「讓使用者留在 LINE 裡」的理由。
     // 外部瀏覽器不受影響，仍會走完整的授權畫面。

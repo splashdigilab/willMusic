@@ -80,9 +80,10 @@
 /api/auth/line/start      產 state + nonce 存 httpOnly cookie，302 到 LINE
         ↓
 LINE 授權頁（在 LINE 內建瀏覽器裡會自動登入，一鍵就過）
-        ↓
+        ↓                 第一次授權時，同意後另跳一頁邀請加官方帳號好友（bot_prompt=aggressive）
 /api/auth/line/callback   驗 state → code 換 token → 交給 LINE 的 verify 端點
-                          驗 id_token 與 nonce → 簽 Firebase custom token
+                          驗 id_token 與 nonce → 查是不是官方帳號好友
+                          → 簽 Firebase custom token
                           → 放進 120 秒的 httpOnly cookie → 302 回原頁
         ↓
 /api/auth/session         前端來領那張 custom token（一次性，讀完即清）
@@ -104,6 +105,11 @@ signInWithCustomToken     之後的登入狀態由 Firebase SDK 自己維護
 - **會員資料 `users/{uid}` 由前端自己寫。** 之所以安全，是規則把 `displayName`
   綁死在 custom token 的 `lineName` claim 上，而那個值是 server 從 LINE 的
   id_token 取出、截斷到 12 字後簽進去的。
+- **加官方帳號好友問兩次。** LINE 只在同意畫面出現時問（每人第一次登入），按了略過就
+  再也不會問。所以登入那一刻不是好友的人（`lineFriend` claim 為 false），右上角小卡、
+  我的便利貼、送出後的等待頁會多一顆「加入微樂客 LINE 好友」（`LineFriendPrompt`），
+  按過一次就收起來。送出確認畫面刻意不放，不跟「上傳大螢幕」搶。
+  前提是 LINE 後台的 Login channel 已連結官方帳號 `@ngi0443q`。
 
 ## 頁面
 

@@ -29,6 +29,8 @@ export interface MemberClaims {
   linePicture: string | null
   /** channel 還沒有 email 權限、或使用者在 LINE 同意畫面上不給時是 null */
   lineEmail: string | null
+  /** 登入那一刻是不是官方帳號好友。server 查不到時是 null（不知道，就不提醒） */
+  lineFriend: boolean | null
 }
 
 export interface AuthSessionState {
@@ -75,7 +77,8 @@ export const useAuthSession = () => {
           claims: {
             lineName: typeof claims.lineName === 'string' ? claims.lineName : '',
             linePicture: typeof claims.linePicture === 'string' ? claims.linePicture : null,
-            lineEmail: typeof claims.lineEmail === 'string' ? claims.lineEmail : null
+            lineEmail: typeof claims.lineEmail === 'string' ? claims.lineEmail : null,
+            lineFriend: typeof claims.lineFriend === 'boolean' ? claims.lineFriend : null
           }
         }
       }

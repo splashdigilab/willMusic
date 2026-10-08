@@ -1,0 +1,78 @@
+@use '../base/variables' as var;
+
+/* 「加入微樂客 LINE 好友」（LineFriendPrompt）。
+   用 LINE 綠的細框而不是實心：實心綠在這幾個地方都已經是「LINE 登入」鈕，
+   登入之後再出現一顆實心綠，會讓人以為又要登入一次 */
+.c-line-friend-prompt {
+  display: block;
+  font-family: inherit;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+
+  &--button {
+    margin-top: 0.75rem;
+    padding: 0.55rem 0.75rem;
+    border: 1.5px solid var.$line-green;
+    border-radius: 999px;
+    color: #06A847;
+    font-size: 0.88rem;
+    text-align: center;
+
+    &:active {
+      background: rgba(var.$line-green, 0.08);
+    }
+  }
+
+  /* 等待頁（深灰底）的橫條小卡。底色只比頁面亮一點：
+     這頁的主角是排隊數字與「回到首頁」，邀請加好友是順帶的 */
+  &--banner {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.85rem 0.9rem 0.85rem 1.1rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 1.2rem;
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    text-align: left;
+
+    &:active {
+      background: rgba(255, 255, 255, 0.12);
+    }
+  }
+
+  &__text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    line-height: 1.35;
+
+    strong {
+      font-size: 0.95rem;
+      font-weight: 800;
+    }
+
+    span {
+      color: rgba(255, 255, 255, 0.65);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+  }
+
+  /* 這頁沒有「LINE 登入」鈕，用實心綠不會被誤認成又要登入 */
+  &__cta {
+    flex-shrink: 0;
+    padding: 0.45rem 1rem;
+    border-radius: 999px;
+    background: var.$line-green;
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+}
