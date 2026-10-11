@@ -113,6 +113,23 @@
             </ul>
           </section>
         </template>
+
+        <!-- 行銷信的同意。隱私權政策寫的是「可以隨時取消」，
+             只放在送出確認畫面的話，要取消就得先做一張便利貼，所以這裡也要有。
+             沒有 email（LINE 沒給）就不出現：沒有地址，勾了也沒用 -->
+        <label v-if="marketingEmail" class="p-my-notes__marketing">
+          <input
+            type="checkbox"
+            class="p-my-notes__marketing-input"
+            :checked="marketingOptIn"
+            :disabled="marketingSaving"
+            @change="onMarketingToggle"
+          />
+          <span class="p-my-notes__marketing-text">
+            我願意收到微樂客的活動與優惠資訊
+            <span class="p-my-notes__marketing-email">寄到 {{ marketingEmail }}</span>
+          </span>
+        </label>
       </template>
 
       <!-- 左上的圓鈕長得像「上一頁」，使用者認不出它會回首頁，所以頁尾再放一顆寫明的。
@@ -164,7 +181,8 @@ definePageMeta({ layout: false, ssr: false })
 const route = useRoute()
 const { $firestore } = useNuxtApp() as any
 const cols = useCollections()
-const { ready: authReady, isMember, user, startLogin, completeLoginReturn } = useMemberAuth()
+const { ready: authReady, isMember, user, profile, startLogin, completeLoginReturn } = useMemberAuth()
+const { getProfile, setMarketingOptIn } = useMemberProfile()
 
 // ── 額度 ──────────────────────────────────────────────
 const {
@@ -307,12 +325,42 @@ const formatTime = (ts: any): string => {
   return `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())} ${hm}`
 }
 
+// ── 行銷信的同意 ──────────────────────────────────────
+const storedEmail = ref<string | null>(null)
+const marketingOptIn = ref(false)
+const marketingSaving = ref(false)
+
+/** 這次登入 LINE 有給就用這次的；沒給（同意畫面上取消了）就用之前存下來的 */
+const marketingEmail = computed(() => profile.value?.lineEmail ?? storedEmail.value)
+
+const loadMarketing = async () => {
+  const stored = await getProfile()
+  storedEmail.value = stored?.email ?? null
+  // 正在存的時候不要被讀回來的舊值蓋掉
+  if (!marketingSaving.value) marketingOptIn.value = stored?.marketingOptIn === true
+}
+
+/** 跟送出確認畫面同一套：先換畫面、再存，存失敗就退回去 */
+const onMarketingToggle = async (e: Event) => {
+  const email = marketingEmail.value
+  if (!email) return
+  const next = (e.target as HTMLInputElement).checked
+  marketingOptIn.value = next
+  marketingSaving.value = true
+  const saved = await setMarketingOptIn(next, profile.value?.lineName ?? '', email)
+  marketingSaving.value = false
+  if (!saved) marketingOptIn.value = !next
+}
+
 watch(() => (isMember.value ? user.value?.uid : null), (uid) => {
   clearNotes()
   resetQuota()
+  storedEmail.value = null
+  marketingOptIn.value = false
   if (!uid) return
   void loadNotes(uid)
   void loadQuota()
+  void loadMarketing()
 }, { immediate: true })
 
 // ── 從這一頁登入 ──────────────────────────────────────

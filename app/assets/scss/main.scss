@@ -10,3 +10,6 @@
 
 // Components
 @use './components/component-index';
+
+// 節慶主題（排在最後，覆寫上面的頁面與元件樣式）
+@use './themes/theme-index';

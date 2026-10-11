@@ -1,0 +1,258 @@
+/*
+  萬聖節主題。稿子「(Draft) 萬聖節便利貼 - WillMusic.ai」畫板 01（開場）、02（便利貼牆）。
+
+  只在 <html data-theme="halloween"> 時生效（見 app/data/themes.ts）。
+  原本的樣式一行都沒動，這裡全部是覆寫，主題切回去就整份失效。
+
+  開場畫面換成 components/theme/HalloweenIntro.vue（版面跟原本的卡片差太多），
+  它的排版以稿子 1080×1920 為座標系：--u = 稿子上的 1px，所有尺寸寫成 u(N)，
+  數字直接對照稿子，不必換算。座標由 scripts/themes/halloween.py 從稿子量出來。
+*/
+@use '../mixins/breakpoints' as bp;
+
+$hw-purple: #7949AC;
+$hw-orange: #FF6100;
+$hw-black: #141414;
+
+/* 與 pages/_index.scss 同名同值：橫條往左右各溢出畫面的量 */
+$bottom-bar-overflow: min(1.43vw, 11px);
+
+@function u($n) {
+    @return calc(#{$n} * var(--u));
+}
+
+[data-theme='halloween'] {
+
+    /* ===================== 開場 overlay（首頁與編輯器的活動規範頁共用） ===================== */
+
+    .p-index__intro-overlay {
+        background-color: $hw-purple;
+        background-image: url('/themes/halloween/intro-bg.webp');
+    }
+
+    /* START：黑底、橘框、橘字（規範頁那顆尺寸照舊，只換顏色） */
+    .p-index__intro-btn {
+        background: $hw-black;
+        border-color: $hw-orange;
+        color: $hw-orange;
+    }
+
+    .p-index__intro-spinner {
+        border-color: rgba(255, 97, 0, 0.35);
+        border-top-color: $hw-orange;
+    }
+
+    /* ===================== 便利貼牆（畫板 02） ===================== */
+
+    /* 底色照舊 #404040，上面鋪南瓜、骷髏、幽靈的圖樣（向量）。
+       圖樣是 9:16 的構圖，其他比例用 cover 裁切；底部那道白色淡出（::after）照舊 */
+    .p-index {
+        background-image: url('/themes/halloween/wall-pattern.svg');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+    }
+
+    .p-index__bottom-bar {
+        background: $hw-purple;
+    }
+
+    /* 字標：x 98.7、寬 271.8（1080 基準）。上限跟著橫條在 751px 寬封頂 */
+    .p-index__bar-logo {
+        display: block;
+        flex: 0 0 auto;
+        width: min(25.2vw, 189px);
+        height: auto;
+        margin-left: calc(min(9.14vw, 68.6px) + #{$bottom-bar-overflow});
+
+        @include bp.respond-from('tablet-lg') {
+            width: 128px;
+            margin-left: 0;
+        }
+    }
+
+    /* 製作便利貼：x 502–1020、高 116，外框 5（1080 基準），右緣離畫面 60 */
+    .p-index__make-btn {
+        flex: 0 0 auto;
+        width: min(48vw, 360px);
+        height: min(10.74vw, 80.6px);
+        margin-left: auto;
+        margin-right: calc(min(5.56vw, 41.7px) + #{$bottom-bar-overflow});
+        background: $hw-black;
+        color: $hw-orange;
+        border: max(2px, min(0.46vw, 3.5px)) solid $hw-orange;
+        box-sizing: border-box;
+
+        /* 桌機：字標與按鈕一起置中，整組照原本的桌機比例（0.675）縮小 */
+        @include bp.respond-from('tablet-lg') {
+            width: 243px;
+            max-width: 243px;
+            height: 54px;
+            max-height: 54px;
+            margin-left: 0;
+            margin-right: 0;
+            border-width: 2px;
+        }
+    }
+
+    .p-index__bottom-bar:has(.p-index__bar-logo) {
+        @include bp.respond-from('tablet-lg') {
+            justify-content: center;
+            gap: 48px;
+        }
+    }
+}
+
+/* ===================== 萬聖節開場（HalloweenIntro.vue） ===================== */
+
+.t-hw-intro {
+    /* 舞台：9:16，放得進螢幕的最大尺寸 */
+    --hw-w: min(100vw, calc(100dvh * 9 / 16));
+    --u: calc(var(--hw-w) / 1080);
+
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    color: #fff;
+    user-select: none;
+
+    /* 貼螢幕四角的裝飾 */
+    &__web {
+        position: absolute;
+        width: u(275);
+        height: auto;
+        pointer-events: none;
+
+        &--tl {
+            left: u(-1);
+            top: 0;
+        }
+
+        &--br {
+            right: u(-1);
+            bottom: u(-1);
+        }
+    }
+
+    &__spider-top {
+        position: absolute;
+        top: 0;
+        right: u(87.9);
+        width: u(80.7);
+        height: auto;
+        pointer-events: none;
+    }
+
+    &__caption {
+        position: absolute;
+        margin: 0;
+        font-size: u(24);
+        font-weight: 400;
+        line-height: u(30);
+        letter-spacing: 0.025em;
+        color: rgba(255, 255, 255, 0.85);
+        white-space: nowrap;
+
+        &--top {
+            top: calc(#{u(45.4)} + env(safe-area-inset-top, 0px));
+            right: u(44);
+            text-align: right;
+        }
+
+        &--bottom {
+            left: u(43);
+            bottom: calc(#{u(44.4)} + env(safe-area-inset-bottom, 0px));
+            text-align: left;
+        }
+    }
+
+    &__logo {
+        position: absolute;
+        left: u(43.3);
+        bottom: calc(#{u(151.2)} + env(safe-area-inset-bottom, 0px));
+        width: u(395.7);
+        height: auto;
+    }
+
+    /* 舞台本體：南瓜、說明、START */
+    &__stage {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: var(--hw-w);
+        height: u(1920);
+        transform: translate(-50%, -50%);
+    }
+
+    &__sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    /* 南瓜＋蝙蝠＋標題（外框）＋南瓜陰影，一張 SVG */
+    &__hero {
+        position: absolute;
+        left: u(114.2);
+        top: u(249.2);
+        width: u(887.5);
+        height: u(920.8);
+    }
+
+    /* 說明：40px Bold、行距 60，第一行基線在 y 1242.4 */
+    &__desc {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: u(1198.5);
+        margin: 0;
+        font-size: u(40);
+        font-weight: 700;
+        line-height: u(60);
+        letter-spacing: 0.025em;
+        text-align: center;
+    }
+
+    /* START：外框 5 的外緣 x 310.9–769.1、y 1446.9–1566.8 */
+    &__start-wrap {
+        position: absolute;
+        left: u(310.9);
+        top: u(1446.9);
+        width: u(458.2);
+        height: u(119.9);
+    }
+
+    /* 疊在 .p-index__intro-btn 上，尺寸改照稿子（原本是以卡片寬為基準的 cqw） */
+    &__start.p-index__intro-btn {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        height: 100%;
+        border-width: max(2px, #{u(5)});
+        font-size: u(95);
+        letter-spacing: 0;
+    }
+
+    &__start .p-index__intro-btn-inner {
+        gap: u(18);
+        font-size: u(64);
+    }
+
+    &__start .p-index__intro-spinner {
+        width: u(52);
+        height: u(52);
+    }
+
+    /* START 底下垂吊的蜘蛛：絲從按鈕下緣 y 1564 開始 */
+    &__spider-start {
+        position: absolute;
+        left: u(188.8);
+        top: u(116.4);
+        width: u(80.7);
+        height: auto;
+        pointer-events: none;
+    }
+}

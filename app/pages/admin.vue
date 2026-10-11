@@ -630,11 +630,36 @@
             >
               已封鎖（{{ bans.size }}）
             </button>
+            <button
+              type="button"
+              class="p-admin__member-filter"
+              :class="{ 'is-active': memberFilter === 'marketing' }"
+              role="tab"
+              :aria-selected="memberFilter === 'marketing'"
+              @click="memberFilter = 'marketing'"
+            >
+              同意收行銷{{ marketingRows ? `（${marketingRows.length}）` : '' }}
+            </button>
           </div>
 
-          <div v-if="memberListLoading && visibleMemberRows.length === 0" class="p-admin__empty-state">載入中...</div>
+          <!-- 行銷名單只收本人勾了「我願意收到…」的人；沒勾的人 email 只能用在活動聯繫 -->
+          <div v-if="memberFilter === 'marketing'" class="p-admin__member-export">
+            <p class="p-admin__video-hint p-admin__video-hint--compact">
+              只列出本人勾選「願意收到活動與優惠資訊」的會員。沒勾的人，email 只能用來聯繫活動相關事項（例如得獎通知），不能寄行銷信。
+            </p>
+            <button
+              type="button"
+              class="p-admin__btn p-admin__btn--primary p-admin__btn--inline"
+              :disabled="marketingLoading || !marketingRows?.length"
+              @click="exportMarketingCsv"
+            >
+              {{ marketingLoading ? '讀取中…' : '匯出 CSV' }}
+            </button>
+          </div>
+
+          <div v-if="memberListBusy && visibleMemberRows.length === 0" class="p-admin__empty-state">載入中...</div>
           <div v-else-if="visibleMemberRows.length === 0" class="p-admin__empty-state">
-            {{ memberFilter === 'banned' ? '目前沒有封鎖的帳號' : '還沒有會員' }}
+            {{ memberEmptyText }}
           </div>
           <ul v-else class="p-admin__member-list">
             <li v-for="row in visibleMemberRows" :key="row.uid">
@@ -645,7 +670,9 @@
                   <span class="p-admin__member-name">
                     {{ row.name || '（沒有暱稱）' }}
                     <span v-if="bans.has(row.uid)" class="p-admin__tag p-admin__tag--banned">已封鎖</span>
+                    <span v-if="row.marketingOptIn" class="p-admin__tag p-admin__tag--marketing">收行銷</span>
                   </span>
+                  <span v-if="row.email" class="p-admin__member-uid">{{ row.email }}</span>
                   <span class="p-admin__member-uid">{{ row.subtitle }}</span>
                 </span>
                 <span class="p-admin__member-row-chevron" aria-hidden="true">›</span>
@@ -743,6 +770,7 @@ import {
 } from '~/composables/useConductor'
 import { STATS_MAX_RANGE_DAYS } from '~/composables/useUploadStats'
 import { useAdminStats } from '~/composables/useAdminStats'
+import { downloadCsv } from '~/utils/csv'
 
 definePageMeta({
   layout: false
@@ -751,7 +779,7 @@ definePageMeta({
 const { $firestore, $storage } = useNuxtApp()
 const { createToken } = useFirestore()
 const { logout } = useAdminAuth()
-const { listMembers, loadOwners, deleteNote } = useMemberAdmin()
+const { listMembers, listMarketingOptIns, loadOwners, deleteNote } = useMemberAdmin()
 const { listBans } = useBannedUsers()
 const router = useRouter()
 
@@ -1569,7 +1597,7 @@ const loadBans = async () => {
   }
 }
 
-type MemberFilter = 'all' | 'banned'
+type MemberFilter = 'all' | 'banned' | 'marketing'
 const memberFilter = ref<MemberFilter>('all')
 const memberRows = ref<MemberRow[]>([])
 const memberHasMore = ref(false)
@@ -1594,12 +1622,75 @@ const loadMembers = async (reset: boolean) => {
   }
 }
 
+/** 同意收行銷的名單。null = 還沒讀過 */
+const marketingRows = ref<MemberRow[] | null>(null)
+const marketingLoading = ref(false)
+
+/** @returns 有沒有讀成功。匯出要靠它判斷，不能拿上一次的舊名單去寄 */
+const loadMarketingRows = async (): Promise<boolean> => {
+  if (marketingLoading.value) return false
+  marketingLoading.value = true
+  try {
+    marketingRows.value = await listMarketingOptIns()
+    return true
+  } catch (err) {
+    console.error('[admin] 載入行銷名單失敗', err)
+    showAdminToast('error', '載入行銷名單失敗，請稍後再試')
+    return false
+  } finally {
+    marketingLoading.value = false
+  }
+}
+
+// 每次切過去都重讀：有人剛取消同意，就不該還留在名單上
+watch(memberFilter, (filter) => {
+  if (filter === 'marketing') void loadMarketingRows()
+})
+
+const memberListBusy = computed(() =>
+  memberFilter.value === 'marketing' ? marketingLoading.value : memberListLoading.value
+)
+
+const memberEmptyText = computed(() => {
+  switch (memberFilter.value) {
+    case 'banned': return '目前沒有封鎖的帳號'
+    case 'marketing': return '還沒有人同意收活動與優惠資訊'
+    default: return '還沒有會員'
+  }
+})
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+const formatCsvTime = (date: Date) =>
+  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+
+/** 匯出前重讀一次，不用畫面上可能已經過時的那份 */
+const exportMarketingCsv = async () => {
+  if (!await loadMarketingRows()) return
+  const rows = marketingRows.value ?? []
+  if (rows.length === 0) {
+    showAdminToast('error', '目前沒有人同意收活動與優惠資訊')
+    return
+  }
+  const now = new Date()
+  downloadCsv(`willmusic-marketing-${formatCsvTime(now).replace(/[- :]/g, '')}.csv`, [
+    ['email', '暱稱', '同意時間', 'uid'],
+    ...rows.map(m => [
+      m.email ?? '',
+      m.displayName ?? '',
+      m.marketingUpdatedAt?.toDate ? formatCsvTime(m.marketingUpdatedAt.toDate()) : '',
+      m.uid
+    ])
+  ])
+}
+
 const formatShortUid = (uid: string) => `…${uid.replace(/^line:/, '').slice(-4)}`
 
 interface MemberListRow {
   uid: string
   name: string
   avatar?: string
+  email?: string
+  marketingOptIn?: boolean
   subtitle: string
 }
 
@@ -1615,10 +1706,21 @@ const visibleMemberRows = computed<MemberListRow[]>(() => {
       subtitle: `封鎖於 ${formatTime(ban.bannedAt)}${ban.reason ? ` · ${ban.reason}` : ''}`
     }))
   }
+  if (memberFilter.value === 'marketing') {
+    return (marketingRows.value ?? []).map(m => ({
+      uid: m.uid,
+      name: m.displayName,
+      avatar: m.avatar,
+      email: m.email,
+      subtitle: `同意於 ${formatTime(m.marketingUpdatedAt)} · ${formatShortUid(m.uid)}`
+    }))
+  }
   return memberRows.value.map(m => ({
     uid: m.uid,
     name: m.displayName,
     avatar: m.avatar,
+    email: m.email,
+    marketingOptIn: m.marketingOptIn,
     subtitle: `最近登入 ${formatTime(m.updatedAt)} · ${formatShortUid(m.uid)}`
   }))
 })
@@ -1639,7 +1741,9 @@ const onMemberChanged = async (uid: string) => {
     loadBans(),
     loadPendingNotesPage(),
     loadHistoryNotesPage(),
-    memberListLoaded ? loadMembers(true) : Promise.resolve()
+    memberListLoaded ? loadMembers(true) : Promise.resolve(),
+    // 刪了個資的人要從行銷名單上消失
+    marketingRows.value ? loadMarketingRows() : Promise.resolve()
   ])
 }
 

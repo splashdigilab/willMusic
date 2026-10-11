@@ -63,6 +63,21 @@ export const useMemberAdmin = () => {
     }
   }
 
+  /**
+   * 同意收行銷資訊的會員，一次全部讀完：這份是要整份匯出的名單，分頁沒有意義。
+   * 只有一個等號條件、排序在前端做，不需要複合索引。
+   *
+   * 規則已經保證 marketingOptIn == true 的文件一定有 email，這裡還是再濾一次：
+   * 名單是拿去寄信的，寧可少一筆也不要混進一筆空地址。
+   */
+  const listMarketingOptIns = async (): Promise<MemberRow[]> => {
+    const snap = await getDocs(query(collection($firestore, cols.users), where('marketingOptIn', '==', true)))
+    return snap.docs
+      .map(d => ({ uid: d.id, ...(d.data() as UserProfile) }) as MemberRow)
+      .filter(m => !!m.email)
+      .sort((a, b) => toMillis(b.marketingUpdatedAt) - toMillis(a.marketingUpdatedAt))
+  }
+
   const getProfile = async (uid: string): Promise<UserProfile | null> => {
     const snap = await getDoc(doc($firestore, cols.users, uid))
     return snap.exists() ? (snap.data() as UserProfile) : null
@@ -165,5 +180,5 @@ export const useMemberAdmin = () => {
     ])
   }
 
-  return { listMembers, getProfile, findMemberNotes, loadOwners, deleteNote, deleteProfile }
+  return { listMembers, listMarketingOptIns, getProfile, findMemberNotes, loadOwners, deleteNote, deleteProfile }
 }
