@@ -8,6 +8,11 @@ export interface StickyNoteShape {
   id: string
   svg: string // SVG 檔案路徑（預覽 + clip-path 共用）
   /**
+   * 預先算好的陰影圖（scripts/shapes/build_shadows.py 依上面的 svg 產生）。
+   * 新增造型時要重跑那支腳本，否則這個造型的便利貼不會有陰影。
+   */
+  shadow: string
+  /**
    * 只影響 STEP 2 選單裡的預覽大小（1 = 撐滿格子），不影響便利貼實際的裁切形狀。
    * 稿子上正方形刻意畫得比其他造型小 —— 外接框一樣大時，實心方塊看起來就是比圓形大，
    * 這是視覺補正。其餘造型的輪廓本來就不會填滿外接框，不需要補。
@@ -23,13 +28,17 @@ export interface StickyNoteShape {
  * 要下架某個造型，是從下面的 SELECTABLE_SHAPES 拿掉，不是從這裡。
  */
 export const STICKY_NOTE_SHAPES: StickyNoteShape[] = [
-  { id: 'square', svg: '/svg/shapes/square.svg', previewScale: 0.85 },
-  { id: 'circle', svg: '/svg/shapes/circle.svg' },
-  { id: 'star', svg: '/svg/shapes/star.svg' },
-  { id: 'heart', svg: '/svg/shapes/heart.svg' },
-  { id: 'hexagon', svg: '/svg/shapes/hexagon.svg' },
-  { id: 'round', svg: '/svg/shapes/round.svg' },
-  { id: 'diamond', svg: '/svg/shapes/diamond.svg' },
+  { id: 'square', svg: '/svg/shapes/square.svg', shadow: '/svg/shapes/shadow/square.webp', previewScale: 0.85 },
+  { id: 'circle', svg: '/svg/shapes/circle.svg', shadow: '/svg/shapes/shadow/circle.webp' },
+  { id: 'star', svg: '/svg/shapes/star.svg', shadow: '/svg/shapes/shadow/star.webp' },
+  { id: 'heart', svg: '/svg/shapes/heart.svg', shadow: '/svg/shapes/shadow/heart.webp' },
+  { id: 'hexagon', svg: '/svg/shapes/hexagon.svg', shadow: '/svg/shapes/shadow/hexagon.webp' },
+  { id: 'round', svg: '/svg/shapes/round.svg', shadow: '/svg/shapes/shadow/round.webp' },
+  { id: 'diamond', svg: '/svg/shapes/diamond.svg', shadow: '/svg/shapes/shadow/diamond.webp' },
+  // 萬聖節（2026）。只在萬聖節主題列進選單（見 data/themes.ts），節慶過後仍要留在這裡
+  { id: 'pumpkin', svg: '/svg/shapes/pumpkin.svg', shadow: '/svg/shapes/shadow/pumpkin.webp' },
+  { id: 'skull', svg: '/svg/shapes/skull.svg', shadow: '/svg/shapes/shadow/skull.webp' },
+  { id: 'ghost', svg: '/svg/shapes/ghost.svg', shadow: '/svg/shapes/shadow/ghost.webp' },
 ]
 
 /**

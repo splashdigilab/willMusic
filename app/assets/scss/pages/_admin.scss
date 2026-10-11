@@ -347,16 +347,7 @@
     overflow: hidden;
     padding: 1rem;
     border-bottom: 1px solid #f3f4f6;
-
-    /* Override StickyNote styling internally to fit preview box tightly */
-    :deep(.c-sticky-note) {
-      position: relative !important;
-      left: 0 !important;
-      top: 0 !important;
-      transform: none !important;
-      width: 100% !important;
-      height: 100% !important;
-    }
+    /* 便利貼本身寬 100%、正方形，直接填滿內距以內的範圍；陰影落在內距裡，不會被 overflow 裁掉 */
   }
 
   &__note-meta {
@@ -403,7 +394,7 @@
     overflow-wrap: anywhere;
   }
 
-  /* 狀態標籤，目前只有「已封鎖」 */
+  /* 狀態標籤：已封鎖、收行銷 */
   &__tag {
     display: inline-block;
     margin-left: 0.35rem;
@@ -418,6 +409,27 @@
       background: #fef2f2;
       color: #b91c1c;
       border: 1px solid #fecaca;
+    }
+
+    &--marketing {
+      background: #ecfdf5;
+      color: #047857;
+      border: 1px solid #a7f3d0;
+    }
+  }
+
+  /* 行銷名單的說明＋匯出鈕，在清單上面 */
+  &__member-export {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1rem;
+
+    .p-admin__video-hint {
+      flex: 1 1 18rem;
+      margin: 0;
     }
   }
 

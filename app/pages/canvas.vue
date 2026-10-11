@@ -46,7 +46,6 @@
           :src="interstitialSrc || undefined"
           preload="auto"
           playsinline
-          @timeupdate="onInterstitialPrimaryTimeUpdate"
           @ended="onInterstitialVideoEnded"
         />
       </div>
@@ -81,14 +80,8 @@
         class="p-canvas__interstitial p-canvas__interstitial--right"
         aria-hidden="true"
       >
-        <video
-          ref="videoRightRef"
-          class="p-canvas__interstitial__video"
-          :src="interstitialSrc || undefined"
-          preload="auto"
-          playsinline
-          muted
-        />
+        <!-- 右邊不另外解碼一份：把左邊影片的每一格畫過來（見 useVideoMirror） -->
+        <canvas ref="videoMirrorRef" class="p-canvas__interstitial__video" />
       </div>
     </div>
   </div>
@@ -109,6 +102,7 @@ import {
 } from '~/composables/useConductor'
 import type { StateChangeInfo } from '~/composables/useConductor'
 import { useNoteFlow, type FlowDirection, type FlowRect } from '~/composables/useNoteFlow'
+import { useVideoMirror } from '~/composables/useVideoMirror'
 import { WALL_LOOK } from '~/utils/wall-look'
 
 definePageMeta({ layout: false })
@@ -213,7 +207,8 @@ let interstitialArmTimer: ReturnType<typeof setInterval> | null = null
 
 const showInterstitial = ref(false)
 const videoLeftRef = ref<HTMLVideoElement | null>(null)
-const videoRightRef = ref<HTMLVideoElement | null>(null)
+const videoMirrorRef = ref<HTMLCanvasElement | null>(null)
+const videoMirror = useVideoMirror(videoLeftRef, videoMirrorRef)
 const isCanvasReady = ref(false)
 /** 使用者點「開始」後才啟動 Conductor／插播排程，以符合瀏覽器自動播放（有聲影片）政策 */
 const hasUserStarted = ref(false)
@@ -258,16 +253,6 @@ const onPromoFinished = () => {
   showPromo.value = false
   promoDimming.value = false
   finishPromo()
-}
-
-/** 右側影片無音訊，依左側時間軸對齊 */
-const onInterstitialPrimaryTimeUpdate = () => {
-  const primary = videoLeftRef.value
-  const secondary = videoRightRef.value
-  if (!primary || !secondary) return
-  if (Math.abs(secondary.currentTime - primary.currentTime) > 0.12) {
-    secondary.currentTime = primary.currentTime
-  }
 }
 
 const preloadVideo = (url: string): Promise<void> => {
@@ -355,16 +340,13 @@ const startInterstitialPlayback = async () => {
   }
   await nextTick()
   const left = videoLeftRef.value
-  const right = videoRightRef.value
-  if (!left || !right || !interstitialSrc.value) return
+  if (!left || !interstitialSrc.value) return
   left.pause()
-  right.pause()
   left.currentTime = 0
-  right.currentTime = 0
   left.muted = false
   try {
     await left.play()
-    await right.play()
+    videoMirror.start()
   } catch (e) {
     if (!isAutoplayNotAllowedError(e)) {
       console.error('[canvas] 插播影片播放失敗', e)
@@ -374,7 +356,7 @@ const startInterstitialPlayback = async () => {
     try {
       left.muted = true
       await left.play()
-      await right.play()
+      videoMirror.start()
       console.warn(
         '[canvas] 插播改為靜音播放（瀏覽器自動播放政策：需使用者互動後才能自動有聲播放）'
       )
@@ -387,7 +369,7 @@ const startInterstitialPlayback = async () => {
 
 const onInterstitialVideoEnded = () => {
   videoLeftRef.value?.pause()
-  videoRightRef.value?.pause()
+  videoMirror.stop()
   showInterstitial.value = false
   finishInterstitial()
 }
@@ -714,14 +696,24 @@ const beginCanvasSession = async () => {
   flow.start()
   window.addEventListener('resize', onResize)
 
+  // 時段一換就排入插播。原本是「秒數剛好是 0 而且分鐘整除」才排：setInterval 跑幾個小時會漂，
+  // 偶爾整個跳過 :00 那一秒，那個時段的插播就漏了。
+  // 開場當下所在的時段不排（跟原本一樣，要等到下一個整點才開始）；
+  // 後台改了間隔時也只重新對齊、不立刻插播 —— 間隔一變，時段編號就跟著變。
+  let lastSlotN = interstitialIntervalMinutes.value
+  let lastSlotKey = getInterstitialSlotKey(new Date(), lastSlotN)
   interstitialArmTimer = setInterval(() => {
-    if (!interstitialScheduleEnabled.value) return
-    const d = new Date()
-    if (d.getSeconds() !== 0) return
     const n = interstitialIntervalMinutes.value
-    const totalM = d.getHours() * 60 + d.getMinutes()
-    if (totalM % n !== 0) return
-    armInterstitialSlot(getInterstitialSlotKey(d, n))
+    const key = getInterstitialSlotKey(new Date(), n)
+    if (n !== lastSlotN) {
+      lastSlotN = n
+      lastSlotKey = key
+      return
+    }
+    if (key === lastSlotKey) return
+    lastSlotKey = key
+    if (!interstitialScheduleEnabled.value) return
+    armInterstitialSlot(key)
   }, 1000)
 
   await startConductor({

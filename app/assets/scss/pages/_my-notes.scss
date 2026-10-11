@@ -7,7 +7,7 @@
   視覺與送出後的等待頁（_queue-status.scss）同一套：深灰底、白色漸層卡片、
   天藍漸層藥丸。這兩頁是同一件事的前後 —— 送出、然後等它上牆。
 
-  由上而下：額度卡（今天還能送幾張 + 製作按鈕）→ 排隊中 → 已上牆 → 頁尾（回到首頁）。
+  由上而下：額度卡（今天還能送幾張 + 製作按鈕）→ 排隊中 → 已上牆 → 行銷信勾選 → 頁尾（回到首頁）。
   排隊中做成一列一張、字放大，因為要讀的是「前面還有幾張」；
   已上牆做成兩欄的牆，那時候要看的是便利貼本身。
 
@@ -270,12 +270,27 @@ $ink-red: #D6335A;
 }
 
 /* 便利貼本身是寬 100%、正方形，給它一個固定寬度的框就好。
-   外面再疊一圈很淡的陰影當輪廓：白底便利貼放在白卡上，只靠便利貼自己縮小後的
-   投影分不出邊界。drop-shadow 跟著形狀走，愛心、爆炸星也一樣 */
+   外面再描一圈極細的淡輪廓：白底便利貼放在白卡上，只靠便利貼自己縮小後的
+   投影分不出邊界。
+
+   輪廓是一塊用便利貼形狀（--note-mask）切出來、往外多 0.5px 的淡灰，墊在陰影與便利貼底下，
+   愛心、爆炸星也照形狀描。0.5px 在手機上是一個實際像素；給到 1px 整圈看起來像描邊框。
+   原本是在這一層掛 filter: drop-shadow，那跟便利貼舊的陰影是同一種「filter 去讀遮罩」的
+   寫法，合成時遮罩沒算進去就會描出一個方框；Safari 還會把整張縮圖畫糊、邊緣變鋸齒。
+   便利貼縮放過，所以長度要除以 --note-scale（StickyNote 量完寬度給的）換回畫布裡的長度 */
 .p-my-notes__thumb {
   flex-shrink: 0;
   width: 76px;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.22));
+
+  .c-sticky-note__scaler::before {
+    content: '';
+    position: absolute;
+    inset: calc(-0.5px / var(--note-scale, 1));
+    background: rgba(0, 0, 0, 0.22);
+    mask: var(--note-mask) center / 100% 100% no-repeat;
+    -webkit-mask: var(--note-mask) center / 100% 100% no-repeat;
+    pointer-events: none;
+  }
 }
 
 .p-my-notes__time {
@@ -471,6 +486,51 @@ $ink-red: #D6335A;
   text-align: center;
   font-size: 0.95rem;
   color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── 行銷信的同意 ──
+   排在便利貼之後：這頁要看的是便利貼，這一格是設定，不搶前面的位置。
+   勾選框與字的排法跟送出確認畫面那一列一樣 */
+.p-my-notes__marketing {
+  @extend %card;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 1rem 1.15rem;
+  cursor: pointer;
+}
+
+/* 原生勾選框只換顏色：鍵盤、報讀器、iOS 的點擊區都不用自己補 */
+.p-my-notes__marketing-input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0.15rem 0 0;
+  accent-color: $ink-blue;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.p-my-notes__marketing-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.45;
+  color: $ink;
+}
+
+/* email 可能很長，斷在任何地方都比撐破版面好 */
+.p-my-notes__marketing-email {
+  font-size: 0.75rem;
+  color: $ink-sub;
+  overflow-wrap: anywhere;
 }
 
 /* 頁尾沉到畫面底部：清單短的時候不要貼在最後一張下面。

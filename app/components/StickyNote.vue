@@ -5,6 +5,10 @@
     :data-shape="note.style.shape || 'rounded'"
   >
     <div class="c-sticky-note__scaler" :style="[scalerStyle, wrapperStyles]">
+      <!-- 陰影：預先算好的形狀陰影圖，墊在便利貼底下（見 shapes.ts 的 shadow） -->
+      <div class="c-sticky-note__shadow" :style="shadowStyles" aria-hidden="true" />
+      <!-- 遮罩層比內層大一圈，避免 WebKit 在遮罩邊緣漏出底色（見 _sticky-note.scss） -->
+      <div class="c-sticky-note__mask" :style="maskStyles">
       <div class="c-sticky-note__inner" :style="innerStyles">
       <!-- 多文字區塊：每個區塊各自位置、顏色、對齊 -->
       <template v-if="textBlocks.length">
@@ -67,6 +71,7 @@
         <NoteNameTag :name="nameTag.name" :avatar="nameTagAvatar" />
       </div>
     </div>
+      </div>
     </div>
   </div>
 </template>
@@ -140,7 +145,7 @@ const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
   backgroundImage: props.note.style.backgroundImage
 }))
 
-const { wrapperStyles, innerStyles } = useStickyNoteStyle(noteStyleProps)
+const { wrapperStyles, maskStyles, innerStyles, shadowStyles } = useStickyNoteStyle(noteStyleProps)
 
 const contentWrapStyle = computed(() => {
   const t = props.note.style?.textTransform
@@ -160,6 +165,7 @@ const VIRTUAL_SIZE = 600
 // 在那之前先不要畫出來：否則新便利貼的第一幀會以 600px 全尺寸、
 // 從左上角（transform-origin: 0 0）展開，看起來就是閃一下。
 // 量到寬度後（含 ResizeObserver 的後續變化）才切回 visible。
+// --note-scale 讓頁面能把「螢幕上的 1px」換算回 600px 畫布裡的長度（例如我的便利貼的細外框）
 const scalerStyle = ref<Record<string, string>>({
   transform: 'scale(1)',
   visibility: 'hidden'
@@ -169,9 +175,11 @@ function updateScale() {
   if (noteRef.value) {
     const width = noteRef.value.clientWidth
     if (width > 0) {
+      const scale = width / VIRTUAL_SIZE
       scalerStyle.value = {
-        transform: `scale(${width / VIRTUAL_SIZE})`,
-        visibility: 'visible'
+        transform: `scale(${scale})`,
+        visibility: 'visible',
+        '--note-scale': String(scale)
       }
     }
   }

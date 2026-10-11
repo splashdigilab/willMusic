@@ -68,20 +68,14 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        /* 這裡不能 overflow: hidden —— 便利貼的投影掛在 __scaler 上，會落在
-           .c-sticky-note 的框外（drop-shadow 7px 7px 13px，右下最多溢出 20px），
-           裁掉的話預覽的陰影會被切成一條直線。
-           下面的 :deep 已經把便利貼鎖成 100%×100%，本來也沒有別的東西需要裁。
-           溢出的那點陰影落在上下的 margin 與卡片的內距裡，不會壓到文字或按鈕。 */
+        /* 這裡不能 overflow: hidden —— 便利貼的陰影會落在 .c-sticky-note 的框外
+           （右下最多溢出約 4.5%），裁掉的話預覽的陰影會被切成一條直線。
+           便利貼本身是寬 100%、正方形，剛好填滿這個框，沒有別的東西需要裁。
+           溢出的那點陰影落在上下的 margin 與卡片的內距裡，不會壓到文字或按鈕。
 
-        :deep(.c-sticky-note) {
-            position: relative !important;
-            left: 0 !important;
-            top: 0 !important;
-            transform: none !important;
-            width: 100% !important;
-            height: 100% !important;
-        }
+           原本這裡還有一段 :deep(.c-sticky-note) 想把便利貼鎖成 100%×100%，
+           但這支是全域樣式，:deep 只在 scoped 樣式裡才會被轉換，
+           原樣輸出的 :deep(...) 瀏覽器不認得、整條規則被丟掉，從來沒有生效過。 */
     }
 
     &__footnote {

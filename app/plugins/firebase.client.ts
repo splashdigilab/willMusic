@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
-import { getAuth } from 'firebase/auth'
+import { getFirestore, initializeFirestore } from 'firebase/firestore'
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence } from 'firebase/auth'
 import { getStorage } from 'firebase/storage'
 
 export default defineNuxtPlugin(() => {
@@ -25,17 +25,21 @@ export default defineNuxtPlugin(() => {
   try {
     const app = initializeApp(firebaseConfig)
 
-    // Use the new way to enable offline persistence in Firebase 10+
+    // Firestore 用預設的記憶體快取，不開 IndexedDB 離線快取。
+    // 離線快取會把每次讀到的文件都寫進手機的 IndexedDB（舊便利貼的手繪圖還是 base64，
+    // 一筆就幾百 KB），多分頁模式還要搶主控權，打包也多約 76KB。
+    // 代價是重新整理頁面時不會先秀出上次的舊資料，要等網路回來 —— 牆面本來就要即時資料。
     let db;
     if (import.meta.client) {
-      db = initializeFirestore(app, {
-        localCache: persistentLocalCache(/*settings*/{ tabManager: persistentMultipleTabManager() })
-      })
+      db = initializeFirestore(app, {})
     } else {
       db = getFirestore(app)
     }
 
-    const auth = getAuth(app)
+    // 不用 getAuth：它會連彈窗／轉址登入的程式一起打包（約 20KB），
+    // 這個站只用帳密（後台）與 LINE 換來的 custom token 登入，用不到。
+    // persistence 與 getAuth 的預設順序相同，已登入的人不會被登出。
+    const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] })
     const storage = getStorage(app)
 
     return {

@@ -4,7 +4,9 @@
 export interface StickerType {
   id: string
   defaultScale: number
-  svgFile: string // SVG 檔案路徑
+  // 便利貼上用的圖檔（SVG 或 WebP）。太重或帶濾鏡的 SVG 由 scripts/stickers/build_stickers.py
+  // 轉成同名 WebP，這裡指向 WebP、原本的 SVG 留著當來源。選單用的縮圖見 getStickerThumb
+  svgFile: string
 }
 
 /**
@@ -21,9 +23,9 @@ export const STICKER_LIBRARY: StickerType[] = [
   { id: 'sticker-14', defaultScale: 1, svgFile: '/svg/stickers/sticker-14.webp' },
   { id: 'sticker-15', defaultScale: 1, svgFile: '/svg/stickers/sticker-15.webp' },
   { id: 'sticker-16', defaultScale: 1, svgFile: '/svg/stickers/sticker-16.webp' },
-  { id: 'sticker-17', defaultScale: 1, svgFile: '/svg/stickers/sticker-17.svg' },
+  { id: 'sticker-17', defaultScale: 1, svgFile: '/svg/stickers/sticker-17.webp' },
   { id: 'sticker-25', defaultScale: 1, svgFile: '/svg/stickers/sticker-25.svg' },
-  { id: 'sticker-26', defaultScale: 1, svgFile: '/svg/stickers/sticker-26.svg' },
+  { id: 'sticker-26', defaultScale: 1, svgFile: '/svg/stickers/sticker-26.webp' },
   { id: 'sticker-27', defaultScale: 1, svgFile: '/svg/stickers/sticker-27.svg' },
   { id: 'sticker-28', defaultScale: 1, svgFile: '/svg/stickers/sticker-28.svg' },
   { id: 'sticker-29', defaultScale: 1, svgFile: '/svg/stickers/sticker-29.svg' },
@@ -39,22 +41,22 @@ export const STICKER_LIBRARY: StickerType[] = [
   { id: 'sticker-40', defaultScale: 1, svgFile: '/svg/stickers/sticker-40.webp' },
   { id: 'sticker-41', defaultScale: 1, svgFile: '/svg/stickers/sticker-41.webp' },
   { id: 'sticker-42', defaultScale: 1, svgFile: '/svg/stickers/sticker-42.webp' },
-  { id: 'sticker-1', defaultScale: 1, svgFile: '/svg/stickers/sticker-1.svg' },
-  { id: 'sticker-2', defaultScale: 1, svgFile: '/svg/stickers/sticker-2.svg' },
-  { id: 'sticker-3', defaultScale: 1, svgFile: '/svg/stickers/sticker-3.svg' },
-  { id: 'sticker-4', defaultScale: 1, svgFile: '/svg/stickers/sticker-4.svg' },
-  { id: 'sticker-5', defaultScale: 1, svgFile: '/svg/stickers/sticker-5.svg' },
-  { id: 'sticker-6', defaultScale: 1, svgFile: '/svg/stickers/sticker-6.svg' },
-  { id: 'sticker-7', defaultScale: 1, svgFile: '/svg/stickers/sticker-7.svg' },
-  { id: 'sticker-8', defaultScale: 1, svgFile: '/svg/stickers/sticker-8.svg' },
-  { id: 'sticker-9', defaultScale: 1, svgFile: '/svg/stickers/sticker-9.svg' },
-  { id: 'sticker-10', defaultScale: 1, svgFile: '/svg/stickers/sticker-10.svg' },
-  { id: 'sticker-11', defaultScale: 1, svgFile: '/svg/stickers/sticker-11.svg' },
-  { id: 'sticker-12', defaultScale: 1, svgFile: '/svg/stickers/sticker-12.svg' },
-  { id: 'sticker-51', defaultScale: 1, svgFile: '/svg/stickers/sticker-51.svg' },
-  { id: 'sticker-52', defaultScale: 1, svgFile: '/svg/stickers/sticker-52.svg' },
+  { id: 'sticker-1', defaultScale: 1, svgFile: '/svg/stickers/sticker-1.webp' },
+  { id: 'sticker-2', defaultScale: 1, svgFile: '/svg/stickers/sticker-2.webp' },
+  { id: 'sticker-3', defaultScale: 1, svgFile: '/svg/stickers/sticker-3.webp' },
+  { id: 'sticker-4', defaultScale: 1, svgFile: '/svg/stickers/sticker-4.webp' },
+  { id: 'sticker-5', defaultScale: 1, svgFile: '/svg/stickers/sticker-5.webp' },
+  { id: 'sticker-6', defaultScale: 1, svgFile: '/svg/stickers/sticker-6.webp' },
+  { id: 'sticker-7', defaultScale: 1, svgFile: '/svg/stickers/sticker-7.webp' },
+  { id: 'sticker-8', defaultScale: 1, svgFile: '/svg/stickers/sticker-8.webp' },
+  { id: 'sticker-9', defaultScale: 1, svgFile: '/svg/stickers/sticker-9.webp' },
+  { id: 'sticker-10', defaultScale: 1, svgFile: '/svg/stickers/sticker-10.webp' },
+  { id: 'sticker-11', defaultScale: 1, svgFile: '/svg/stickers/sticker-11.webp' },
+  { id: 'sticker-12', defaultScale: 1, svgFile: '/svg/stickers/sticker-12.webp' },
+  { id: 'sticker-51', defaultScale: 1, svgFile: '/svg/stickers/sticker-51.webp' },
+  { id: 'sticker-52', defaultScale: 1, svgFile: '/svg/stickers/sticker-52.webp' },
   { id: 'sticker-53', defaultScale: 1, svgFile: '/svg/stickers/sticker-53.svg' },
-  { id: 'sticker-54', defaultScale: 1, svgFile: '/svg/stickers/sticker-54.svg' },
+  { id: 'sticker-54', defaultScale: 1, svgFile: '/svg/stickers/sticker-54.webp' },
   { id: 'sticker-43', defaultScale: 1, svgFile: '/svg/stickers/sticker-43.svg' },
   { id: 'sticker-44', defaultScale: 1, svgFile: '/svg/stickers/sticker-44.svg' },
   { id: 'sticker-45', defaultScale: 1, svgFile: '/svg/stickers/sticker-45.svg' },
@@ -65,18 +67,18 @@ export const STICKER_LIBRARY: StickerType[] = [
   { id: 'sticker-50', defaultScale: 1, svgFile: '/svg/stickers/sticker-50.svg' },
   { id: 'sticker-55', defaultScale: 1, svgFile: '/svg/stickers/sticker-55.svg' },
   { id: 'sticker-56', defaultScale: 1, svgFile: '/svg/stickers/sticker-56.svg' },
-  { id: 'sticker-57', defaultScale: 1, svgFile: '/svg/stickers/sticker-57.svg' },
+  { id: 'sticker-57', defaultScale: 1, svgFile: '/svg/stickers/sticker-57.webp' },
   { id: 'sticker-58', defaultScale: 1, svgFile: '/svg/stickers/sticker-58.svg' },
-  { id: 'sticker-59', defaultScale: 1, svgFile: '/svg/stickers/sticker-59.svg' },
+  { id: 'sticker-59', defaultScale: 1, svgFile: '/svg/stickers/sticker-59.webp' },
   { id: 'sticker-60', defaultScale: 1, svgFile: '/svg/stickers/sticker-60.svg' },
-  { id: 'sticker-61', defaultScale: 1, svgFile: '/svg/stickers/sticker-61.svg' },
+  { id: 'sticker-61', defaultScale: 1, svgFile: '/svg/stickers/sticker-61.webp' },
   { id: 'sticker-62', defaultScale: 1, svgFile: '/svg/stickers/sticker-62.svg' },
   { id: 'sticker-63', defaultScale: 1, svgFile: '/svg/stickers/sticker-63.svg' },
   { id: 'sticker-64', defaultScale: 1, svgFile: '/svg/stickers/sticker-64.svg' },
-  { id: 'sticker-65', defaultScale: 1, svgFile: '/svg/stickers/sticker-65.svg' },
+  { id: 'sticker-65', defaultScale: 1, svgFile: '/svg/stickers/sticker-65.webp' },
   { id: 'sticker-66', defaultScale: 1, svgFile: '/svg/stickers/sticker-66.svg' },
-  { id: 'sticker-67', defaultScale: 1, svgFile: '/svg/stickers/sticker-67.svg' },
-  { id: 'sticker-68', defaultScale: 1, svgFile: '/svg/stickers/sticker-68.svg' },
+  { id: 'sticker-67', defaultScale: 1, svgFile: '/svg/stickers/sticker-67.webp' },
+  { id: 'sticker-68', defaultScale: 1, svgFile: '/svg/stickers/sticker-68.webp' },
   { id: 'sticker-70', defaultScale: 1, svgFile: '/svg/stickers/sticker-70.svg' },
   { id: 'sticker-71', defaultScale: 1, svgFile: '/svg/stickers/sticker-71.svg' },
   { id: 'sticker-72', defaultScale: 1, svgFile: '/svg/stickers/sticker-72.svg' },
@@ -150,6 +152,11 @@ export const STICKER_LIBRARY: StickerType[] = [
   { id: 'sticker-103', defaultScale: 1, svgFile: '/svg/stickers/sticker-103.svg' },
   { id: 'sticker-102', defaultScale: 1, svgFile: '/svg/stickers/sticker-102.svg' },
   { id: 'sticker-101', defaultScale: 1, svgFile: '/svg/stickers/sticker-101.svg' },
+  // 萬聖節（2026）：南瓜、骷髏、幽靈的臉，配同名造型用。只在萬聖節主題列進貼圖庫（見 data/themes.ts），
+  // 節慶過後仍要留在這裡，已上牆的便利貼才查得到
+  { id: 'halloween-pumpkin-face', defaultScale: 1, svgFile: '/svg/stickers/halloween-pumpkin-face.svg' },
+  { id: 'halloween-skull-face', defaultScale: 1, svgFile: '/svg/stickers/halloween-skull-face.svg' },
+  { id: 'halloween-ghost-face', defaultScale: 1, svgFile: '/svg/stickers/halloween-ghost-face.svg' },
 ]
 
 /**
@@ -157,3 +164,10 @@ export const STICKER_LIBRARY: StickerType[] = [
  */
 export const getStickerById = (id: string): StickerType | undefined =>
   STICKER_LIBRARY.find(s => s.id === id)
+
+/**
+ * STEP 5 選單用的縮圖（144px，scripts/stickers/build_stickers.py 產生）。
+ * 選單一打開就是十幾格，直接用便利貼上的原圖會一次解碼好幾張大圖。
+ * 新增貼紙忘了跑腳本時縮圖會 404，選單那邊要退回 svgFile
+ */
+export const getStickerThumb = (id: string): string => `/svg/stickers/thumb/${id}.webp`

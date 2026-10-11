@@ -388,7 +388,10 @@
         @touchcancel.capture="onCanvasTouchEnd"
       >
         <!-- 虛擬縮放層：永遠固定 600px 大小 -->
-        <div class="p-editor__canvas-scaler" :style="[scalerStyle, wrapperStyles]">
+        <div ref="canvasScalerRef" class="p-editor__canvas-scaler" :style="wrapperStyles">
+          <div class="p-editor__canvas-shadow" :style="canvasShadowStyle" aria-hidden="true" />
+          <!-- 遮罩層：形狀裁切，比畫布大一圈（與 StickyNote 同一套，見 _sticky-note.scss） -->
+          <div class="p-editor__canvas-mask" :style="canvasMaskStyle">
           <!-- 可裁切層：背景、文字內容、貼紙圖片 -->
           <div class="p-editor__canvas p-editor__canvas--stage" :style="canvasStyle">
             <!-- 文字內容（可裁切）— 多文字區塊 -->
@@ -470,6 +473,7 @@
             />
           </div>
         </div>
+          </div>
 
         <!-- UI 層：編輯框置頂，不被裁切（繪圖模式時隱藏以便手繪）。
              --editor-selection-line 掛在這裡就好，編輯框全都在這一層底下。 -->
@@ -797,17 +801,20 @@
             </div>
             <div class="p-editor__sticker-grid">
             <button
-              v-for="sticker in STICKER_LIBRARY"
+              v-for="sticker in stickerLibrary"
               :key="sticker.id"
               class="p-editor__sticker-btn"
               @click="addSticker(sticker.id)"
             >
-              <img 
+              <!-- 選單用 144px 縮圖；縮圖不存在（新貼紙還沒跑 build_stickers.py）時退回原圖 -->
+              <img
                 v-if="sticker.svgFile"
-                :src="sticker.svgFile"
+                :src="getStickerThumb(sticker.id)"
                 :alt="sticker.id"
                 loading="lazy"
+                decoding="async"
                 class="p-editor__sticker-btn-img"
+                @error="onStickerThumbError($event, sticker.svgFile)"
               />
             </button>
           </div>
@@ -822,8 +829,9 @@
       v-if="showExportNode"
       style="position: fixed; left: -9999px; top: -9999px; pointer-events: none; opacity: 0;"
     >
+      <!-- 便利貼四周留 5%：陰影往右下延伸約 4.5%，貼齊圖邊的話分享出去的圖會把陰影切掉 -->
       <div ref="exportNodeRef" style="width: 1080px; height: 1080px; background: transparent; display: flex; justify-content: center; align-items: center;">
-        <div style="width: 100%; height: 100%; position: relative;">
+        <div style="width: 90%; height: 90%; position: relative;">
           <StickyNote :note="previewNoteData" style="position: absolute; left: 0; top: 0; transform: none; width: 100%; height: 100%;" />
         </div>
       </div>
@@ -865,7 +873,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { StickerInstance, DraftData, StickyNoteStyle, TextBlockInstance, NameTagDraft, NameTagPlacement } from '~/types'
-import { getStickerById, STICKER_LIBRARY } from '~/data/stickers'
+import { getStickerById, getStickerThumb } from '~/data/stickers'
+import { getThemeMaterials, getThemeShapes, getThemeStickers } from '~/data/themes'
 import {
   NAME_TAG_STICKER_ID,
   NAME_TAG_STICKER_TYPE,
@@ -875,7 +884,7 @@ import {
   nameInitial
 } from '~/utils/name-tag'
 import { BACKGROUND_IMAGES, isColorMaterial } from '~/data/backgrounds'
-import { SELECTABLE_SHAPES, DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
+import { DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_STEPS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
 import { TERMS_RULES } from '~/data/terms'
 import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z } from '~/utils/sticky-note-style'
@@ -1368,9 +1377,20 @@ const brushColor = ref('#ffffff')
 const brushWidth = ref(8)
 const eraserMode = ref(false)
 const drawingData = ref<string | null>(null)
-// 資料來源
-const backgrounds = BACKGROUND_IMAGES
-const shapes = SELECTABLE_SHAPES
+// 資料來源：材質、造型、貼紙依節慶主題列出（見 data/themes.ts）。
+// 第一個材質仍是 BACKGROUND_IMAGES[0]：節慶材質只接在後面，預設值與「有沒有動過」的判斷不受主題影響
+const { theme } = useTheme()
+const backgrounds = computed(() => getThemeMaterials(theme.value))
+const shapes = computed(() => getThemeShapes(theme.value))
+const stickerLibrary = computed(() => getThemeStickers(theme.value))
+
+/** 選單縮圖載入失敗（還沒產生）時換成原圖；只換一次，原圖也失敗就不再重試 */
+const onStickerThumbError = (event: Event, fallback: string) => {
+  const img = event.target as HTMLImageElement
+  if (img.dataset.thumbFallback) return
+  img.dataset.thumbFallback = '1'
+  img.src = fallback
+}
 
 // 編輯框要「在自己那一步」而且「被選取」才出現。
 // 只看選取不行：點畫布不會換步驟，在 STEP 1 點到貼紙就會冒出一個沒有控制項可用的框
@@ -1379,38 +1399,43 @@ const showStickerEditFrame = computed(() => activeTab.value === 'sticker' && !!s
 
 // Sticker Management
 
-// ── 繪圖存檔防抖
-// 每筆畫完成 (path:created) 後 exportToDataURL 會產生大型 PNG 字串，
-// 加上 JSON.stringify 存到 localStorage 會短暫分配 1–2MB。
-// 防抖 1.5s 確保快速畫多筆時只存一次，顯著降低 iOS Safari 的 GC 壓力。
-let drawSaveTimer: ReturnType<typeof setTimeout> | null = null
+// ── 手繪匯出：停筆一段時間才轉 PNG
+// 畫的當下畫面上是 Fabric 的 canvas，drawingData（PNG）只有離開繪圖步驟後的預覽、
+// 存草稿與送出會用到。原本每筆畫完都同步 toDataURL —— 而且 path:created 會同時觸發
+// onUndoRedoChange 與 onPathCreated，一筆編碼兩次 —— 在手指抬起的當下卡住主執行緒，
+// 下一筆的起筆跟著延遲。現在筆畫只記「有待匯出」，停筆 1.5 秒、離開繪圖步驟、
+// 或任何一次存草稿（saveDraftData 開頭會先補匯出）時才真的轉 PNG。
+const DRAW_EXPORT_IDLE_MS = 1500
+let drawExportTimer: ReturnType<typeof setTimeout> | null = null
 
-// 僅在有實際筆畫時更新 drawingData；saveImmediately=true 時略過防抖（離開繪圖模式時使用）
-const syncDrawingDataFromFabric = (saveImmediately = false) => {
-  if (!fabricBrush.canUndo()) {
-    // 當前沒有任何筆畫：保留既有的 drawingData（例如使用者先前的繪圖），
-    // 清空動作交給「一鍵清除」等顯式操作，避免誤將完成的畫作設為 null。
-    return
-  }
+/** 立刻把畫布轉成 PNG 寫進 drawingData。有變動才回傳 true（不存檔，交給呼叫端） */
+const exportDrawingNow = (): boolean => {
+  if (drawExportTimer) { clearTimeout(drawExportTimer); drawExportTimer = null }
+  // 當前沒有任何筆畫：保留既有的 drawingData（例如使用者先前的繪圖），
+  // 清空動作交給「一鍵清除」等顯式操作，避免誤將完成的畫作設為 null。
+  if (!fabricBrush.canUndo()) return false
   const data = fabricBrush.exportToDataURL()
-  if (data && data !== drawingData.value) {
-    drawingData.value = data
-    if (saveImmediately) {
-      if (drawSaveTimer) { clearTimeout(drawSaveTimer); drawSaveTimer = null }
-      saveDraftData()
-    } else {
-      if (drawSaveTimer) clearTimeout(drawSaveTimer)
-      drawSaveTimer = setTimeout(() => {
-        drawSaveTimer = null
-        saveDraftData()
-      }, 1500)
-    }
-  }
+  if (!data || data === drawingData.value) return false
+  drawingData.value = data
+  return true
 }
 
-const fabricBrush = useFabricBrush(() => {
-  syncDrawingDataFromFabric()
-})
+/** 有待匯出的筆畫才匯出。saveDraftData 開頭會呼叫，確保存下來的是最新的畫 */
+const flushDrawingExport = () => {
+  if (drawExportTimer) exportDrawingNow()
+}
+
+/** 畫了一筆／undo／redo：重新計時，停筆 DRAW_EXPORT_IDLE_MS 後匯出並存草稿 */
+const scheduleDrawingExport = () => {
+  if (drawExportTimer) clearTimeout(drawExportTimer)
+  drawExportTimer = setTimeout(() => {
+    drawExportTimer = null
+    if (exportDrawingNow()) saveDraftData()
+  }, DRAW_EXPORT_IDLE_MS)
+}
+
+// path:created 同時會呼叫 setOnUndoRedoChange 設的那支，那支已經排了匯出，這裡不必再排
+const fabricBrush = useFabricBrush()
 // 切換 tab 時同步繪圖模式與文字選取狀態
 watch(activeTab, (tab) => {
   // 繪圖：進入/退出繪圖模式
@@ -1421,8 +1446,9 @@ watch(activeTab, (tab) => {
     fabricBrush.setDrawingMode(true)
   } else {
     if (drawMode.value) {
-      // 離開繪圖模式：立即存檔（saveImmediately=true），不用防抖，避免資料遺失
-      syncDrawingDataFromFabric(true)
+      // 離開繪圖模式：立刻匯出並存檔，不等停筆計時，避免資料遺失。
+      // 一定要在 minimizeCanvas 之前：縮成 1×1 之後就匯出不了了
+      if (exportDrawingNow()) saveDraftData()
       fabricBrush.setDrawingMode(false)
       // 最小化畫布：釋放 ~1.4MB GPU backing store，降低文字編輯時的記憶體壓力
       fabricBrush.minimizeCanvas()
@@ -1462,7 +1488,7 @@ watch(drawMode, (v) => {
       fabricBrush.setOnUndoRedoChange(() => {
         drawCanUndo.value = fabricBrush.canUndo()
         drawCanRedo.value = fabricBrush.canRedo()
-        syncDrawingDataFromFabric()
+        scheduleDrawingExport()
       })
       drawCanUndo.value = fabricBrush.canUndo()
       drawCanRedo.value = fabricBrush.canRedo()
@@ -1477,13 +1503,20 @@ const noteStyleProps = computed<StickyNoteStyleProps>(() => ({
   backgroundImage: backgroundImage.value
 }))
 
-const { wrapperStyles, innerStyles: canvasStyle } = useStickyNoteStyle(noteStyleProps)
+const {
+  wrapperStyles,
+  maskStyles: canvasMaskStyle,
+  innerStyles: canvasStyle,
+  shadowStyles: canvasShadowStyle
+} = useStickyNoteStyle(noteStyleProps)
 
 // 畫面是否有內容（文字 / 貼紙 / 繪圖任一存在，或背景/形狀已被更改）
 const hasAnyContent = computed(() =>
   textBlocks.value.some(b => b.content.trim()) ||
   stickers.value.length > 0 ||
   !!drawingData.value ||
+  // 手繪要停筆後才匯出成 drawingData，第一筆畫下去時靠這個讓「全部重來」立刻可按
+  drawCanUndo.value ||
   backgroundImage.value !== (BACKGROUND_IMAGES?.[0]?.url ?? '') ||
   shape.value !== DEFAULT_SHAPE_ID
 )
@@ -1964,6 +1997,9 @@ const deselectAll = () => {
 
 // saveDraftData 需在 composable 之前定義（作為 callback）
 const saveDraftData = () => {
+  // 手繪是停筆後才匯出的，存檔前先補上，否則會存到少了最後幾筆的舊圖
+  flushDrawingExport()
+
   // 如果沒有任何有效內容（文字、貼紙、繪圖皆為空，且背景/形狀皆為預設值），不存草稿
   // 只有一個署名不算內容：那樣存下來，下次進來會問要不要用一份什麼都沒有的草稿
   const hasContent =
@@ -2775,7 +2811,7 @@ const initFabricBrush = async () => {
   fabricBrush.setOnUndoRedoChange(() => {
     drawCanUndo.value = fabricBrush.canUndo()
     drawCanRedo.value = fabricBrush.canRedo()
-    syncDrawingDataFromFabric()
+    scheduleDrawingExport()
   })
   fabricBrush.setBrushColor(brushColor.value)
   fabricBrush.setBrushWidth(brushWidth.value)
@@ -2787,9 +2823,14 @@ const initFabricBrush = async () => {
   }
   drawCanUndo.value = fabricBrush.canUndo()
   drawCanRedo.value = fabricBrush.canRedo()
+  // Fabric 在看活動規範時就預先初始化了，那時通常還沒到繪圖步驟：先縮成 1×1，
+  // 進繪圖步驟時再由 watch(activeTab) 還原，STEP 1–3（含鍵盤彈出時）不必一直佔著整塊畫布
+  if (!drawMode.value) fabricBrush.minimizeCanvas()
 }
 
-const scalerStyle = ref({ transform: 'scale(1)' })
+// 縮放直接寫在 scaler 元素的 style 上（見下面的 ResizeObserver），不經過響應式狀態
+const canvasScalerRef = ref<HTMLElement | null>(null)
+let currentCanvasScale = 0
 const VIRTUAL_SIZE = 600
 let resizeObserver: ResizeObserver | null = null
 
@@ -2999,8 +3040,10 @@ onMounted(async () => {
     tokenRequiredForSubmit.value = data.enabled === true
   })
 
-  // Scale observer（加防抖：即使 interactive-widget=overlays-content 未生效的舊 iOS，
-  // 也能限制鍵盤動畫期間最多每 150ms 觸發一次 Vue re-render，避免記憶體暴衝）
+  // Scale observer：一幀最多更新一次。
+  // 縮放直接寫到元素上，不經過響應式狀態 —— 切換步驟時面板高度在過渡，畫布每一幀都在變大小，
+  // 原本寫進 ref 的話，整個編輯器元件（三千行的 template）每一幀都要重新 render 一次；
+  // 舊 iOS 鍵盤動畫期間也是同樣的情形
   if (canvasRef.value) {
     let resizeRafId: number | null = null
     resizeObserver = new ResizeObserver(entries => {
@@ -3011,8 +3054,9 @@ onMounted(async () => {
       resizeRafId = requestAnimationFrame(() => {
         resizeRafId = null
         const scale = newWidth / VIRTUAL_SIZE
-        if (scalerStyle.value.transform !== `scale(${scale})`) {
-          scalerStyle.value = { transform: `scale(${scale})` }
+        if (scale !== currentCanvasScale && canvasScalerRef.value) {
+          currentCanvasScale = scale
+          canvasScalerRef.value.style.transform = `scale(${scale})`
         }
       })
     })
@@ -3031,7 +3075,8 @@ onUnmounted(() => {
   document.documentElement.style.removeProperty('--editor-locked-h')
   if (resizeObserver) resizeObserver.disconnect()
   if (_clampRafId !== null) { cancelAnimationFrame(_clampRafId); _clampRafId = null }
-  if (drawSaveTimer) { clearTimeout(drawSaveTimer); drawSaveTimer = null; saveDraftData() }
+  // 還有沒匯出的筆畫就補存（saveDraftData 開頭會先匯出）
+  if (drawExportTimer) saveDraftData()
   unsubTokenRequirement?.()
   unsubTokenRequirement = null
   fabricBrush.dispose()

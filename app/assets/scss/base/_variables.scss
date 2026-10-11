@@ -67,11 +67,7 @@ $color-grey: #241F20;
   --shadow-xl: 0 20px 40px #{rgba(0, 0, 0, 0.2)};
   --shadow-soft: 0 0px 2px #{rgba($color-grey, 0.15)};
   --shadow-default: 0 0px 4px #{rgba($color-grey, 0.3)};
-
-  // 便利貼投影：新視覺的陰影在稿子裡是 opacity 0.35 的點陣圖，
-  // 網頁改用 drop-shadow 重現（見 _sticky-note.scss）。
-  --shadow-sticky: 0 12px 24px #{rgba(0, 0, 0, 0.35)};
-  --shadow-sticky-lifted: 0 20px 36px #{rgba(0, 0, 0, 0.45)};
+  // 便利貼的陰影不走這組變數：每個造型一張預先算好的陰影圖（見 _sticky-note.scss）
 
   // Spacing
   --spacing-xs: 0.25rem;

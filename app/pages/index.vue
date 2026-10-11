@@ -4,6 +4,9 @@
     <!-- 活動介紹滿版 overlay：載入時顯示，loading 完後按「開始」關閉 -->
     <Transition name="intro-fade">
       <div v-if="showIntroOverlay" class="p-index__intro-overlay">
+        <!-- 節慶主題換掉整個開場畫面（版面跟卡片差太多，不是改顏色就好）；按鈕與載入狀態照舊 -->
+        <HalloweenIntro v-if="themeId === 'halloween'" :loading="loading" @start="onStartClick" />
+        <template v-else>
         <div class="p-index__intro-card">
           <!-- 四角裝飾方塊 -->
           <div class="p-index__intro-marks p-index__intro-marks--tl">
@@ -39,6 +42,7 @@
         </div>
 
         <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__intro-logo" />
+        </template>
       </div>
     </Transition>
 
@@ -130,6 +134,8 @@
       @touchstart.stop
       @wheel.stop
     >
+      <!-- 萬聖節的稿子把字標放回按鈕左邊，只有設了 wallBarLogo 的主題才出現 -->
+      <img v-if="theme.wallBarLogo" src="/willMusicLogo.png" alt="WillMusic" class="p-index__bar-logo" />
       <NuxtLink to="/editor" class="p-index__make-btn">製作便利貼</NuxtLink>
     </div>
 
@@ -156,8 +162,11 @@ import { WALL_LOOK, randomWallLook, turnFactor, type WallLook } from '~/utils/wa
 import StickyNote from '~/components/StickyNote.vue'
 import MemberBadge from '~/components/MemberBadge.vue'
 import AppModal from '~/components/AppModal.vue'
+import HalloweenIntro from '~/components/theme/HalloweenIntro.vue'
 
 definePageMeta({ layout: false, ssr: false })
+
+const { theme, themeId } = useTheme()
 
 const { getHistory } = useFirestore()
 const { completeLoginReturn } = useMemberAuth()
@@ -355,10 +364,18 @@ const onLeave = (el: Element, done: () => void) => {
   })
 }
 
-// 點擊「開始」：關閉 overlay 並播放進場動畫
+/** overlay 開著的期間有沒有新便利貼進來（那時不排版，等按「開始」再補） */
+let reflowPendingBehindOverlay = false
+
+// 點擊「開始」：關閉 overlay 並播放進場動畫。
+// 只在第一次、或 overlay 開著時有新便利貼進來才排版 —— 按「說明」再按開始時位置根本沒變，
+// 原本照樣對全部便利貼重播一次補間，GSAP 補間期間每張都會被拉成獨立合成圖層，
+// 一百張同時升降一次，手機上很重。
 const onStartClick = () => {
   if (loading.value) return
   showIntroOverlay.value = false
+  if (!isFirstRender && !reflowPendingBehindOverlay) return
+  reflowPendingBehindOverlay = false
   nextTick(() => {
     playReflowSequence()
   })
@@ -368,7 +385,10 @@ const onStartClick = () => {
 watch(
   () => displayItems.value.length,
   async (newLen, oldLen) => {
-    if (showIntroOverlay.value) return
+    if (showIntroOverlay.value) {
+      if (newLen > oldLen) reflowPendingBehindOverlay = true
+      return
+    }
     if (newLen > oldLen) {
       setTimeout(() => {
         playReflowSequence()

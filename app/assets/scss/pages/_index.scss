@@ -483,18 +483,8 @@ $edge-inset: 1rem;
     margin-top: -75px;
     opacity: 0;
     transform: translate(0px, 0px) scale(0);
-
-    // === 效能優化 ===
-    // 首頁同時顯示數十張便利貼，使用輕量單層陰影（縮小模糊半徑），兼顧視覺深度與 GPU 效能。
-    // 編輯器 / 預覽頁保留完整雙層陰影（由 sticky-note-shadow mixin 提供）。
-    .c-sticky-note__scaler {
-        filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
-    }
-
-    // 移除每張便利貼內的光影疊加偽元素（首頁效能優化）
-    .c-sticky-note__inner::before {
-        display: none;
-    }
+    /* 陰影與其他頁面相同（預先算好的陰影圖，見 _sticky-note.scss）。
+       以前這裡換成較輕的 drop-shadow 是為了省 GPU，陰影改成圖片後已經沒有這個負擔 */
 }
 
 /* 底部橫條。稿子畫板 02（1080×1920）實測：

@@ -107,8 +107,12 @@ export default defineNuxtConfig({
           href: '/fonts/line-seed-ui-800.woff2',
           crossorigin: ''
         },
-        // 內容字分片：一般樣式表，確保大螢幕不會先閃後備字型再換成 LINE Seed
-        { rel: 'stylesheet', href: '/fonts/line-seed.css' }
+        // 內容字分片的 @font-face 宣告（約 250KB，gzip 後 65KB）。
+        // 原本是一般樣式表，每一頁的首次渲染都要等它下載完。它只管使用者打的字，
+        // 而首頁與大螢幕的便利貼都是瀏覽器抓完資料才畫，所以改成 preload 提前下載、
+        // 由 plugins/content-font.client.ts 套用，不再擋首屏。
+        // 分片本身本來就是畫到哪個字才下載，擋住這支樣式表也擋不掉分片的閃字。
+        { rel: 'preload', as: 'style', href: '/fonts/line-seed.css' }
       ],
       style: [
         { innerHTML: lineSeedUiCss, type: 'text/css' }
@@ -148,6 +152,8 @@ export default defineNuxtConfig({
       // 便利貼資料集合的後綴。空值或 none ＝正式環境；設為 _dev 等值可切到獨立的測試資料。
       // 詳見 app/utils/collections.ts
       firestoreSuffix: process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || '',
+      // 節慶主題（視覺皮膚）。none 或不設＝原本的主題；halloween＝萬聖節。詳見 app/data/themes.ts
+      theme: process.env.NUXT_PUBLIC_THEME || 'none',
       firebase: {
         apiKey: process.env.NUXT_PUBLIC_FIREBASE_API_KEY || '',
         authDomain: process.env.NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',

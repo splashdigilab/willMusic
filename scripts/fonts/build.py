@@ -99,15 +99,30 @@ def fetch_sources() -> None:
         log(f"取出 {dest.name}（{dest.stat().st_size / 1048576:.2f} MB）")
 
 
+def strip_comments(text: str) -> str:
+    """拿掉 HTML／JS／SCSS 的註解。
+
+    註解標記前面必須是行首、空白或標點才算數：`accept="image/*"`、`https://` 這類字串裡的
+    斜線不能被當成註解開頭，否則會一路吃到下一個 */，把真正的介面文字也拿掉。
+    就算有漏網之魚也只是少一個字：那個字會改由內容分片供應，顯示正常。"""
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    text = re.sub(r"(^|[\s;{}(),])/\*.*?\*/", r"\1", text, flags=re.S | re.M)
+    return re.sub(r"(^|[\s;{}(),])//[^\n]*", r"\1", text, flags=re.M)
+
+
 def ui_charset() -> set[str]:
-    """掃出介面可能渲染的每一個 CJK 字元。註解也一併納入：成本極低，
-    但能保證不會漏掉任何字串常數（例如 showAlert 的訊息）。"""
+    """掃出介面可能渲染的每一個 CJK 字元。
+
+    註解不算：這個專案的中文註解很多，原本連註解一起掃，字集有三分之一以上是只出現在註解裡、
+    永遠不會畫出來的字，三個字重的介面字型各多了約 100KB，每一頁都要預載。
+    字串常數（例如 showAlert 的訊息）照樣會被掃到。"""
     cjk = re.compile(r"[　-〿㄀-ㄯ一-鿿＀-￯]")
     chars: set[str] = set()
     patterns = ("app/**/*.vue", "app/**/*.ts", "app/**/*.scss", "server/**/*.ts", "nuxt.config.ts")
     for pattern in patterns:
         for path in ROOT.glob(pattern):
-            chars.update(cjk.findall(path.read_text(encoding="utf-8", errors="replace")))
+            text = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
+            chars.update(cjk.findall(text))
 
     # 不靠掃描也一定要有的：拉丁字母、數字、標點、全形符號
     chars.update(chr(c) for c in range(0x20, 0x7F))

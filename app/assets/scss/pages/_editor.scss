@@ -155,26 +155,31 @@ body.is-editor-page #app {
     display: flex;
     align-items: center;
     justify-content: center;
-
-    /* 
-      編輯器預覽：模擬實體便利貼黏在牆壁上的陰影。
-      我們現在將陰影移到 canvas-scaler，因為那裡才有 --shadow-mask 變數。
-    */
   }
 
   /* 虛擬縮放層：永遠固定 600px 大小 */
   &__canvas-scaler {
     @include sn.sticky-note-virtual-scaler(editor-canvas);
-    @include sn.sticky-note-shadow; // Apply shadow here to inherit --shadow-mask
     flex-shrink: 0;
     transform-origin: center center;
     position: relative;
   }
 
-  /* 可裁切層：背景、文字、貼紙（由內聯 style 套用 mask-image） */
+  /* 陰影：與顯示端同一張預先算好的陰影圖，墊在可裁切層底下。
+     原本 drop-shadow 掛在整個 canvas-scaler 上，連編輯框、刪除鈕、置中參考線
+     都會被投出影子；改成獨立一層後只有便利貼本身有陰影。 */
+  &__canvas-shadow {
+    @include sn.sticky-note-shadow-layer;
+  }
+
+  /* 遮罩層：形狀裁切（遮罩圖由內聯 style 給），比畫布大一圈，理由見 _sticky-note.scss */
+  &__canvas-mask {
+    @include sn.sticky-note-mask-layer;
+  }
+
+  /* 可裁切層：背景、文字、貼紙。在遮罩層裡縮回 600×600 */
   &__canvas {
-    position: absolute;
-    inset: 0;
+    @include sn.sticky-note-mask-content;
     overflow: hidden;
     cursor: default;
     /* 新視覺的便利貼是純色平面，原本的紙張打光與紙紋疊層已移除 */
@@ -222,26 +227,6 @@ body.is-editor-page #app {
       // color: color-mix(in srgb, var(--text-color, #333) 45%, transparent);
     }
 
-  }
-
-  &__preview-wrapper {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    margin: 0 auto 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-
-    :deep(.c-sticky-note) {
-      position: relative !important;
-      left: 0 !important;
-      top: 0 !important;
-      transform: none !important;
-      width: 100% !important;
-      height: 100% !important;
-    }
   }
 
   /* 貼紙內容（可裁切）- z-index 由 template 依選取狀態動態設定 */

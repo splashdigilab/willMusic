@@ -139,6 +139,10 @@ export function useFabricBrush(onPathCreated?: () => void) {
     fabricCanvas = new Canvas(canvasEl, {
       width,
       height,
+      // 不依螢幕倍率放大畫布。預設會把 600×600 放大成 600×DPR：3 倍螢幕上下兩層共約 26MB，
+      // iOS 的 canvas 記憶體上限很容易被撐爆。輸出本來就是 600×600 的 PNG（exportToDataURL），
+      // 離開繪圖步驟後畫面上顯示的也是那張 PNG，所以畫的當下用同樣的解析度，前後看起來一致
+      enableRetinaScaling: false,
       isDrawingMode: true,
       backgroundColor: 'transparent',
       selection: false,
@@ -185,7 +189,8 @@ export function useFabricBrush(onPathCreated?: () => void) {
   }
 
   const exportToDataURL = (): string | null => {
-    if (!fabricCanvas) return null
+    // 縮成 1×1 的時候匯出只會得到一個點，會把使用者的畫蓋掉
+    if (!fabricCanvas || _isMinimized) return null
     return fabricCanvas.toDataURL({ format: 'png', quality: 1, multiplier: 1 })
   }
 
@@ -249,8 +254,10 @@ export function useFabricBrush(onPathCreated?: () => void) {
       const { FabricImage } = await import('fabric')
       const img = await FabricImage.fromURL(dataUrl)
       if (img.width && img.height) {
-        const w = fabricCanvas.getWidth()
-        const h = fabricCanvas.getHeight()
+        // 用原始尺寸而不是畫布當下的尺寸：不在繪圖步驟時畫布是縮成 1×1 的，
+        // 照當下尺寸算，還原的畫會被縮成 1/600
+        const w = initialWidth || fabricCanvas.getWidth()
+        const h = initialHeight || fabricCanvas.getHeight()
         if (initialWidth === 0 || initialHeight === 0) {
           initialWidth = w
           initialHeight = h
@@ -294,7 +301,8 @@ export function useFabricBrush(onPathCreated?: () => void) {
 
   /**
    * 最小化畫布：透過 Fabric.js setDimensions 將 canvas 縮為 1×1，
-   * 釋放 GPU backing store（~1.4MB），離開繪圖模式時呼叫。
+   * 釋放上下兩層 canvas 的 backing store（各 600×600×4 ≈ 1.4MB），
+   * 初始化後（不在繪圖步驟時）與離開繪圖模式時呼叫。
    * 使用官方 API 確保 Fabric.js 內部 width/height 與 DOM 保持同步，
    * 避免後續 restoreCanvas 呼叫 setWidth 時因「值未變」而跳過 DOM 更新。
    */

@@ -356,7 +356,16 @@ export function useConductor() {
 
                     // 後續更新：只處理被遠端刪除或擠出的項目，避免打斷本地已 unshift() 正在執行的 FLIP 動畫
                     const changes = snapshot.docChanges()
-                    const hasRemovals = changes.some(change => change.type === 'removed')
+                    // 只看「本地真的還有」的那些。新投稿展示完時，tick 已經先在本地把它放進牆、
+                    // 擠掉最舊那張，接著 moveToHistory 寫入；寫入完成後這裡會收到最舊那張的 removed。
+                    // 那張本地早就不在了，若照樣呼叫 onBefore，會把剛開始的換張動畫直接跳到終點
+                    // （歷史筆數超過牆面張數後，每次新投稿換張都會這樣）
+                    const liveIds = new Set(s.liveGrid.map(n => noteId(n)))
+                    const playingId = s.nowPlaying ? noteId(s.nowPlaying) : null
+                    const hasRemovals = changes.some(change =>
+                        change.type === 'removed' &&
+                        (liveIds.has(change.doc.id) || change.doc.id === playingId)
+                    )
 
                     if (hasRemovals) {
                         // 如果有刪除，觸發動畫 hook (擷取當前狀態)

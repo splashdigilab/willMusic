@@ -1,7 +1,7 @@
 /**
  * LocalStorage 和 SessionStorage 工具函式
  */
-import type { DraftData } from '~/types'
+import type { DraftData, NameTagDraft } from '~/types'
 
 const DRAFT_KEY = 'willmusic_draft'
 const TOKEN_KEY = 'willmusic_token'
@@ -18,6 +18,16 @@ function normalizeObjectLayerOrder(
     if (!Number.isNaN(n)) out[key] = n
   }
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** 草稿裡的署名位置：欄位不齊（或不是數字）就當作沒有，由編輯器照預設位置重放 */
+function parseNameTagDraft(raw: unknown): NameTagDraft | undefined {
+  if (raw == null || typeof raw !== 'object') return undefined
+  const t = raw as Record<string, unknown>
+  const nums = ['x', 'y', 'scale', 'rotation'].map(k => Number(t[k]))
+  if (typeof t.uid !== 'string' || nums.some(n => !Number.isFinite(n))) return undefined
+  const [x, y, scale, rotation] = nums as [number, number, number, number]
+  return { uid: t.uid, x, y, scale, rotation }
 }
 
 export const useStorage = () => {
@@ -81,6 +91,8 @@ export const useStorage = () => {
         objectLayerOrder: normalizeObjectLayerOrder(raw.objectLayerOrder),
         // LINE 登入之前存的草稿沒有這個欄位，載入後由編輯器補一個新的
         submissionId: typeof raw.submissionId === 'string' ? raw.submissionId : undefined,
+        // 署名的位置。少了這一欄，草稿裡調好的名牌位置每次重新整理都會被丟掉
+        nameTag: parseNameTagDraft(raw.nameTag),
         timestamp: ts
       }
 

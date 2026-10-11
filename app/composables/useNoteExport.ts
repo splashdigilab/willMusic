@@ -56,13 +56,17 @@ const parseUnicodeRange = (value: string): Array<[number, number]> | null => {
 }
 
 /**
- * 便利貼內容永遠是 Regular —— TextBlockInstance 只有 color 與 align，
- * 編輯器沒有粗體選項。介面字的 400 與 700 兩個檔案 unicode-range 相同，
- * 不篩字重的話兩個都會被嵌入，白白多帶 226KB 進匯出流程。
+ * 便利貼上的字一律是 700：文字區塊（sticky-note-text-box）與署名（NoteNameTag）都寫死 700，
+ * 內容字型的分片也只有 700 一種（見 scripts/fonts/build.py）。
+ * 介面字的 400／700／800 三個檔案 unicode-range 相同，不篩字重的話三個都會被嵌入。
+ *
+ * 原本這裡只留 400：那是內容字型還是 Regular 時寫的，9/21 改成 700 之後
+ * 內容分片從來沒被嵌入過，分享圖上的字其實是系統字或瀏覽器假粗體。
  */
-const isRegularWeight = (block: string): boolean => {
+const NOTE_FONT_WEIGHT = '700'
+const isNoteWeight = (block: string): boolean => {
   const declared = /font-weight:\s*(\d+)/.exec(block)?.[1]
-  return declared === undefined || declared === '400'
+  return declared === undefined || declared === NOTE_FONT_WEIGHT
 }
 
 /**
@@ -93,7 +97,7 @@ const buildFontEmbedCSS = async (text: string): Promise<string> => {
 
   const blocks = sheets.join('\n').match(/@font-face\s*\{[^}]*\}/g) ?? []
   const needed = blocks.filter((block) => {
-    if (!isRegularWeight(block)) return false
+    if (!isNoteWeight(block)) return false
     const declared = /unicode-range:\s*([^;}]+)/i.exec(block)
     // 沒宣告 unicode-range 代表涵蓋全部字元，保守起見留著
     if (!declared) return true

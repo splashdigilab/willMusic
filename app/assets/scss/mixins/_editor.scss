@@ -61,6 +61,10 @@
 
 /// 選項橫向捲動列（造型、對齊等）
 /// @param $gap - 間距，預設 0.75rem（對齊列）；造型列可傳 0.5rem
+///
+/// 陰影掛在每一格上，不掛在捲動列本身：格子裡的圖示是 mask 切出來的造型，
+/// 手機會把捲動列的內容拆成獨立的合成圖層，filter 若在捲動列上，
+/// 就得隔著圖層去讀遮罩，讀不到時陰影會變成方框。掛在格子上兩者永遠在同一層。
 @mixin editor-grid-scroll-x($gap: 0.75rem) {
   display: flex;
   gap: $gap;
@@ -68,6 +72,9 @@
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  filter: drop-shadow(var(--shadow-soft));
   @include editor-scrollbar-hidden;
+
+  > * {
+    filter: drop-shadow(var(--shadow-soft));
+  }
 }

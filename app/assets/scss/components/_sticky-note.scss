@@ -68,32 +68,62 @@
 }
 
 /*
-  投影。稿子裡每張便利貼的陰影都是一張獨立的點陣圖（opacity 0.35），
-  網頁改用 drop-shadow 重現：drop-shadow 會依 mask-image 裁切後的實際輪廓
-  計算陰影，所以愛心、爆炸星這類造型也能正確跟著形狀。
-
-  數值取自稿子：427px 的便利貼配 5px 位移、9px 模糊，
-  換算到 600px 的虛擬畫布是 7px / 13px。
+  陰影圖往 600px 畫布外擴的範圍，必須與 scripts/shapes/build_shadows.py 的 MARGIN 相同。
 */
-@mixin sticky-note-shadow {
-  filter: drop-shadow(7px 7px 13px rgba(0, 0, 0, 0.35));
+$sticky-note-shadow-margin: 32px;
+
+/*
+  陰影層。稿子裡每張便利貼的陰影都是一張獨立的點陣圖，這裡也一樣：
+  每個造型一張預先算好的陰影圖（數值與產生方式見 scripts/shapes/build_shadows.py），
+  背景圖由 useStickyNoteStyle 的 shadowStyles 給。
+
+  不用 filter: drop-shadow：它掛在外層、形狀卻是內層 mask 切出來的，陰影跟不跟著形狀，
+  取決於瀏覽器合成時有沒有先套遮罩。回報過「陰影偶爾變成方形」，桌機的 Chrome／Safari
+  重現不出來，最可能是手機上內層被拆成獨立圖層時遮罩沒算進去。
+  這一層本身就是形狀的影子，不靠遮罩也不靠 filter，不會有那種時機問題；
+  也省掉每張便利貼重繪時的即時模糊。
+
+  必須放在 600px 的縮放層裡、內層之前（DOM 順序決定它墊在底下）。
+*/
+@mixin sticky-note-shadow-layer {
+  position: absolute;
+  left: -$sticky-note-shadow-margin;
+  top: -$sticky-note-shadow-margin;
+  width: calc(600px + #{2 * $sticky-note-shadow-margin});
+  height: calc(600px + #{2 * $sticky-note-shadow-margin});
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 /*
-  舊視覺的兩層擬真效果（紙張打光漸層 + 紙紋貼圖）已移除：
-  新視覺的便利貼是純色平面，沒有紙材質。
-  mixin 保留為空殼，避免其他頁面的 @include 直接壞掉；
-  等頁面全部改完再連同呼叫端一起刪。
+  遮罩層往 600px 畫布外多出的範圍。
+  WebKit 套遮罩時，遮罩圖的邊緣若剛好壓在底色的邊緣上（便利貼歪一個角度、或縮放到
+  非整數像素時一定會），邊上那一圈像素只會被擦掉一部分，底色會漏成一圈細細的方框。
+  所以遮罩層刻意比內容大一圈：遮罩圖只蓋中間的 600×600，邊緣落在沒有內容的地方，
+  漏不出東西。要大於縮到最小時的一個像素（我的便利貼 76px 寬時約 8）。
 */
-@mixin sticky-note-lighting-overlay {
-  display: none;
+$sticky-note-mask-bleed: 16px;
+
+/* 遮罩層：放形狀遮罩（遮罩圖由 useStickyNoteStyle 的 maskStyles 給），比內容大一圈 */
+@mixin sticky-note-mask-layer {
+  position: absolute;
+  inset: -$sticky-note-mask-bleed;
+  mask-size: 600px 600px;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-size: 600px 600px;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
 }
 
-@mixin sticky-note-paper-texture-overlay {
-  display: none;
+/* 遮罩層裡的內容：縮回剛好 600×600，與縮放層對齊 */
+@mixin sticky-note-mask-content {
+  position: absolute;
+  inset: $sticky-note-mask-bleed;
 }
 
-/* 
+/*
   共通虛擬畫布縮放層 (Virtual Scaler)
   用於鎖定 600px 實體渲染大小，解開瀏覽器字體限制
 */
@@ -115,28 +145,26 @@
     top: 0;
     left: 0;
     transform-origin: 0 0;
-
-    // WebKit 邊緣毛邊/虛線修復
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    transform-style: preserve-3d;
-    -webkit-transform-style: preserve-3d;
-
-    @include sticky-note-shadow;
+    /* 原本這裡有 backface-visibility: hidden 與 transform-style: preserve-3d，是三月為了
+       WebKit 遮罩邊緣漏出的細框線加的（逼它整層合成）。那個問題現在由遮罩層外擴解決
+       （見 $sticky-note-mask-bleed）；filter 拿掉後若還留著，preserve-3d 會重新生效、
+       改變圖層合成，所以一併移除。 */
   }
 
-  /* 內層：形狀由外層 mask-image 控制、背景圖片。
+  &__shadow {
+    @include sticky-note-shadow-layer;
+  }
+
+  &__mask {
+    @include sticky-note-mask-layer;
+  }
+
+  /* 內層：底色或材質圖，文字、貼紙、手繪都在裡面；形狀由外面的遮罩層切。
      新視覺是純色平面，不再疊紙張打光與紙紋。 */
   &__inner {
-    position: relative;
-    width: 100%;
-    height: 100%;
+    @include sticky-note-mask-content;
     padding: 8%;
     overflow: hidden;
-
-    // WebKit Mask 邊緣毛邊修復
-    -webkit-mask-composite: source-in;
-    mask-composite: intersect;
   }
 
   /* 內容文字外包裝 - 支援位置、縮放、旋轉 */
