@@ -46,6 +46,14 @@ $bottom-bar-overflow: min(1.43vw, 11px);
     --theme-accent-tint: #{rgba($hw-purple, 0.14)};
     --theme-accent-ink: #6A3D9A;
 
+    /* 復原／重做圓鈕不跟次要按鈕走黑底橘框，改成跟中間的筆刷滑桿同一個紫。
+       一進繪圖面板兩顆都是停用（還沒畫），黑底橘框半透明會變成灰底配淡橘框，很髒；
+       紫的半透明是淡紫，跟原本主題桃紅變淡桃紅同一個道理（2026-10-12） */
+    .p-editor__draw-btn {
+        background: $hw-purple;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    }
+
     /* ===================== 開場 overlay（首頁與編輯器的活動規範頁共用） ===================== */
 
     .p-index__intro-overlay {
