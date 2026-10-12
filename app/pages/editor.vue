@@ -909,6 +909,8 @@ import NoteNameTag from '~/components/NoteNameTag.vue'
 
 definePageMeta({ ssr: false })
 
+usePageSeo('製作便利貼', '選材質與造型、寫字、手繪、貼貼紙，做一張自己的應援便利貼，用 LINE 登入就能送上微樂客店內的大螢幕。')
+
 useHead({
   meta: [
     // interactive-widget=overlays-content：iOS 鍵盤以疊加方式顯示，不壓縮 layout viewport。

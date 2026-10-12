@@ -78,10 +78,10 @@ const unfilledCount = computed(() =>
   )
 )
 
+usePageSeo(TERMS_TITLE, '數位應援便利貼活動的參加方式、投稿限制與內容規範')
+
 useHead({
-  title: `${TERMS_TITLE} - WillMusic`,
   meta: [
-    { name: 'description', content: '數位應援便利貼活動的參加方式、投稿限制與內容規範' },
     ...(unfilledCount.value > 0 ? [{ name: 'robots', content: 'noindex' }] : [])
   ]
 })

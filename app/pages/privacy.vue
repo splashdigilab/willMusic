@@ -79,10 +79,10 @@ const unfilledCount = computed(() =>
   )
 )
 
+usePageSeo(POLICY_TITLE, '數位應援便利貼活動的個人資料蒐集告知與隱私權政策')
+
 useHead({
-  title: `${POLICY_TITLE} - WillMusic`,
   meta: [
-    { name: 'description', content: '數位應援便利貼活動的個人資料蒐集告知與隱私權政策' },
     // 還沒定稿就不要讓搜尋引擎收錄
     ...(unfilledCount.value > 0 ? [{ name: 'robots', content: 'noindex' }] : [])
   ]

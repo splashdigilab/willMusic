@@ -178,6 +178,8 @@ import StickyNote from '~/components/StickyNote.vue'
  */
 definePageMeta({ layout: false, ssr: false })
 
+usePageSeo('我的便利貼', '看自己送出的便利貼、排到第幾張，以及今天還能送幾張。')
+
 const route = useRoute()
 const { $firestore } = useNuxtApp() as any
 const cols = useCollections()

@@ -16,6 +16,21 @@ const gtmId = /^GTM-[A-Z0-9]+$/i.test(rawGtmId) ? rawGtmId : ''
 // 便利貼資料集合的後綴在這裡原樣傳遞，'none' 的正規化寫在 app/utils/collections.ts。
 // 原因：NUXT_PUBLIC_FIRESTORE_SUFFIX 命中 Nuxt 的 runtimeConfig 自動覆寫規則，
 // SSR 時環境變數會蓋掉這裡算好的值，轉換放這裡會被繞過。
+const rawFirestoreSuffix = process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || ''
+
+// ─── 搜尋引擎收錄 ─────────────────────────────────────────────
+// 不給收錄用回應標頭（X-Robots-Tag），不用 robots.txt 的 Disallow：Disallow 只是叫爬蟲別來抓，
+// 別的地方有連結時網址照樣會進搜尋結果（只是沒有內容）；爬蟲要抓得到這個標頭才會真的拿掉。
+const NOINDEX = { 'X-Robots-Tag': 'noindex, nofollow' }
+
+// 測試站整站不收錄。判斷依據是便利貼集合有沒有後綴：用的不是正式資料，就不是給人搜到的站。
+// 上面說的 runtimeConfig 覆寫在這裡不成問題 —— routeRules 是建置時寫死進 server bundle 的，
+// 讀的就是建置當下的環境變數（Amplify 的 branch-level 覆寫在建置時就生效）。
+const isProductionData = rawFirestoreSuffix === '' || rawFirestoreSuffix === 'none'
+
+// 全站預設的標題與摘要，也是首頁的。其他頁面用 usePageSeo 蓋掉
+const SITE_TITLE = '數位應援便利貼 - WillMusic'
+const SITE_DESCRIPTION = '在微樂客 WillMusic 做一張專屬的應援便利貼，審核通過後會在店內大螢幕輪播，和大家一起分享對音樂的熱愛。'
 
 // LINE Seed 介面字的 @font-face（約 13KB）在建置時讀進來直接內嵌到 <head>，
 // 省掉一次樣式表往返，介面文字不會有 FOUT。內容字（使用者輸入的中／韓文）
@@ -76,11 +91,19 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'WillMusic - Post Board',
+      title: SITE_TITLE,
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no' },
-        { name: 'description', content: 'Interactive digital sticky notes for K-Pop record store' }
+        { name: 'description', content: SITE_DESCRIPTION },
+        // 分享到 LINE／社群時的預覽。還沒有分享圖：做好之後補 og:image（要絕對網址），
+        // twitter:card 同時改成 summary_large_image
+        { property: 'og:site_name', content: 'WillMusic' },
+        { property: 'og:type', content: 'website' },
+        { property: 'og:locale', content: 'zh_TW' },
+        { property: 'og:title', content: SITE_TITLE },
+        { property: 'og:description', content: SITE_DESCRIPTION },
+        { name: 'twitter:card', content: 'summary' }
       ],
       link: [
         // 介面字與 HTML 平行下載（@font-face 已內嵌，preload 只是提前開始抓）。
@@ -134,6 +157,21 @@ export default defineNuxtConfig({
     }
   },
 
+  routeRules: {
+    ...(isProductionData ? {} : { '/**': { headers: NOINDEX } }),
+    // 後台只在瀏覽器端畫。登入檢查（admin-auth.global.ts）在伺服器端不做，伺服器照畫的話，
+    // 沒登入的人與爬蟲都拿得到整個後台的版面、頁籤與設定說明。資料有 Firestore 規則擋著，
+    // 但後台有哪些功能不必讓外面看到。
+    '/admin': { ssr: false, headers: NOINDEX },
+    // 下面幾頁伺服器畫出來的只有「載入中」或登入表單，沒有要藏的東西，只是不該出現在搜尋結果。
+    // /canvas 是 LED 牆，不改它的渲染方式
+    '/canvas': { headers: NOINDEX },
+    '/qrcode': { headers: NOINDEX },
+    '/login': { headers: NOINDEX },
+    '/my-notes': { headers: NOINDEX },
+    '/queue-status': { headers: NOINDEX }
+  },
+
   runtimeConfig: {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
 
@@ -151,7 +189,7 @@ export default defineNuxtConfig({
       gtmId: gtmId,
       // 便利貼資料集合的後綴。空值或 none ＝正式環境；設為 _dev 等值可切到獨立的測試資料。
       // 詳見 app/utils/collections.ts
-      firestoreSuffix: process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || '',
+      firestoreSuffix: rawFirestoreSuffix,
       // 節慶主題（視覺皮膚）。none 或不設＝原本的主題；halloween＝萬聖節。詳見 app/data/themes.ts
       theme: process.env.NUXT_PUBLIC_THEME || 'none',
       firebase: {

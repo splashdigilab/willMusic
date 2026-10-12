@@ -41,6 +41,8 @@ definePageMeta({
   layout: false
 })
 
+usePageSeo('等待上大螢幕', '便利貼已經送出，看目前排隊的張數與預估上大螢幕的時間。')
+
 const { $firestore } = useNuxtApp()
 const db = $firestore as any
 const cols = useCollections()
