@@ -30,17 +30,17 @@ $bottom-bar-overflow: min(1.43vw, 11px);
 
     /* ===================== 介面強調色（編輯器、教學與確認彈窗、等待頁） =====================
        稿子沒有畫編輯器，照開場與便利貼牆推出來（2026-10-12 使用者同意）：
-       主要按鈕跟 START、製作便利貼同一個樣子（黑底橘框橘字）；選中狀態用紫。
-       次要按鈕跟主要按鈕同一個樣子、只換框與字的顏色（黑底紫框白字），就像原本主題
-       桃紅與天藍是同一種漸層膠囊；原本做成紫底白字，跟旁邊的黑底按鈕看起來不像一組（2026-10-12）。
-       選中不用橘：材質列裡就有橘色色票，選中框再用橘會看混；紫在淺灰面板上也比橘清楚。
+       主要與次要按鈕是同一組橘黑對調：主要橘底黑框黑字、次要黑底橘框橘字（次要就是 START、
+       製作便利貼的樣子）。實心的橘最搶眼，所以給前進；橘底配白字對比只有 3:1，字用黑。
+       先前試過次要紫底白字、黑底紫框白字，跟主要按鈕都不像一組（2026-10-12 改成現在這樣，使用者提議）。
+       選中狀態用紫、不用橘：材質列裡就有橘色色票，選中框再用橘會看混；紫在淺灰面板上也比橘清楚。
        變數的意思見 base/variables；面板底、刪除鈕、LINE 綠刻意不換。 */
-    --theme-action-bg: #{$hw-black};
-    --theme-action-fg: #{$hw-orange};
-    --theme-action-ring: inset 0 0 0 2px #{$hw-orange};
+    --theme-action-bg: #{$hw-orange};
+    --theme-action-fg: #{$hw-black};
+    --theme-action-ring: inset 0 0 0 2px #{$hw-black};
     --theme-alt-bg: #{$hw-black};
-    --theme-alt-fg: #fff;
-    --theme-alt-ring: inset 0 0 0 2px #{$hw-purple};
+    --theme-alt-fg: #{$hw-orange};
+    --theme-alt-ring: inset 0 0 0 2px #{$hw-orange};
     --theme-accent: #{$hw-purple};
     --theme-accent-soft: #C9B6E0;
     --theme-accent-tint: #{rgba($hw-purple, 0.14)};
