@@ -10,9 +10,9 @@
  *        不必重新部署；伺服器每 30 秒重讀一次（見 server/api/site-theme.get.ts），新打開的頁面就會換上。
  *   後台沒設定過、選了「依部署設定」、或存的主題這個版本不認得時：退回環境變數 NUXT_PUBLIC_THEME
  *        （none 或不設＝原本的主題）。
- *   預覽：任一頁網址加 ?theme=halloween，這個瀏覽器之後都會套用（session cookie）；
+ *   預覽：任一頁網址加 ?theme=halloween，這個瀏覽器之後一小時內都會套用（cookie）；
  *        ?theme=default 看原本的樣子，?theme=reset 回到正式設定。只影響自己，
- *        可以在測試站或正式站先看效果。
+ *        可以在測試站或正式站先看效果。預覽的主題跟後台設定一樣時會自動清掉（見 useTheme）。
  *
  * ── 新增一個節慶 ──────────────────────────────────────────
  *   1. 這裡加一筆 ThemeConfig，ThemeId 加上它的 id

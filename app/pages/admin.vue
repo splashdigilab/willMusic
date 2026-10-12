@@ -395,7 +395,7 @@
             </button>
           </div>
 
-          <p class="p-admin__video-hint p-admin__video-hint--compact">「先預覽首頁」只影響你自己的瀏覽器，其他人看到的不會變；按下儲存時會自動清掉你的預覽，沒有要儲存的話，在網址後面加 ?theme=reset 也能回到正式設定。</p>
+          <p class="p-admin__video-hint p-admin__video-hint--compact">「先預覽首頁」只影響你自己的瀏覽器，其他人看到的不會變；預覽一小時後自動失效，按下儲存時也會清掉，想馬上回到正式設定的話，在網址後面加 ?theme=reset。</p>
 
           <div class="p-admin__btn-row">
             <button
@@ -1705,7 +1705,7 @@ const saveSiteTheme = async () => {
   }
 }
 
-/** 用網址預覽（session cookie，只影響自己的瀏覽器，見 useTheme） */
+/** 用網址預覽（cookie，一小時後失效，只影響自己的瀏覽器，見 useTheme） */
 const previewSiteTheme = () => {
   const choice = siteThemeSelected.value
   window.open(`/?theme=${choice === SITE_THEME_DEPLOY ? envThemeId : choice}`, '_blank', 'noopener')
