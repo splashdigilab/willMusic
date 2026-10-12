@@ -1632,23 +1632,16 @@ const saveRateLimitSettings = async () => {
 // ── 節慶主題 ──────────────────────────────────────────────
 // 寫入 system/site_theme（測試站 site_theme_dev，兩站各一份）。前台由 server/api/site-theme.get.ts
 // 讀，最多快取 30 秒，所以存完不必重新部署。
-// 「依部署設定」存成 themeId: null，前台就退回環境變數 NUXT_PUBLIC_THEME ——
-// 存過一次之後還能把決定權交回部署設定，不必進 Firestore 手動刪文件。
-
-/** 選項裡「依部署設定」的代號。不是主題 id，存的時候轉成 null */
-const SITE_THEME_DEPLOY = 'deploy' as const
-type SiteThemeChoice = ThemeId | typeof SITE_THEME_DEPLOY
+// 一律存明確的主題 id。原本另有一顆「依部署設定」（存 null、前台退回環境變數 NUXT_PUBLIC_THEME），
+// 但兩站都沒設那個變數，它跟「原本的主題」結果一樣，只是多一顆讓人猶豫的按鈕，2026-10-12 拿掉。
+// 前台仍把 null／沒設定／不認得的主題當成「依環境變數」（見 useTheme），舊資料照常運作。
 
 const envThemeId = resolveThemeId(useRuntimeConfig().public.theme)
-const deployThemeLabel = `依部署設定（${THEMES[envThemeId].label}）`
-const siteThemeOptions: { id: SiteThemeChoice; label: string }[] = [
-  { id: SITE_THEME_DEPLOY, label: deployThemeLabel },
-  ...Object.values(THEMES).map(t => ({ id: t.id, label: t.label }))
-]
+const siteThemeOptions: { id: ThemeId; label: string }[] = Object.values(THEMES).map(t => ({ id: t.id, label: t.label }))
 const isTestSiteTheme = cols.siteThemeConfig !== 'site_theme'
-/** 目前存著的選擇。第一次讀到之前沒有意義，看 siteThemeLoaded */
-const siteThemeSaved = ref<SiteThemeChoice>(SITE_THEME_DEPLOY)
-const siteThemeSelected = ref<SiteThemeChoice>(SITE_THEME_DEPLOY)
+/** 目前生效的主題。第一次讀到之前沒有意義，看 siteThemeLoaded */
+const siteThemeSaved = ref<ThemeId>(envThemeId)
+const siteThemeSelected = ref<ThemeId>(envThemeId)
 const siteThemeLoaded = ref(false)
 const siteThemeError = ref('')
 const isSavingSiteTheme = ref(false)
@@ -1657,16 +1650,13 @@ let unsubSiteTheme: (() => void) | null = null
 const siteThemeDirty = computed(() => siteThemeLoaded.value && siteThemeSelected.value !== siteThemeSaved.value)
 /** 讀到目前設定、沒出錯、沒在存，才能選與存 */
 const siteThemeEditable = computed(() => siteThemeLoaded.value && !siteThemeError.value && !isSavingSiteTheme.value)
-const siteThemeEffectiveLabel = computed(() => {
-  const saved = siteThemeSaved.value
-  return saved === SITE_THEME_DEPLOY ? deployThemeLabel : THEMES[saved].label
-})
+const siteThemeEffectiveLabel = computed(() => THEMES[siteThemeSaved.value].label)
 
 const startSiteThemeListener = () => {
   unsubSiteTheme = onSnapshot(doc(db, 'system', cols.siteThemeConfig), (snap) => {
     const raw = snap.exists() ? (snap.data() as { themeId?: unknown }).themeId : undefined
-    // 跟前台同一個判斷（useTheme）：沒設定、null、這個版本不認得的主題，都等於依部署設定
-    const saved: SiteThemeChoice = parseThemeId(raw) ?? SITE_THEME_DEPLOY
+    // 跟前台同一個判斷（useTheme）：沒設定、null、這個版本不認得的主題，都等於環境變數的主題
+    const saved = parseThemeId(raw) ?? envThemeId
     // 有選了還沒存的就不蓋掉：另一位管理員剛好存了、或網路重連又收到一次時，
     // 照樣覆蓋的話，按下儲存會把舊值寫回去
     const keepSelection = siteThemeDirty.value
@@ -1691,7 +1681,7 @@ const saveSiteTheme = async () => {
   try {
     await setDoc(
       doc(db, 'system', cols.siteThemeConfig),
-      { themeId: choice === SITE_THEME_DEPLOY ? null : choice, updatedAt: Timestamp.now() },
+      { themeId: choice, updatedAt: Timestamp.now() },
       { merge: true }
     )
     themePreviewCookie.value = null
@@ -1708,7 +1698,7 @@ const saveSiteTheme = async () => {
 /** 用網址預覽（cookie，一小時後失效，只影響自己的瀏覽器，見 useTheme） */
 const previewSiteTheme = () => {
   const choice = siteThemeSelected.value
-  window.open(`/?theme=${choice === SITE_THEME_DEPLOY ? envThemeId : choice}`, '_blank', 'noopener')
+  window.open(`/?theme=${choice}`, '_blank', 'noopener')
 }
 
 // ── 會員 ─────────────────────────────────────────────────

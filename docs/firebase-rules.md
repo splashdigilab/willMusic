@@ -252,7 +252,8 @@ Firestore 才做得到，還牽涉測試／正式兩組名單），所以被封�
 
 後台「播放設定」→「節慶主題」寫入 `system/site_theme`（測試站 `site_theme_dev`，
 跟頻率限制一樣兩站各一份，文件 ID 由 `useCollections().siteThemeConfig` 算），
-欄位是 `themeId`（`null` ＝依部署設定，也就是環境變數 `NUXT_PUBLIC_THEME`）。
+欄位是 `themeId`（後台一律存明確的主題 id；舊版後台的「依部署設定」存 `null`，
+前台把 `null` 與沒設定都當成環境變數 `NUXT_PUBLIC_THEME`）。
 
 **不需要改規則**：寫入走既有的「`system/*` 只有 staff 能寫」。但讀取這一邊有個依賴：
 伺服器畫頁面前是用 Firestore REST、**不登入也不帶金鑰**去讀（`server/api/site-theme.get.ts`），

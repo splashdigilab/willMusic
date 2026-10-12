@@ -52,7 +52,7 @@ export default defineCachedEventHandler(async (event) => {
       // 不重試：ofetch 預設會在逾時後再試一次，等於讓伺服器多等一倍
       { timeout: FETCH_TIMEOUT_MS, retry: 0 }
     )
-    // 「依部署設定」存的是 null，跟沒設定一樣交給環境變數
+    // null（舊版後台的「依部署設定」）跟沒設定一樣交給環境變數
     return { themeId: res.fields?.themeId?.stringValue ?? null }
   } catch (error: any) {
     // 404 是正常狀況：後台還沒設定過（這個結果要快取，所以照常回傳）

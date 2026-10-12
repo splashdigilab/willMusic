@@ -20,7 +20,7 @@ export const SITE_THEME_STATE_KEY = 'site-theme'
  * 目前套用的節慶主題（見 data/themes.ts）。
  *
  * 正式值依序看：後台設定（system/site_theme，plugins/site-theme.ts 讀）→
- * 後台沒設定、選了「依部署設定」、或存的是這個版本不認得的主題時，用 runtimeConfig.public.theme
+ * 後台沒設定、存的是 null（舊的「依部署設定」）、或存的是這個版本不認得的主題時，用 runtimeConfig.public.theme
  * （NUXT_PUBLIC_THEME）。不認得的不當成原本的主題：新版本加了主題、後台存了，之後退回舊版本時，
  * 應該退回部署設定，而不是突然變回沒有節慶。
  * 網址帶 ?theme=<id> 時改用那個主題並記住，換頁也不會掉（?theme=default 可在節慶期間預覽原本的樣子）；

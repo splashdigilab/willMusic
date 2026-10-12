@@ -8,7 +8,7 @@
  * ── 切換方式 ──────────────────────────────────────────────
  *   正式：後台「播放設定」→「節慶主題」，存在 system/site_theme（測試站 site_theme_dev，兩站各一份）。
  *        不必重新部署；伺服器每 30 秒重讀一次（見 server/api/site-theme.get.ts），新打開的頁面就會換上。
- *   後台沒設定過、選了「依部署設定」、或存的主題這個版本不認得時：退回環境變數 NUXT_PUBLIC_THEME
+ *   後台沒設定過、存的是 null（舊版後台的「依部署設定」）、或存的主題這個版本不認得時：退回環境變數 NUXT_PUBLIC_THEME
  *        （none 或不設＝原本的主題）。
  *   預覽：任一頁網址加 ?theme=halloween，這個瀏覽器之後一小時內都會套用（cookie）；
  *        ?theme=default 看原本的樣子，?theme=reset 回到正式設定。只影響自己，
