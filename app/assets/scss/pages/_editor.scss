@@ -92,7 +92,7 @@ body.is-editor-page #app {
 .p-editor__loading-spinner {
   width: 40px;
   height: 40px;
-  border: 4px solid var.$will-blue;
+  border: 4px solid var(--theme-accent, #{var.$will-blue});
   border-top-color: transparent;
   border-radius: 50%;
   animation: spinner-rotate 1s linear infinite;
@@ -400,7 +400,7 @@ body.is-editor-page #app {
     right: 0;
     width: ed.$editor-edit-frame-transform-handle-size;
     height: ed.$editor-edit-frame-transform-handle-size;
-    background: #00A7C5; /* 縮放把手：改用新色票的天藍 */
+    background: var(--theme-accent, #00A7C5); /* 縮放把手：改用新色票的天藍 */
     color: white;
     border: 2px solid white;
     border-radius: 50%;
@@ -483,12 +483,12 @@ body.is-editor-page #app {
 
     /* 已經走過的步驟：淺天藍，和目前這一步的實心天藍拉開層次 */
     &.is-done span {
-      background: #9BD8E4;
+      background: var(--theme-accent-soft, #9BD8E4);
     }
 
     &.is-active span {
       width: 1.4rem;
-      background: #00A7C5;
+      background: var(--theme-accent, #00A7C5);
     }
   }
 
@@ -658,8 +658,8 @@ body.is-editor-page #app {
 
     /* 已經貼上：跟造型選中一樣轉成天藍，按下去是選取那張名牌 */
     &.is-active {
-      background: rgba(0, 167, 197, 0.14);
-      color: #00879F;
+      background: var(--theme-accent-tint, rgba(0, 167, 197, 0.14));
+      color: var(--theme-accent-ink, #00879F);
     }
 
     /* 沒登入：整列就是登入鈕，文字置中 */
@@ -732,8 +732,8 @@ body.is-editor-page #app {
     appearance: none;
     background: linear-gradient(
       to right,
-      #00A7C5 0%,
-      #00A7C5 var(--brush-pct, 50%),
+      var(--theme-accent, #00A7C5) 0%,
+      var(--theme-accent, #00A7C5) var(--brush-pct, 50%),
       #E6E6E6 var(--brush-pct, 50%),
       #E6E6E6 100%
     );
@@ -745,7 +745,7 @@ body.is-editor-page #app {
       width: 1.6rem;
       height: 1.6rem;
       border-radius: 50%;
-      background: #00A7C5;
+      background: var(--theme-accent, #00A7C5);
       border: 4px solid #fff;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
       cursor: pointer;
@@ -755,7 +755,7 @@ body.is-editor-page #app {
       width: 1.6rem;
       height: 1.6rem;
       border-radius: 50%;
-      background: #00A7C5;
+      background: var(--theme-accent, #00A7C5);
       border: 4px solid #fff;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
       cursor: pointer;
@@ -802,7 +802,7 @@ body.is-editor-page #app {
 
       &.is-active {
         background: var(--btn-color);
-        box-shadow: 0 0 0 3px #00A7C5;
+        box-shadow: 0 0 0 3px var(--theme-accent, #00A7C5);
       }
     }
   }
@@ -846,7 +846,7 @@ body.is-editor-page #app {
     color: #C9C9C9;
 
     &.is-active {
-      color: #00A7C5;
+      color: var(--theme-accent, #00A7C5);
     }
   }
 
@@ -928,7 +928,7 @@ body.is-editor-page #app {
     /* 選中＝整個造型變天藍，與 STEP 3 的對齊列同一套（兩者都是 mask 圖示）。
        原本是變淡 0.5 加一個白勾，結果選中的反而是整排裡最不明顯的那個。 */
     &.is-active .p-editor__shape-icon {
-      background-color: #00A7C5;
+      background-color: var(--theme-accent, #00A7C5);
     }
   }
 
@@ -1029,13 +1029,15 @@ body.is-editor-page #app {
     font-size: clamp(0.85rem, 3.9vw, 1rem);
 
     &--secondary {
-      background: linear-gradient(to right, #F26A88 0%, #E5204D 100%);
-      color: white;
+      background: var(--theme-alt-bg, linear-gradient(to right, #F26A88 0%, #E5204D 100%));
+      color: var(--theme-alt-fg, white);
+      box-shadow: var(--theme-alt-ring, 0 0 #0000), 0 3px 10px rgba(0, 0, 0, 0.2);
     }
 
     &--primary {
-      background: linear-gradient(to right, #66CADC 0%, #01A7C5 100%);
-      color: white;
+      background: var(--theme-action-bg, linear-gradient(to right, #66CADC 0%, #01A7C5 100%));
+      color: var(--theme-action-fg, white);
+      box-shadow: var(--theme-action-ring, 0 0 #0000), 0 3px 10px rgba(0, 0, 0, 0.2);
 
       &:active:not(:disabled) {
         transform: translateY(0);
@@ -1052,8 +1054,8 @@ body.is-editor-page #app {
     flex-grow: 0;
     border: none;
     border-radius: 999px;
-    background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    background: var(--theme-alt-bg, linear-gradient(to right, #ED5F80 0%, #E5224F 100%));
+    box-shadow: var(--theme-alt-ring, 0 0 #0000), 0 3px 10px rgba(0, 0, 0, 0.2);
     padding: 0;
 
     &:disabled {
@@ -1105,7 +1107,7 @@ body.is-editor-page #app {
   transition: box-shadow 0.25s ease;
 
   &.is-spotlit {
-    box-shadow: 0 0 0 3px var.$will-blue, 0 10px 30px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 0 0 3px var(--theme-accent, #{var.$will-blue}), 0 10px 30px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -1241,7 +1243,7 @@ body.is-editor-page #app {
   width: 18px;
   height: 18px;
   margin: 0.1rem 0 0;
-  accent-color: #00A7C5;
+  accent-color: var(--theme-accent, #00A7C5);
   cursor: pointer;
 
   &:disabled {
@@ -1330,7 +1332,7 @@ body.is-editor-page #app {
   }
 
   .p-editor__submit-signature-input:checked + & {
-    background: #00A7C5;
+    background: var(--theme-accent, #00A7C5);
 
     &::after {
       transform: translateX(16px);
@@ -1338,7 +1340,7 @@ body.is-editor-page #app {
   }
 
   .p-editor__submit-signature-input:focus-visible + & {
-    outline: 2px solid #00A7C5;
+    outline: 2px solid var(--theme-accent, #00A7C5);
     outline-offset: 2px;
   }
 
@@ -1464,20 +1466,21 @@ body.is-editor-page #app {
 /* 第二步的「調整位置」換成天藍的框與字，跟上面的「登出」分開。
    字色跟 STEP 5 署名鈕「已署名」的同一個深天藍，同一件事用同一個顏色 */
 .p-editor__submit-member.is-tour-adjust .p-editor__submit-signature-adjust {
-  border-color: var.$will-blue;
-  color: #00879F;
+  border-color: var(--theme-accent, #{var.$will-blue});
+  color: var(--theme-accent-ink, #00879F);
 }
 
+/* 半透明的那幾圈用 color-mix 從主題色調出來（跟 rgba(色, 透明度) 同一個顏色），節慶主題才換得到 */
 @keyframes p-editor-spotlight-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(var.$will-blue, 0.6); }
-  100% { box-shadow: 0 0 0 10px rgba(var.$will-blue, 0); }
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent, #{var.$will-blue}) 60%, transparent); }
+  100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--theme-accent, #{var.$will-blue}) 0%, transparent); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .p-editor__submit-member.is-tour-toggle .p-editor__submit-signature-switch,
   .p-editor__submit-member.is-tour-adjust .p-editor__submit-signature-adjust {
     animation: none;
-    box-shadow: 0 0 0 3px rgba(var.$will-blue, 0.45);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent, #{var.$will-blue}) 45%, transparent);
   }
 }
 

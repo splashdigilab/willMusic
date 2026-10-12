@@ -6,6 +6,7 @@
 
   視覺與送出後的等待頁（_queue-status.scss）同一套：深灰底、白色漸層卡片、
   天藍漸層藥丸。這兩頁是同一件事的前後 —— 送出、然後等它上牆。
+  天藍的地方節慶主題換得到（--theme-*，見 base/variables），跟編輯器、等待頁一起換。
 
   由上而下：額度卡（今天還能送幾張 + 製作按鈕）→ 排隊中 → 已上牆 → 行銷信勾選 → 頁尾（回到首頁）。
   排隊中做成一列一張、字放大，因為要讀的是「前面還有幾張」；
@@ -133,8 +134,8 @@ $ink-red: #D6335A;
   flex-shrink: 0;
   padding: 0.35rem 0.75rem;
   border-radius: 999px;
-  background: rgba(var.$will-blue, 0.16);
-  color: $ink-blue;
+  background: var(--theme-accent-tint, #{rgba(var.$will-blue, 0.16)});
+  color: var(--theme-accent-ink, #{$ink-blue});
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -159,7 +160,7 @@ $ink-red: #D6335A;
     flex: 1;
     height: 8px;
     border-radius: 4px;
-    background: linear-gradient(to right, #66CADC 0%, #01A7C5 100%);
+    background: var(--theme-accent, linear-gradient(to right, #66CADC 0%, #01A7C5 100%));
 
     &.is-used {
       background: rgba(0, 0, 0, 0.1);
@@ -197,15 +198,15 @@ $ink-red: #D6335A;
   padding: 0.8rem 1.25rem;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(to right, #66CADC 0%, #01A7C5 100%);
-  color: #fff;
+  background: var(--theme-action-bg, linear-gradient(to right, #66CADC 0%, #01A7C5 100%));
+  color: var(--theme-action-fg, #fff);
   font-family: inherit;
   font-size: clamp(0.95rem, 4.4vw, 1.1rem);
   font-weight: 800;
   letter-spacing: 0.04em;
   text-decoration: none;
   white-space: nowrap;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--theme-action-ring, 0 0 #0000), 0 3px 10px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   transition: transform 0.15s ease;
 
@@ -213,11 +214,14 @@ $ink-red: #D6335A;
     transform: scale(0.97);
   }
 
-  /* 按下去會進 LINE 登入：跟送出確認畫面的登入按鈕同一個綠 */
+  /* 按下去會進 LINE 登入：跟送出確認畫面的登入按鈕同一個綠。
+     字色與陰影要自己寫回來：上面那組會跟著節慶主題換，LINE 綠不換 */
   &--line {
     max-width: 280px;
     margin-top: 1.75rem;
     background: var.$line-green;
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
   }
 
   /* 回到首頁：導覽不是主要動作，不能跟額度卡裡的天藍「製作便利貼」搶。
@@ -230,6 +234,8 @@ $ink-red: #D6335A;
     padding: 0.65rem 1.6rem;
     border: 1px solid rgba(255, 255, 255, 0.55);
     background: var.$will-dark-deep;
+    /* 跟圓鈕一樣是白字，不吃節慶主題的主要按鈕色 */
+    color: #fff;
     font-size: 0.95rem;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
   }
@@ -350,7 +356,7 @@ $ink-red: #D6335A;
   strong {
     margin: 0 0.1em;
     font-size: 1.6em;
-    color: $ink-blue;
+    color: var(--theme-accent-ink, #{$ink-blue});
   }
 }
 
@@ -506,7 +512,7 @@ $ink-red: #D6335A;
   width: 18px;
   height: 18px;
   margin: 0.15rem 0 0;
-  accent-color: $ink-blue;
+  accent-color: var(--theme-accent, #{$ink-blue});
   cursor: pointer;
 
   &:disabled {

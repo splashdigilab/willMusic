@@ -15,6 +15,7 @@
  *
  * 例外是投稿頻率限制（`rateLimitConfig`）：測試站要能關掉限流反覆送，
  * 正式站不能跟著關，所以這一份設定的文件 ID 帶後綴（editor_rate_limit_dev）。
+ * 節慶主題（`siteThemeConfig`）同理：在測試站切成萬聖節試看，正式站不能跟著換。
  */
 
 export const SYSTEM_COLLECTION = 'system'
@@ -30,6 +31,8 @@ export interface FirestoreCollections {
   noteOwners: string
   /** system 底下投稿頻率設定的文件 ID（不是集合名稱） */
   rateLimitConfig: string
+  /** system 底下節慶主題設定的文件 ID（不是集合名稱），後台「播放設定」可改 */
+  siteThemeConfig: string
 }
 
 export const useCollections = (): FirestoreCollections => {
@@ -58,6 +61,8 @@ export const useCollections = (): FirestoreCollections => {
     noteOwners: `note_owners${suffix}`,
     // 頻率設定兩站分開：測試站關掉限流不會連正式站一起關。
     // 規則裡 user_quota_dev 讀的也是 _dev 這一份，兩邊要對得上
-    rateLimitConfig: `editor_rate_limit${suffix}`
+    rateLimitConfig: `editor_rate_limit${suffix}`,
+    // 節慶主題兩站分開：測試站切主題試看，不會連正式站一起換
+    siteThemeConfig: `site_theme${suffix}`
   }
 }

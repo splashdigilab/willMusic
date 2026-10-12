@@ -1,5 +1,6 @@
 /*
-  萬聖節主題。稿子「(Draft) 萬聖節便利貼 - WillMusic.ai」畫板 01（開場）、02（便利貼牆）。
+  萬聖節主題。稿子「(Draft) 萬聖節便利貼 - WillMusic.ai」畫板 01（開場）、02（便利貼牆）、
+  03／04（大螢幕徽章的正反面）。
 
   只在 <html data-theme="halloween"> 時生效（見 app/data/themes.ts）。
   原本的樣式一行都沒動，這裡全部是覆寫，主題切回去就整份失效。
@@ -13,6 +14,10 @@
 $hw-purple: #7949AC;
 $hw-orange: #FF6100;
 $hw-black: #141414;
+// 畫板 03、04（大螢幕徽章）的黃，跟品牌黃同一個值
+$hw-yellow: #FADC00;
+// 骷髏的萊姆（跟 themes.ts 的 skull-lime 材質同值）
+$hw-lime: #DAE000;
 
 /* 與 pages/_index.scss 同名同值：橫條往左右各溢出畫面的量 */
 $bottom-bar-overflow: min(1.43vw, 11px);
@@ -22,6 +27,24 @@ $bottom-bar-overflow: min(1.43vw, 11px);
 }
 
 [data-theme='halloween'] {
+
+    /* ===================== 介面強調色（編輯器、教學與確認彈窗、等待頁） =====================
+       稿子沒有畫編輯器，照開場與便利貼牆推出來（2026-10-12 使用者同意）：
+       主要按鈕跟 START、製作便利貼同一個樣子（黑底橘框橘字）；選中狀態用紫。
+       次要按鈕跟主要按鈕同一個樣子、只換框與字的顏色（黑底紫框白字），就像原本主題
+       桃紅與天藍是同一種漸層膠囊；原本做成紫底白字，跟旁邊的黑底按鈕看起來不像一組（2026-10-12）。
+       選中不用橘：材質列裡就有橘色色票，選中框再用橘會看混；紫在淺灰面板上也比橘清楚。
+       變數的意思見 base/variables；面板底、刪除鈕、LINE 綠刻意不換。 */
+    --theme-action-bg: #{$hw-black};
+    --theme-action-fg: #{$hw-orange};
+    --theme-action-ring: inset 0 0 0 2px #{$hw-orange};
+    --theme-alt-bg: #{$hw-black};
+    --theme-alt-fg: #fff;
+    --theme-alt-ring: inset 0 0 0 2px #{$hw-purple};
+    --theme-accent: #{$hw-purple};
+    --theme-accent-soft: #C9B6E0;
+    --theme-accent-tint: #{rgba($hw-purple, 0.14)};
+    --theme-accent-ink: #6A3D9A;
 
     /* ===================== 開場 overlay（首頁與編輯器的活動規範頁共用） ===================== */
 
@@ -44,18 +67,44 @@ $bottom-bar-overflow: min(1.43vw, 11px);
 
     /* ===================== 便利貼牆（畫板 02） ===================== */
 
-    /* 底色照舊 #404040，上面鋪南瓜、骷髏、幽靈的圖樣（向量）。
-       圖樣是 9:16 的構圖，其他比例用 cover 裁切；底部那道白色淡出（::after）照舊 */
-    .p-index {
-        background-image: url('/themes/halloween/wall-pattern.svg');
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-    }
+    /* 牆的底色照原本的 #404040 單色。稿子在上面鋪了南瓜、骷髏、幽靈的圖樣，
+       看起來像一層假的便利貼，2026-10-12 拿掉了 */
 
     .p-index__bottom-bar {
         background: $hw-purple;
     }
+
+    /* 製作便利貼：版面照原本撐滿橫條，只換成黑底、橘框、橘字。外框 5（1080 基準） */
+    .p-index__make-btn {
+        background: $hw-black;
+        color: $hw-orange;
+        border: max(2px, min(0.46vw, 3.5px)) solid $hw-orange;
+        box-sizing: border-box;
+
+        @include bp.respond-from('tablet-lg') {
+            border-width: 2px;
+        }
+    }
+
+    /* ===================== 我的便利貼 ===================== */
+
+    /* 空狀態那三張疊著的便利貼：原本是品牌的藍、桃紅、黃，換成這一季的紫、萊姆、橘
+       （萊姆與橘就是骷髏、南瓜材質的顏色）。最前面那張畫了兩道線，用橘最顯眼 */
+    .p-my-notes__empty-art i {
+        &:nth-child(1) {
+            background: $hw-purple;
+        }
+
+        &:nth-child(2) {
+            background: $hw-lime;
+        }
+
+        &:nth-child(3) {
+            background: $hw-orange;
+        }
+    }
+
+    /* 以下是字標版（themes.ts 的 wallBarLogo 打開時才有字標，目前關著） */
 
     /* 字標：x 98.7、寬 271.8（1080 基準）。上限跟著橫條在 751px 寬封頂 */
     .p-index__bar-logo {
@@ -71,17 +120,13 @@ $bottom-bar-overflow: min(1.43vw, 11px);
         }
     }
 
-    /* 製作便利貼：x 502–1020、高 116，外框 5（1080 基準），右緣離畫面 60 */
-    .p-index__make-btn {
+    /* 字標版的按鈕：x 502–1020、高 116（1080 基準），右緣離畫面 60 */
+    .p-index__bar-logo + .p-index__make-btn {
         flex: 0 0 auto;
         width: min(48vw, 360px);
         height: min(10.74vw, 80.6px);
         margin-left: auto;
         margin-right: calc(min(5.56vw, 41.7px) + #{$bottom-bar-overflow});
-        background: $hw-black;
-        color: $hw-orange;
-        border: max(2px, min(0.46vw, 3.5px)) solid $hw-orange;
-        box-sizing: border-box;
 
         /* 桌機：字標與按鈕一起置中，整組照原本的桌機比例（0.675）縮小 */
         @include bp.respond-from('tablet-lg') {
@@ -91,7 +136,6 @@ $bottom-bar-overflow: min(1.43vw, 11px);
             max-height: 54px;
             margin-left: 0;
             margin-right: 0;
-            border-width: 2px;
         }
     }
 
@@ -254,5 +298,76 @@ $bottom-bar-overflow: min(1.43vw, 11px);
         width: u(80.7);
         height: auto;
         pointer-events: none;
+    }
+}
+
+/* ===================== 大螢幕徽章（CanvasPromo，畫板 03 正面、04 背面） =====================
+   動畫與原本的圓形徽章完全一樣（彈出、正反面來回翻），只換長相：
+   圓片換成南瓜外形，正面橘、背面黃；南瓜上的圖文與 QR 在 CanvasPromo.vue。
+   稿子背景那層暗色的南瓜／骷髏／幽靈不做（原本的徽章也不做影片的背景，底下透出流動牆）。 */
+.c-canvas-promo--halloween {
+    /* 南瓜外框 916×936（畫板座標）。寬度沿用圓片的直徑：
+       稿子裡南瓜佔畫面寬 84.8%，原本影片裡圓片佔 85.2%，兩者在畫面上一樣大 */
+    .c-canvas-promo__badge {
+        height: calc(var(--size) * 936 / 916);
+    }
+
+    .c-canvas-promo__plate {
+        border-radius: 0;
+        background: $hw-orange;
+        mask: url('/themes/halloween/promo-pumpkin-front.svg') center / 100% 100% no-repeat;
+        -webkit-mask: url('/themes/halloween/promo-pumpkin-front.svg') center / 100% 100% no-repeat;
+
+        /* 原本圓片裡那層天藍漸層 */
+        &::before {
+            content: none;
+        }
+
+        /* 兩面的南瓜輪廓在稿子上不完全一樣（背面的蒂頭高一點），各用各的 */
+        &--back {
+            background: $hw-yellow;
+            mask-image: url('/themes/halloween/promo-pumpkin-back.svg');
+            -webkit-mask-image: url('/themes/halloween/promo-pumpkin-back.svg');
+        }
+    }
+
+    /* 正面黃 QR 在橘南瓜上，背面橘 QR 在黃南瓜上（照稿子） */
+    .c-canvas-promo__qr {
+        fill: $hw-yellow;
+    }
+
+    .c-canvas-promo__face--back .c-canvas-promo__qr {
+        fill: $hw-orange;
+    }
+}
+
+/* ===================== 大螢幕的蜘蛛網（canvas.vue） =====================
+   畫板 03、04 四角的白色蜘蛛網，使用者指定放在大螢幕整面的左上（左螢幕）與右下（右螢幕）。
+   形狀跟開場（畫板 01）的黑色蜘蛛網同一張，用遮罩上白色，不另外放一份白的。
+   大小照稿子：網寬 275、畫板高 1440，換成螢幕高的比例。
+   疊在深色底（150）之上、highlight（300）與徽章（400）之下，插播影片（500）會蓋掉它 */
+.t-hw-canvas-web {
+    position: absolute;
+    z-index: 200;
+    width: calc(100vh * 275 / 1440);
+    background: #fff;
+    pointer-events: none;
+    mask: center / 100% 100% no-repeat;
+    -webkit-mask: center / 100% 100% no-repeat;
+
+    &--tl {
+        top: 0;
+        left: 0;
+        aspect-ratio: 274.98 / 265.62;
+        mask-image: url('/themes/halloween/web-top-left.svg');
+        -webkit-mask-image: url('/themes/halloween/web-top-left.svg');
+    }
+
+    &--br {
+        right: 0;
+        bottom: 0;
+        aspect-ratio: 274.98 / 266.62;
+        mask-image: url('/themes/halloween/web-bottom-right.svg');
+        -webkit-mask-image: url('/themes/halloween/web-bottom-right.svg');
     }
 }

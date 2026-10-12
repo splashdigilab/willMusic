@@ -109,9 +109,19 @@
             }
         }
 
+        /* 確認／前進。節慶主題換得到（見 base/variables 的 --theme-action-*）；
+           其他種類（LINE、危險）不吃主題色，所以不寫在上面那條共用規則裡 */
+        .c-button--primary {
+            background: var(--theme-action-bg, linear-gradient(to right, #63C9DB 0%, #0CABC8 100%));
+            color: var(--theme-action-fg, #fff);
+            box-shadow: var(--theme-action-ring, 0 0 #0000), 0 3px 10px rgba(0, 0, 0, 0.18);
+        }
+
         /* 取消／次要動作，桃紅 */
         .c-button--secondary {
-            background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
+            background: var(--theme-alt-bg, linear-gradient(to right, #ED5F80 0%, #E5224F 100%));
+            color: var(--theme-alt-fg, #fff);
+            box-shadow: var(--theme-alt-ring, 0 0 #0000), 0 3px 10px rgba(0, 0, 0, 0.18);
         }
 
         /* 按下去會離開本站、進 LINE 登入的主要動作。

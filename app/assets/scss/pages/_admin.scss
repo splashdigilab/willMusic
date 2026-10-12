@@ -1027,6 +1027,12 @@
       font-size: 0.85rem;
       margin-bottom: 0.75rem;
     }
+
+    /* 讀不到設定之類、會擋住操作的狀況（顏色同「已封鎖」標籤） */
+    &--error {
+      color: #b91c1c;
+      font-weight: 700;
+    }
   }
 
   &__video-checklist {

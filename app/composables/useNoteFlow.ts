@@ -9,8 +9,9 @@
  * 優先接「從前一道流出來的」那張，所以每張每繞一圈就換到下一道，繞完所有道再回來。
  * 空位也照樣循環，牆面的疏密不會越流越擠或越空。
  *
- * 換道是為了公平：挑去展示只在左邊螢幕，直排時如果每張永遠待在同一欄，
- * 右邊螢幕那幾欄的便利貼就永遠輪不到。一條一條輪過去，每張待在左右兩邊的時間一樣。
+ * 換道是為了公平：挑去展示只在其中一個螢幕，直排時如果每張永遠待在同一欄，
+ * 另一個螢幕那幾欄的便利貼就永遠輪不到。一條一條輪過去，每張待在左右兩邊的時間一樣。
+ * 直排時挑去展示那個螢幕上的欄（pickScreen）更進一步：從隊伍接最久沒展示的那張。
  *
  * 各道進場的時間點都不一樣（起點錯開、流速也不同），從前一道流出的那張常要在隊伍裡等一下
  * 才輪到下一道進場；隊伍裡要有夠多張在等，每一道才能準時接到、不會開天窗。
@@ -36,10 +37,10 @@
  *
  * 輪播時 canvas 從這裡「拿起」一張（take），它的格子變成空位跟著流；
  * 展示完再「放回」（reserveReturn → rectOf 追著落點飛 → land）。
- * 拿起與放回都限定在指定範圍內（canvas 給的是左邊螢幕），見 isPickable / reserveReturn。
+ * 拿起與放回都限定在指定的左右範圍內（canvas 給的是右邊螢幕），見 isPickable / reserveReturn。
  *
  * 牆上的便利貼不會憑空消失：
- * - 放回時落點沒有空位 → 落點那張連同它前面（往出口那側）的，順著流向滑一格讓出位置
+ * - 放回時範圍內沒有空位 → 靠入口的那格連同它後面的，逆著流向退一格讓出位置（多半已在畫面外）
  * - 超過張數被擠掉的舊便利貼 → 繼續流，流出出口才離開（retire）
  * - 只有後台下架才會當場拿掉（canvas 負責淡出）
  *
@@ -58,6 +59,9 @@ import {
 } from '~/utils/wall-look'
 
 export type FlowDirection = 'left' | 'up'
+
+/** 牆上的左右範圍 [min, max]（px，相對於牆），例如其中一個螢幕 */
+export type FlowXRange = [min: number, max: number]
 
 export interface FlowRect {
   /** 便利貼（未旋轉時）的左上角，相對於牆，也就是整個 canvas */
@@ -93,6 +97,11 @@ export interface NoteFlowOptions {
   tilt?: number
   /** 牆橫跨幾個左右並排的螢幕，預設 1。直排時便利貼不會跨過螢幕之間的接縫 */
   screens?: number
+  /**
+   * 挑去展示的是第幾個螢幕（0 起算，canvas 是右邊的 1）。直排時落在這個螢幕上的那幾欄，
+   * 從隊伍接下一張時接最久沒展示的，每張輪到這個螢幕的機會才平均。橫排每一排都會流過它，用不到
+   */
+  pickScreen?: number
   /** 被擠掉的便利貼流出畫面、正式離開牆面時通知（canvas 才能把它的 DOM 拿掉） */
   onRetired?: (id: string) => void
 }
@@ -117,6 +126,8 @@ interface Item {
 type Entry = Pick<Item, 'id' | 'gapOf'> & {
   /** 從第幾道流出來的（下一道優先接它）；一開始排進隊伍的沒有 */
   from?: number
+  /** 流出來、排進隊伍的時間。沒有的（一開始就排不進畫面、新加入的）一律當作等很久了 */
+  since?: number
 }
 
 interface Lane {
@@ -179,6 +190,8 @@ export function useNoteFlow(opts: NoteFlowOptions) {
   const mess = Math.min(1, Math.max(0, opts.mess ?? 0))
   const maxTilt = maxTiltOf(mess, opts.tilt)
   const screens = Math.max(1, Math.floor(opts.screens ?? 1))
+  /** 每張最後一次展示完、放回牆上的時間；沒展示過的沒有 */
+  const lastShown = new Map<string, number>()
   const speedVary = Math.min(0.9, Math.max(0, opts.speedVary ?? 0))
   /** 名次開場決定一次，換畫面大小重排時不變（不然每次重排快慢都換） */
   const speedRanks = pickSpeedRanks(Math.max(1, Math.floor(opts.lanes)))
@@ -299,9 +312,9 @@ export function useNoteFlow(opts: NoteFlowOptions) {
 
   const toTransform = (rect: FlowRect) => `translate3d(${rect.x}px, ${rect.y}px, 0) rotate(${rect.rotation}deg)`
 
-  /** 整張都在 [0, maxX] × [0, height] 裡 */
-  const fits = (rect: FlowRect, maxX: number) =>
-    rect.x >= 0 && rect.x + rect.size <= maxX && rect.y >= 0 && rect.y + rect.size <= height
+  /** 整張都在 range × [0, height] 裡 */
+  const fits = (rect: FlowRect, [minX, maxX]: FlowXRange) =>
+    rect.x >= minX && rect.x + rect.size <= maxX && rect.y >= 0 && rect.y + rect.size <= height
 
   /** 依畫面大小算道寬、便利貼大小、流速。回傳便利貼邊長（px），給 CSS 用 */
   const layout = (w: number, h: number) => {
@@ -323,8 +336,17 @@ export function useNoteFlow(opts: NoteFlowOptions) {
     // 流動方向上超出格子的：偏移，加上最歪的那張外接框比格子大的那一半
     const widest = size * turnFactor(maxTilt)
     overhang = ALONG_JITTER * pitch * mess + Math.max(0, (widest - pitch) / 2)
+    // 直排時落在挑去展示那個螢幕上的那幾欄（見 pickScreen）
+    pickLanes = new Set()
+    if (vertical && opts.pickScreen != null) {
+      const screenW = w / screens
+      for (let l = 0; l < laneCount; l++) {
+        if (Math.floor(((l + 0.5) * laneSpan) / screenW) === opts.pickScreen) pickLanes.add(l)
+      }
+    }
     return size
   }
+  let pickLanes = new Set<number>()
 
   /**
    * 一道同時要有幾格：流動方向的長度（加上入口、出口各往外推的 overhang）再多一格，
@@ -525,73 +547,111 @@ export function useNoteFlow(opts: NoteFlowOptions) {
   }
 
   /**
-   * 挑去展示的候選：整張都在 [0, maxX] × 畫面高 裡（canvas 給的是左邊螢幕）。
-   * 給了 leadSec 的話，還要 leadSec 秒後（展示完、準備飛回來時）它留下的空位也還在範圍內，
-   * 才回得去原位；範圍在流動方向上太短、根本不可能滿足時就只看現在的位置
+   * 挑去展示的候選：整張都在 range × 畫面高 裡（canvas 給的是右邊螢幕）。
+   * 給了 leadSec 的話，leadSec 秒後也還要整張在範圍內 —— canvas 用來確認「等一下真正拿起時還在」；
+   * 範圍在流動方向上太短、根本不可能滿足時就只看現在的位置
    */
-  const isPickable = (id: string, maxX: number, leadSec = 0) => {
+  const isPickable = (id: string, range: FlowXRange, leadSec = 0) => {
     if (held.has(id) || arriving.has(id) || retiring.has(id)) return false
     const found = findItem(id)
     if (!found || found.item.slide) return false
     const t = now()
-    if (!fits(rectAt(found.l, found.item, t), maxX)) return false
-    const span = vertical ? height : maxX
+    if (!fits(rectAt(found.l, found.item, t), range)) return false
+    const span = vertical ? height : range[1] - range[0]
     if (found.lane.v * leadSec > span - size) return true
-    return fits(rectAt(found.l, found.item, t + leadSec), maxX)
+    return fits(rectAt(found.l, found.item, t + leadSec), range)
   }
 
   /**
-   * 在 lane 的第 k 格插進一張：第 k 格那張連同它前面（往出口那側）的全部順著流向滑一格，
-   * 最前面那張只是提早流出畫面；新的一張落在第 k 格原本的位置。dur 秒內滑完
+   * 回原位的落點：可以超出畫面外緣（中心還在畫面上就好），但不能跨過範圍內側的邊界（兩個螢幕的接縫）。
+   * 直排的原位在展示的十幾秒裡會往上流掉大半個畫面（1080 高、流速 30），
+   * 要整張都在畫面上的話幾乎都回不去（模擬一小時只有 2%）：原位變成空洞一路流走，
+   * 它自己還得擠進別的地方，牆上的空洞和插隊多了，在畫面外排隊的時間跟著變長，
+   * 每張輪到右邊螢幕的機會也變得不平均。放寬到中心在畫面上之後約 70% 回得去
    */
-  const insertBefore = (lane: Lane, k: number, id: string, dur: number) => {
+  const fitsHome = (rect: FlowRect, [minX, maxX]: FlowXRange) => {
+    const cx = rect.x + rect.size / 2
+    const cy = rect.y + rect.size / 2
+    const inLeft = minX <= 0 ? cx >= 0 : rect.x >= minX
+    const inRight = maxX >= width ? cx <= width : rect.x + rect.size <= maxX
+    return inLeft && inRight && cy >= 0 && cy <= height
+  }
+
+  /** 現在拿起的話，afterSec 秒後（展示完、飛回來時）它留下的空位還回得去（見 fitsHome） */
+  const canReturnHome = (id: string, range: FlowXRange, afterSec: number) => {
+    const found = findItem(id)
+    if (!found) return false
+    return fitsHome(toRect(found.l, alongOf(found.item, now() + afterSec), id), range)
+  }
+
+  /**
+   * 在 lane 的第 k 格插進一張：第 k 格那張連同它後面（往入口那側）的全部逆著流向退一格，
+   * 這一道之後進場的也跟著晚一格；新的一張落在第 k 格原本的位置。dur 秒內退完。
+   *
+   * 不往出口那側擠：那樣第 k 格前面整排（橫排時連另一個螢幕上的）都要一起往前滑，
+   * 實測每插一次畫面上平均有 9 張在動；挑靠入口的格子往後退，畫面上平均只有 1.6 張
+   */
+  const insertAt = (lane: Lane, k: number, id: string, dur: number) => {
     const shift = pitch / lane.v
     const t = now()
     const original = lane.items[k]!.enteredAt
-    for (let i = 0; i <= k; i++) {
+    for (let i = k; i < lane.items.length; i++) {
       const item = lane.items[i]!
       // 還在滑的，把剩下沒滑完的那段一起算進來，不會跳
       const pending = shownAlong(item, t) - alongOf(item, t)
-      item.enteredAt -= shift
-      item.slide = { from: pitch + pending, start: t, dur }
+      item.enteredAt += shift
+      item.slide = { from: pending - pitch, start: t, dur }
     }
+    lane.nextEntryAt += shift
     // 圖層等落地（land）時再給
-    lane.items.splice(k + 1, 0, { id, gapOf: null, enteredAt: original, v: lane.v, z: 0 })
+    lane.items.splice(k, 0, { id, gapOf: null, enteredAt: original, v: lane.v, z: 0 })
   }
 
   /**
    * 展示完要放回牆上：幫它在牆上保留一個位置，之後用 rectOf() 追著那個位置飛。
-   * 落點限定在 [0, maxX] × 畫面高（canvas 給的是左邊螢幕），依序找：
+   * 落點限定在 range × 畫面高（canvas 給的是右邊螢幕），依序找：
    *
-   * 1. 自己被拿起時留下的空位，落地時還在範圍內 → 回到原位
-   * 2. 範圍內其他空位（例如被擠掉的舊便利貼離開後留下的） → 挑落點離 (preferX, 畫面中線) 最近的
-   * 3. 範圍內都滿了 → 落點附近那張連同它前面的順著流向滑一格，讓出位置（slideSec 秒內滑完）
+   * 1. 自己被拿起時留下的空位，落地時還在範圍內（可以超出畫面外緣，見 fitsHome）→ 回到原位
+   * 2. 範圍內其他空位（新投稿、或回不去原位的）→ 挑最靠出口的，也就是最快要流出範圍、
+   *    流到另一個螢幕上變成破洞的那個，先補它。不挑離展示區近的：展示區在畫面正中間，
+   *    那樣幾乎都落在中間那一排
+   * 3. 範圍內都滿了 → 便利貼最少的那一道、靠入口的那格，連同它後面的逆著流向退一格讓出位置
+   *    （slideSec 秒內退完，見 insertAt）。keep 是等一下要從牆上拿起的那張，不能被推走
+   *    （推出範圍就拿不到了），同一道只能插在它後面
    * 4. 範圍內根本沒有格子（畫面異常窄）→ 插到隊伍最前面，下一個進場的就是它
    */
-  const reserveReturn = (id: string, arriveIn: number, maxX: number, preferX: number, slideSec = arriveIn) => {
+  const reserveReturn = (id: string, arriveIn: number, range: FlowXRange, keep: string | null, slideSec = arriveIn) => {
     const t = now() + arriveIn
+    lastShown.set(id, now())
     held.delete(id)
     arriving.add(id)
+    const kept = keep ? findItem(keep) : null
 
     // 用它自己的樣子（角度、偏移）來量：落地時實際佔的位置才是範圍內
     const slotAt = (l: number, item: Item) => toRect(l, alongOf(item, t), id)
-    const distance = (rect: FlowRect) =>
-      Math.hypot(rect.x + rect.size / 2 - preferX, rect.y + rect.size / 2 - height / 2)
+    const notesIn = (lane: Lane) => lane.items.reduce((n, item) => n + (item.id !== null ? 1 : 0), 0)
 
     let own: Item | null = null
-    let gap: { item: Item; d: number } | null = null
-    let occupied: { lane: Lane; k: number; d: number } | null = null
+    let gap: { item: Item; along: number } | null = null
+    let occupied: { lane: Lane; k: number; notes: number; along: number } | null = null
     for (const [l, lane] of lanes.entries()) {
+      const notes = notesIn(lane)
       for (const [k, item] of lane.items.entries()) {
         const rect = slotAt(l, item)
-        if (!fits(rect, maxX)) continue
-        const d = distance(rect)
+        if (item.id === null && item.gapOf === id) {
+          if (fitsHome(rect, range)) own = item
+          continue
+        }
+        if (!fits(rect, range)) continue
+        const along = alongOf(item, t)
         if (item.id === null) {
-          if (item.gapOf === id) own = item
           // 別張展示中的空位留給它自己
-          else if (!(item.gapOf && held.has(item.gapOf)) && (!gap || d < gap.d)) gap = { item, d }
+          if (!(item.gapOf && held.has(item.gapOf)) && (!gap || along < gap.along)) gap = { item, along }
         } else if (!held.has(item.id) && !arriving.has(item.id) && !frozen.has(item.id)) {
-          if (!occupied || d < occupied.d) occupied = { lane, k, d }
+          if (kept && kept.l === l && k <= kept.k) continue
+          if (!occupied || notes < occupied.notes || (notes === occupied.notes && along > occupied.along)) {
+            occupied = { lane, k, notes, along }
+          }
         }
       }
     }
@@ -608,7 +668,7 @@ export function useNoteFlow(opts: NoteFlowOptions) {
       return
     }
     if (occupied) {
-      insertBefore(occupied.lane, occupied.k, id, slideSec)
+      insertAt(occupied.lane, occupied.k, id, slideSec)
       return
     }
     queue.unshift({ id, gapOf: null })
@@ -688,12 +748,17 @@ export function useNoteFlow(opts: NoteFlowOptions) {
         const id = first.id !== null && members.has(first.id) ? first.id : null
         const total = lanes.reduce((n, ln) => n + ln.items.length, 0) + queue.length
         if (id === null && first.gapOf === null && total >= minTotal) continue
-        queue.push({ id, gapOf: first.gapOf, from: l })
+        queue.push({ id, gapOf: first.gapOf, from: l, since: t })
       }
     }
 
     // 進場：到點的道照時間先後接一張（一幀內可能好幾道都到點，分頁剛切回來時尤其多）。
-    // 優先接從前一道流出來的，每張才會一道一道輪過去；沒有就接隊伍最前面的
+    // - 直排、挑去展示那個螢幕上的欄（pickScreen）：接最久沒展示的便利貼（沒展示過的最優先）。
+    //   照下面的輪替規則的話，有的便利貼一小時裡幾乎沒待過那個螢幕，怎麼樣都輪不到它展示
+    // - 其他：優先接從前一道流出來的，每張才會一道一道輪過去；沒有就接隊伍最前面的。
+    //   但等太久的要先接：每一道都接得到「前一道流出來的」時，其他的會一直被插隊、永遠進不了場
+    //   （實測一小時裡有一張在畫面外連續等了 11 分鐘）。正常最多等一格的時間，等超過兩格就算太久
+    const staleAfter = (2 * pitch) / Math.min(...laneSpeeds)
     for (;;) {
       let due = -1
       lanes.forEach((lane, l) => {
@@ -706,8 +771,21 @@ export function useNoteFlow(opts: NoteFlowOptions) {
         for (const ln of lanes) if (t - ln.nextEntryAt > MAX_ENTRY_LAG) ln.nextEntryAt = t
         break
       }
+      let k = -1
+      if (pickLanes.has(due)) {
+        let oldest = Infinity
+        queue.forEach((e, i) => {
+          if (e.id === null) return
+          const at = lastShown.get(e.id) ?? -Infinity
+          if (at < oldest) {
+            oldest = at
+            k = i
+          }
+        })
+      }
+      if (k < 0) k = queue.findIndex(e => e.since === undefined || t - e.since > staleAfter)
       const prev = (due - 1 + lanes.length) % lanes.length
-      const k = Math.max(0, queue.findIndex(e => e.from === prev))
+      if (k < 0) k = Math.max(0, queue.findIndex(e => e.from === prev))
       const [entry] = queue.splice(k, 1)
       lane.items.push({ id: entry!.id, gapOf: entry!.gapOf, enteredAt: lane.nextEntryAt, v: lane.v, z: ++zTop })
       lane.nextEntryAt += pitch / lane.v
@@ -758,6 +836,7 @@ export function useNoteFlow(opts: NoteFlowOptions) {
     take,
     release,
     isPickable,
+    canReturnHome,
     reserveReturn,
     rectOf,
     land,

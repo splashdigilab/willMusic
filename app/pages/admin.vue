@@ -360,6 +360,62 @@
           </div>
         </section>
 
+        <!-- 節慶主題 -->
+        <section v-show="activeAdminTab === 'display'" class="p-admin__card">
+          <h2 class="p-admin__card-title">節慶主題</h2>
+          <!-- 中文段落寫在同一行：原始碼裡換行，畫面上會多出一個空格 -->
+          <p class="p-admin__video-hint">首頁開場、便利貼牆與編輯器的節慶外觀，編輯器會多出節慶的造型、材質與貼紙。儲存後約 30 秒內，新打開的頁面就會換上；已經開著的頁面要重新整理才會換。</p>
+          <p v-if="isTestSiteTheme" class="p-admin__video-hint p-admin__video-hint--compact">
+            這裡是測試站的設定，只影響測試站，正式站的節慶主題要到正式站後台改。
+          </p>
+          <!-- 讀到目前設定之前不給存：不然網路慢時畫面還停在預設值，一按儲存就把真正的設定蓋掉 -->
+          <p v-if="siteThemeError" class="p-admin__video-hint p-admin__video-hint--compact p-admin__video-hint--error">
+            讀不到目前的節慶主題設定（{{ siteThemeError }}），請重新整理後台。讀到之前不能儲存。
+          </p>
+          <p v-else-if="!siteThemeLoaded" class="p-admin__video-hint p-admin__video-hint--compact">
+            讀取目前設定中…
+          </p>
+          <p v-else class="p-admin__video-hint p-admin__video-hint--compact">
+            目前生效：{{ siteThemeEffectiveLabel }}<template v-if="siteThemeDirty">（你選的還沒儲存）</template>
+          </p>
+
+          <div class="p-admin__stats-filter" role="radiogroup" aria-label="節慶主題">
+            <button
+              v-for="option in siteThemeOptions"
+              :key="option.id"
+              type="button"
+              role="radio"
+              class="p-admin__filter-btn"
+              :class="{ 'p-admin__filter-btn--active': siteThemeSelected === option.id }"
+              :aria-checked="siteThemeSelected === option.id"
+              :disabled="!siteThemeEditable"
+              @click="siteThemeSelected = option.id"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+
+          <p class="p-admin__video-hint p-admin__video-hint--compact">「先預覽首頁」只影響你自己的瀏覽器，其他人看到的不會變；按下儲存時會自動清掉你的預覽，沒有要儲存的話，在網址後面加 ?theme=reset 也能回到正式設定。</p>
+
+          <div class="p-admin__btn-row">
+            <button
+              type="button"
+              class="p-admin__btn p-admin__btn--primary p-admin__btn--inline"
+              :disabled="!siteThemeEditable || !siteThemeDirty"
+              @click="saveSiteTheme"
+            >
+              {{ isSavingSiteTheme ? '儲存中…' : '儲存節慶主題' }}
+            </button>
+            <button
+              type="button"
+              class="p-admin__btn p-admin__btn--secondary p-admin__btn--inline"
+              @click="previewSiteTheme"
+            >
+              先預覽首頁
+            </button>
+          </div>
+        </section>
+
         <!-- 插播影片 -->
         <section v-show="activeAdminTab === 'display'" class="p-admin__card">
           <h2 class="p-admin__card-title">插播影片</h2>
@@ -771,6 +827,8 @@ import {
 import { STATS_MAX_RANGE_DAYS } from '~/composables/useUploadStats'
 import { useAdminStats } from '~/composables/useAdminStats'
 import { downloadCsv } from '~/utils/csv'
+import { THEMES, parseThemeId, resolveThemeId, type ThemeId } from '~/data/themes'
+import { THEME_PREVIEW_COOKIE } from '~/composables/useTheme'
 
 definePageMeta({
   layout: false
@@ -1571,6 +1629,88 @@ const saveRateLimitSettings = async () => {
   }
 }
 
+// ── 節慶主題 ──────────────────────────────────────────────
+// 寫入 system/site_theme（測試站 site_theme_dev，兩站各一份）。前台由 server/api/site-theme.get.ts
+// 讀，最多快取 30 秒，所以存完不必重新部署。
+// 「依部署設定」存成 themeId: null，前台就退回環境變數 NUXT_PUBLIC_THEME ——
+// 存過一次之後還能把決定權交回部署設定，不必進 Firestore 手動刪文件。
+
+/** 選項裡「依部署設定」的代號。不是主題 id，存的時候轉成 null */
+const SITE_THEME_DEPLOY = 'deploy' as const
+type SiteThemeChoice = ThemeId | typeof SITE_THEME_DEPLOY
+
+const envThemeId = resolveThemeId(useRuntimeConfig().public.theme)
+const deployThemeLabel = `依部署設定（${THEMES[envThemeId].label}）`
+const siteThemeOptions: { id: SiteThemeChoice; label: string }[] = [
+  { id: SITE_THEME_DEPLOY, label: deployThemeLabel },
+  ...Object.values(THEMES).map(t => ({ id: t.id, label: t.label }))
+]
+const isTestSiteTheme = cols.siteThemeConfig !== 'site_theme'
+/** 目前存著的選擇。第一次讀到之前沒有意義，看 siteThemeLoaded */
+const siteThemeSaved = ref<SiteThemeChoice>(SITE_THEME_DEPLOY)
+const siteThemeSelected = ref<SiteThemeChoice>(SITE_THEME_DEPLOY)
+const siteThemeLoaded = ref(false)
+const siteThemeError = ref('')
+const isSavingSiteTheme = ref(false)
+let unsubSiteTheme: (() => void) | null = null
+
+const siteThemeDirty = computed(() => siteThemeLoaded.value && siteThemeSelected.value !== siteThemeSaved.value)
+/** 讀到目前設定、沒出錯、沒在存，才能選與存 */
+const siteThemeEditable = computed(() => siteThemeLoaded.value && !siteThemeError.value && !isSavingSiteTheme.value)
+const siteThemeEffectiveLabel = computed(() => {
+  const saved = siteThemeSaved.value
+  return saved === SITE_THEME_DEPLOY ? deployThemeLabel : THEMES[saved].label
+})
+
+const startSiteThemeListener = () => {
+  unsubSiteTheme = onSnapshot(doc(db, 'system', cols.siteThemeConfig), (snap) => {
+    const raw = snap.exists() ? (snap.data() as { themeId?: unknown }).themeId : undefined
+    // 跟前台同一個判斷（useTheme）：沒設定、null、這個版本不認得的主題，都等於依部署設定
+    const saved: SiteThemeChoice = parseThemeId(raw) ?? SITE_THEME_DEPLOY
+    // 有選了還沒存的就不蓋掉：另一位管理員剛好存了、或網路重連又收到一次時，
+    // 照樣覆蓋的話，按下儲存會把舊值寫回去
+    const keepSelection = siteThemeDirty.value
+    siteThemeSaved.value = saved
+    if (!keepSelection) siteThemeSelected.value = saved
+    siteThemeLoaded.value = true
+    siteThemeError.value = ''
+  }, (err) => {
+    // 讀不到就不給存（見 siteThemeEditable），也不要讓畫面看起來像「沒設定過」
+    console.error('[admin] 讀取節慶主題設定失敗', err)
+    siteThemeError.value = err.code || err.message || '未知錯誤'
+  })
+}
+
+/** 自己瀏覽器的主題預覽（見 useTheme）。存完要清掉，不然按過預覽的人會一直看到預覽的主題 */
+const themePreviewCookie = useCookie<string | null>(THEME_PREVIEW_COOKIE, { path: '/', sameSite: 'lax' })
+
+const saveSiteTheme = async () => {
+  if (!siteThemeEditable.value) return
+  const choice = siteThemeSelected.value
+  isSavingSiteTheme.value = true
+  try {
+    await setDoc(
+      doc(db, 'system', cols.siteThemeConfig),
+      { themeId: choice === SITE_THEME_DEPLOY ? null : choice, updatedAt: Timestamp.now() },
+      { merge: true }
+    )
+    themePreviewCookie.value = null
+    const label = siteThemeOptions.find(o => o.id === choice)?.label ?? choice
+    showAdminToast('success', `已改成「${label}」，約 30 秒內新打開的頁面會換上`)
+  } catch (err) {
+    console.error('[admin] 儲存節慶主題失敗', err)
+    showAdminToast('error', '儲存節慶主題失敗，請稍後再試')
+  } finally {
+    isSavingSiteTheme.value = false
+  }
+}
+
+/** 用網址預覽（session cookie，只影響自己的瀏覽器，見 useTheme） */
+const previewSiteTheme = () => {
+  const choice = siteThemeSelected.value
+  window.open(`/?theme=${choice === SITE_THEME_DEPLOY ? envThemeId : choice}`, '_blank', 'noopener')
+}
+
 // ── 會員 ─────────────────────────────────────────────────
 // 清單在這裡，單一會員的所有操作（看便利貼、封鎖、刪個資）在 AdminMemberPanel。
 
@@ -1920,6 +2060,7 @@ onMounted(() => {
   startTokenRequirementListener()
   startGpsFenceListener()
   startRateLimitListener()
+  startSiteThemeListener()
   startCanvasVideoListener()
 })
 
@@ -1936,6 +2077,8 @@ onUnmounted(() => {
   unsubGpsFence = null
   unsubRateLimit?.()
   unsubRateLimit = null
+  unsubSiteTheme?.()
+  unsubSiteTheme = null
   clearQrCode()
 })
 </script>

@@ -25,6 +25,22 @@ $color-grey: #241F20;
 /* 編輯器的選取外框不在這裡：單色會與天藍／白／黑材質撞色，
    改由 mixins/editor 的 editor-selection-outline 畫成雙色。 */
 
+/* ==================== 節慶主題可以換的介面色 ====================
+   編輯器、教學與確認彈窗、等待頁的強調色分成三個角色，節慶主題在
+   themes/_<id>.scss 的 [data-theme='<id>'] 裡定義這幾個變數就整組換掉。
+
+   原本的主題「不定義」它們：每個用到的地方都寫成 var(--theme-xxx, 原本的值)，
+   原本的值各處略有不同（稿子不同畫板量到的漸層），這樣寫才能一個像素都不變。
+
+   --theme-action-bg / -fg / -ring   主要按鈕（下一步、送出、確認）。ring 是 inset 的 box-shadow，
+                                     要接在原本的陰影前面，沒有時用 0 0 #0000 佔位
+   --theme-alt-bg / -fg / -ring      次要按鈕（上一步、略過、復原／重做）。ring 同上
+   --theme-accent                    選中狀態（步驟點、造型、對齊、色票框、滑桿、開關、勾選框、縮放把手）
+   --theme-accent-soft               淡一階（走過的步驟點）
+   --theme-accent-tint / -ink        淡底與壓在淡底上的深一階字色（STEP 5「已署名」）
+
+   不換的：刪除鈕的紅（語意色）、LINE 綠（LINE 登入按鈕規範）、面板的淺灰底（使用者在這裡判斷便利貼的顏色）。 */
+
 :root {
   // Colors
   --color-primary: #{$will-blue};

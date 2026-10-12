@@ -535,10 +535,13 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
-    // ── system/*：設定文件（正式與測試共用，editor_rate_limit_dev 例外）──
+    // ── system/*：設定文件（正式與測試共用；editor_rate_limit_dev、site_theme_dev 例外，兩站各一份）──
     match /system/{docId} {
       // 前台要讀 editor_token_requirement 與 editor_geo_fence，
-      // 大螢幕要讀 canvas_video，掃碼頁要讀 active_token
+      // 大螢幕要讀 canvas_video，掃碼頁要讀 active_token。
+      // 節慶主題 site_theme／site_theme_dev 是伺服器端不登入、不帶金鑰用 REST 讀的
+      // （server/api/site-theme.get.ts）：這裡若改成只開放特定文件，要把它們列進去，
+      // 否則讀取會被擋，全站默默退回環境變數的主題
       allow read: if true;
       allow write: if isStaff();
     }

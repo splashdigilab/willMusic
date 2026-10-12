@@ -1020,8 +1020,9 @@ const isSwatchUsable = (color: string) => isSwatchVisibleOn(backgroundImage.valu
  * 判斷沿用色票那套而不是寫死「材質 === #FFFFFF」，日後加了米白之類的淺材質會自己跟著換。
  * 只有兩種顏色可挑，所以這裡不再往下找第三個 —— 現有六個材質裡，
  * 白線看不到的只有白材質，而天藍在白底上非常清楚。
+ * 天藍寫成 CSS 變數：節慶主題換了選中色（--theme-accent），這條線跟著換（見 base/variables）。
  */
-const selectionLineColor = computed(() => (isSwatchUsable('#ffffff') ? '#fff' : '#00A7C5'))
+const selectionLineColor = computed(() => (isSwatchUsable('#ffffff') ? '#fff' : 'var(--theme-accent, #00A7C5)'))
 
 const shape = ref(DEFAULT_SHAPE_ID)
 // 署名（名牌）也放在這個陣列裡，見 utils/name-tag.ts

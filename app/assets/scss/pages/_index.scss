@@ -288,7 +288,8 @@ $edge-inset: 1rem;
                 content: '';
                 width: 1.4cqw;
                 height: 2.8cqw;
-                border: solid var.$will-blue;
+                /* 節慶主題換成它的選中色（見 base/variables） */
+                border: solid var(--theme-accent, #{var.$will-blue});
                 /* 勾的大小仍隨卡片走（上面的 width / height 是 cqw），
                    只有筆畫固定 px，理由同外框 */
                 border-width: 0 2px 2px 0;

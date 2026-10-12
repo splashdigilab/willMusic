@@ -6,17 +6,21 @@
  * app/assets/scss/themes/ 底下以 [data-theme='<id>'] 限定範圍的樣式。
  *
  * ── 切換方式 ──────────────────────────────────────────────
- *   正式：環境變數 NUXT_PUBLIC_THEME=halloween，改完重新部署。
- *        none（或不設）＝原本的主題。沿用 nuxt.config.ts 的慣例：Amplify 不收空字串，所以用 none。
- *   預覽：任一頁網址加 ?theme=halloween，同一個分頁之後都會套用（sessionStorage）；
- *        ?theme=default 看原本的樣子，?theme=reset 回到正式設定。只影響自己的分頁，
+ *   正式：後台「播放設定」→「節慶主題」，存在 system/site_theme（測試站 site_theme_dev，兩站各一份）。
+ *        不必重新部署；伺服器每 30 秒重讀一次（見 server/api/site-theme.get.ts），新打開的頁面就會換上。
+ *   後台沒設定過、選了「依部署設定」、或存的主題這個版本不認得時：退回環境變數 NUXT_PUBLIC_THEME
+ *        （none 或不設＝原本的主題）。
+ *   預覽：任一頁網址加 ?theme=halloween，這個瀏覽器之後都會套用（session cookie）；
+ *        ?theme=default 看原本的樣子，?theme=reset 回到正式設定。只影響自己，
  *        可以在測試站或正式站先看效果。
  *
  * ── 新增一個節慶 ──────────────────────────────────────────
  *   1. 這裡加一筆 ThemeConfig，ThemeId 加上它的 id
  *   2. 造型、貼紙加進 shapes.ts / stickers.ts 的「資料庫」（不是選單）—— 節慶結束後
  *      主題切回去，選單就不再列出，但已上牆的便利貼仍查得到
- *   3. 新造型要重跑 scripts/shapes/build_shadows.py 產生陰影
+ *   3. 新造型要重跑 scripts/shapes/build_shadows.py 產生陰影；
+ *      新貼紙要重跑 scripts/stickers/build_stickers.py 產生選單縮圖
+ *   3b. ThemeId 加上新 id 之後，後台「節慶主題」的選項會自動多一個（照 THEMES 列出）
  *   4. 樣式寫在 app/assets/scss/themes/_<id>.scss，素材放 public/themes/<id>/
  *   5. 開場畫面若不是只改顏色，做一個 components/theme/<Name>Intro.vue，在 index.vue 掛上
  */
@@ -28,6 +32,8 @@ export type ThemeId = 'default' | 'halloween'
 
 export interface ThemeConfig {
   id: ThemeId
+  /** 後台選單上的名稱 */
+  label: string
   /** 這個主題的節慶造型，排在 STEP 2 選單最前面（造型本身要先登記在 shapes.ts） */
   shapeIds: string[]
   /** 接在基本材質後面的節慶材質。不插在前面：第一個材質同時是預設值與「有沒有動過」的判斷基準 */
@@ -41,6 +47,7 @@ export interface ThemeConfig {
 export const THEMES: Record<ThemeId, ThemeConfig> = {
   default: {
     id: 'default',
+    label: '原本的主題',
     shapeIds: [],
     extraMaterials: [],
     stickerIds: [],
@@ -48,29 +55,36 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
   },
 
   /**
-   * 萬聖節。稿子：「(Draft) 萬聖節便利貼 - WillMusic.ai」畫板 01（開場）、02（便利貼牆）。
+   * 萬聖節。稿子：「(Draft) 萬聖節便利貼 - WillMusic.ai」畫板 01（開場）、02（便利貼牆）、
+   * 03／04（大螢幕徽章的正反面，見 CanvasPromo.vue；大螢幕左上、右下另加蜘蛛網，見 canvas.vue）。
    * 南瓜、骷髏、幽靈的本體與臉取自稿子畫板上方的素材，已轉正（見 scripts/themes/README.md）。
    * 本體色就是下面兩個材質（幽靈用既有的白），臉做成貼紙，自己挑要不要貼。
+   * 編輯器、確認彈窗、等待頁稿子沒有畫，按鈕與選中色照開場推（--theme-* 變數，見 themes/_halloween.scss）。
    */
   halloween: {
     id: 'halloween',
+    label: '萬聖節',
     shapeIds: ['pumpkin', 'skull', 'ghost'],
     extraMaterials: [
       { id: 'pumpkin-orange', value: '#FF6100' },
       { id: 'skull-lime', value: '#DAE000' }
     ],
     stickerIds: ['halloween-pumpkin-face', 'halloween-skull-face', 'halloween-ghost-face'],
-    wallBarLogo: true
+    // 稿子畫板 02 有字標，2026-10-12 改回按鈕撐滿橫條（跟原本的主題同一個版面，只換顏色）
+    wallBarLogo: false
   }
 }
 
 export const DEFAULT_THEME_ID: ThemeId = 'default'
 
-/** 外部給的值（環境變數、網址）轉成合法的主題 id；none、空值、打錯字一律是原本的主題 */
-export const resolveThemeId = (value: unknown): ThemeId => {
+/** 認得的主題 id 就回傳它，不認得（空值、打錯字、這個版本還沒有的主題）回傳 null */
+export const parseThemeId = (value: unknown): ThemeId | null => {
   const v = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  return (Object.keys(THEMES) as ThemeId[]).includes(v as ThemeId) ? (v as ThemeId) : DEFAULT_THEME_ID
+  return (Object.keys(THEMES) as ThemeId[]).includes(v as ThemeId) ? (v as ThemeId) : null
 }
+
+/** 外部給的值（環境變數、網址）轉成合法的主題 id；none、空值、打錯字一律是原本的主題 */
+export const resolveThemeId = (value: unknown): ThemeId => parseThemeId(value) ?? DEFAULT_THEME_ID
 
 /** 所有節慶專屬的造型／貼紙。它們只在自己的主題裡出現在選單上 */
 export const FESTIVE_SHAPE_IDS = new Set(Object.values(THEMES).flatMap(t => t.shapeIds))

@@ -143,14 +143,18 @@ signInWithCustomToken     之後的登入狀態由 Firebase SDK 自己維護
 | `displayScale` | 0.9 | 右側便利貼縮放 |
 | `flow` | `up` | 流動牆的方向：`up` 一欄一欄由下往上、`left` 一排一排由右往左 |
 | `cols` / `rows` | 6 / 3 | 幾道：往上流看 `cols`（每個螢幕 3 欄），往左流看 `rows` |
-| `flowScale` | 0.85（往左 0.8） | 便利貼佔道寬的比例 |
+| `flowScale` | 0.85 | 便利貼佔道寬的比例 |
 | `flowSpeed` | 30（往左 45） | 流速，1080 高的畫面每秒幾 px |
 | `mess` | 1 | 雜亂程度，0 = 整齊磚牆、1 = 最亂（超過 1 當 1） |
 | `tilt` | 5 | 最多歪幾度（±），0 = 不歪，最多 45 |
 | `speedVary` | 0 | 各道流速上下差多少（比例），0 = 全部同速 |
-| `promoEvery` | 10 | 每展示幾張插一次徽章動畫，0 = 關閉 |
 
-`mess`、`tilt`、往上流的 `flowScale` 的預設值跟首頁共用（`app/utils/wall-look.ts` 的 `WALL_LOOK`），
+左螢幕常駐翻面的徽章（START ↔ QR code），右螢幕一直輪播 highlight，徽章不會插進輪播。
+展示的便利貼從右螢幕的牆上拿起、展示完放回右螢幕，下一張等上一張落地才拿起。
+深色底有兩種樣子，拿起與放回時交叉淡換：平常是左螢幕由左到右的漸層、右螢幕沒有底色；
+highlight 時左右兩個螢幕一樣深、沒有漸層。深淺在 `_canvas.scss` 的 `$dim-idle-edge`、`$dim-highlight`。
+
+`mess`、`tilt`、`flowScale` 的預設值跟首頁共用（`app/utils/wall-look.ts` 的 `WALL_LOOK`），
 首頁的便利貼牆也照這組參數排，兩邊是同一種凌亂感。
 
 ## Firestore 結構

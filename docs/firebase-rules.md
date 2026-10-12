@@ -248,6 +248,17 @@ Firestore 才做得到，還牽涉測試／正式兩組名單），所以被封�
 規則部署前那一步會被拒，後台會顯示刪除失敗，個資不會刪到一半。
 **正式站開放署名之前一定要部署。**
 
+## 3e. 節慶主題（`system/site_theme`）
+
+後台「播放設定」→「節慶主題」寫入 `system/site_theme`（測試站 `site_theme_dev`，
+跟頻率限制一樣兩站各一份，文件 ID 由 `useCollections().siteThemeConfig` 算），
+欄位是 `themeId`（`null` ＝依部署設定，也就是環境變數 `NUXT_PUBLIC_THEME`）。
+
+**不需要改規則**：寫入走既有的「`system/*` 只有 staff 能寫」。但讀取這一邊有個依賴：
+伺服器畫頁面前是用 Firestore REST、**不登入也不帶金鑰**去讀（`server/api/site-theme.get.ts`），
+靠的是 `system/*` 的 `allow read: if true`。日後若把 `system/*` 改成只開放特定文件，
+要把 `site_theme` 與 `site_theme_dev` 列進去，否則讀取會被擋、全站默默退回環境變數的主題。
+
 ## 4. 手繪圖改存 Storage
 
 新送出的便利貼，`style.drawing` 會從內嵌的 base64 變成 Storage 的網址。

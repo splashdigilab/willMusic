@@ -20,7 +20,7 @@
     ref="canvasRef"
     :style="{ '--display-scale': displayNoteScale, '--flow-size': `${flowSize}px` }"
   >
-    <!-- ─── 底層：流動便利貼牆，橫跨左右兩個螢幕，由左往右流（位置由 useNoteFlow 每幀寫入） ─── -->
+    <!-- ─── 底層：流動便利貼牆，橫跨左右兩個螢幕，由下往上流（位置由 useNoteFlow 每幀寫入） ─── -->
     <div ref="flowLayerRef" class="p-canvas__flow" aria-hidden="true">
       <div
         v-for="item in wallNotes"
@@ -32,9 +32,22 @@
       </div>
     </div>
 
-    <!-- ─── 左側容器：頂層只有徽章動畫與插播影片 ─── -->
+    <!-- ─── 深色底：蓋在流動牆上、徽章與 highlight 底下，橫跨兩個螢幕，兩種樣子交叉淡換 ───
+         平常：左螢幕由左到右的漸層（左緣最深、到接縫透明），右螢幕沒有底色，拿起、放回都看得清楚；
+         highlight 時：左右兩個螢幕一樣深、沒有漸層。濃淡由輪播動畫調（見 dimTo） -->
+    <div ref="dimIdleRef" class="p-canvas__dim p-canvas__dim--idle" aria-hidden="true" />
+    <div ref="dimHighlightRef" class="p-canvas__dim p-canvas__dim--highlight" aria-hidden="true" />
+
+    <!-- 萬聖節：整面的左上、右下角各一張白色蜘蛛網（稿子畫板 03、04，樣式在 themes/_halloween.scss） -->
+    <template v-if="themeId === 'halloween'">
+      <i class="t-hw-canvas-web t-hw-canvas-web--tl" aria-hidden="true" />
+      <i class="t-hw-canvas-web t-hw-canvas-web--br" aria-hidden="true" />
+    </template>
+
+    <!-- ─── 左側容器：常駐的徽章動畫與插播影片 ───
+         按「開始」才掛上，徽章的彈出才會跟著牆一起出現 -->
     <div class="p-canvas__half p-canvas__half--stack">
-      <CanvasPromo v-if="showPromo" class="p-canvas__promo p-canvas__promo--left" />
+      <CanvasPromo v-if="hasUserStarted" class="p-canvas__promo" />
       <div
         v-show="showInterstitial && interstitialSrc"
         class="p-canvas__interstitial p-canvas__interstitial--left"
@@ -52,11 +65,9 @@
     </div>
 
     <!-- ─── 右側容器：頂層是 highlight 的那一張 ───
-         換張時會同時有兩張：剛展示完、正在飛回牆上的，和剛拿起、正在飛過來的。
+         換張時會短暫同時有兩張：剛展示完、正在飛回牆上的，和下一張（等前一張落地才從牆上拿起，之前藏著）。
          飛回去的用本尊不用複製品：複製出來的圖片要重新解碼，起飛那一下貼紙與手繪會閃掉 -->
     <div class="p-canvas__half p-canvas__half--stack">
-      <!-- 平常蓋在右螢幕牆面上的深色漸層；圓形提醒期間換成左右一樣的深色色塊（徽章自己的底色） -->
-      <div class="p-canvas__dim" :class="{ 'is-off': promoDimming }" aria-hidden="true" />
       <div class="p-canvas__display-zone">
         <div
           v-for="item in displayItems"
@@ -67,14 +78,6 @@
           <StickyNote :note="item" />
         </div>
       </div>
-      <!-- 每輪播 promoEvery 張，左右兩個螢幕各插一次徽章動畫（同時掛上、同步播）。
-           兩個的時間軸一樣長，只聽右邊這個的 finished -->
-      <CanvasPromo
-        v-if="showPromo"
-        class="p-canvas__promo p-canvas__promo--right"
-        @leaving="promoDimming = false"
-        @finished="onPromoFinished"
-      />
       <div
         v-show="showInterstitial && interstitialSrc"
         class="p-canvas__interstitial p-canvas__interstitial--right"
@@ -101,20 +104,23 @@ import {
   parseInterstitialScheduleEnabled
 } from '~/composables/useConductor'
 import type { StateChangeInfo } from '~/composables/useConductor'
-import { useNoteFlow, type FlowDirection, type FlowRect } from '~/composables/useNoteFlow'
+import { useNoteFlow, type FlowDirection, type FlowRect, type FlowXRange } from '~/composables/useNoteFlow'
 import { useVideoMirror } from '~/composables/useVideoMirror'
 import { WALL_LOOK } from '~/utils/wall-look'
 
 definePageMeta({ layout: false })
+
+/** 節慶主題：萬聖節時四角加蜘蛛網（徽章本身換長相由 CanvasPromo 自己看） */
+const { themeId } = useTheme()
 
 /* ─── 動畫時間設定（秒）───────────────────────────────────────
    調整這裡可以統一改變所有動畫的快慢
    ─────────────────────────────────────────────────────────── */
 const ANIM = {
   /**
-   * 飛行時間（從左邊螢幕的牆飛到右邊、飛回牆上、新投稿飛入）依距離決定：
+   * 飛行時間（從牆上飛到右邊螢幕中間、飛回牆上、新投稿飛入）依距離決定：
    * 距離 ÷ flightSpeed，夾在 moveDuration 與 maxMoveDuration 之間。
-   * 拿起與放回都在左邊螢幕，每次都要橫跨接縫，固定時間的話遠的那幾次會飛得太快
+   * 牆上的位置有近有遠，固定時間的話遠的那幾次會飛得太快
    */
   moveDuration:    1.2,
   maxMoveDuration: 2.0,
@@ -130,18 +136,21 @@ const ANIM = {
 const flightDuration = (distance: number) =>
   Math.min(ANIM.maxMoveDuration, Math.max(ANIM.moveDuration, distance / ANIM.flightSpeed))
 
+/** 上一張飛回牆上最久要多久（拿起 → 移動），下一張要等它落地才從牆上拿起 */
+const RETURN_MAX_SEC = ANIM.scaleDuration + ANIM.maxMoveDuration
+
 /**
- * 一輪動畫從頭到尾最久要多久：拿起 → 移動（最長的那種）→ 放下，外加一點緩衝。
- * 傳給 Conductor 當作「動畫進行中不要開始下一輪」的守衛長度。
+ * 一輪動畫從頭到尾最久要多久：上一張飛回牆上 → 下一張拿起 → 移動（都是最長的那種）→ 放下，
+ * 外加一點緩衝。傳給 Conductor 當作「動畫進行中不要開始下一輪」的守衛長度。
  * 這個值必須跟著 ANIM 走，寫死就會在改動畫時間後悄悄失準。
  */
-const ANIM_TOTAL_MS = (ANIM.scaleDuration * 2 + ANIM.maxMoveDuration) * 1000 + 50
+const ANIM_TOTAL_MS = (RETURN_MAX_SEC + ANIM.scaleDuration * 2 + ANIM.maxMoveDuration) * 1000 + 50
 
 /* ─── URL 參數 ─── */
 const route = useRoute()
 /**
  * 輪播的張數（載入最新的幾張）。沒填時依畫面大小算：排滿牆面再多每道一張在畫面外排隊，
- * 換道才換得起來、每張輪到左邊螢幕的機會才平均（見 useNoteFlow 的 recommendedCount）
+ * 換道才換得起來、每張輪到右邊螢幕的機會才平均（見 useNoteFlow 的 recommendedCount）
  */
 const maxNotesParam = computed(() => Number(route.query.count) || 0)
 const displaySec = computed(() => Number(route.query.duration) || 15)
@@ -150,7 +159,7 @@ const displayNoteScale = computed(() => Number(route.query.displayScale) || 0.9)
  * 流動牆：
  * - 方向：預設一欄一欄由下往上；?flow=left 改成一排一排由右往左
  * - 道數：由下往上看 ?cols（預設 6 欄，每個螢幕 3 欄）；由右往左看 ?rows（預設 3 排）
- * - ?flowScale：便利貼佔道寬的比例，往上流預設 0.85
+ * - ?flowScale：便利貼佔道寬的比例，預設 0.85
  * - ?flowSpeed：流速（1080 高的畫面每秒幾 px）。往上流預設比較慢：畫面高只有 1080，
  *   照橫向的速度一張半分鐘就流完了，展示完它留下的空位也多半已經流出頂端、回不去原位
  * - ?mess：排列的雜亂程度，0 = 整齊磚牆、1 = 最亂（大小不變，前後左右的偏移差最多，
@@ -158,20 +167,18 @@ const displayNoteScale = computed(() => Number(route.query.displayScale) || 0.9)
  * - ?speedVary：各道流速上下差多少（比例），例如 0.15 = 最慢 0.85 倍、最快 1.15 倍。預設 0 = 全部同速
  * - ?tilt：最多歪幾度（每張在 ±tilt 之間），0 = 完全不歪，最多 45。預設 5；只管角度，偏移看 mess
  *
- * mess、tilt、往上流的 flowScale 的預設值跟首頁的便利貼牆共用（WALL_LOOK），兩邊才是同一種凌亂感
+ * mess、tilt、flowScale 的預設值跟首頁的便利貼牆共用（WALL_LOOK），兩邊才是同一種凌亂感
  */
 const flowDirection = computed<FlowDirection>(() => (route.query.flow === 'left' ? 'left' : 'up'))
 const flowLanes = computed(() => {
   const n = flowDirection.value === 'up' ? Number(route.query.cols) || 6 : Number(route.query.rows) || 3
   return Math.max(1, Math.floor(n))
 })
-const flowScale = computed(() =>
-  Number(route.query.flowScale) || (flowDirection.value === 'up' ? WALL_LOOK.scale : 0.8)
-)
+const flowScale = computed(() => Number(route.query.flowScale) || WALL_LOOK.scale)
 const flowSpeed = computed(() =>
   Number(route.query.flowSpeed) || (flowDirection.value === 'up' ? 30 : 45)
 )
-/** 0 是有意義的值（整齊），跟 promoEvery 一樣不能寫成 `||` */
+/** 0 是有意義的值（整齊），不能寫成 `||`，會被當成沒填而變回預設 */
 const flowMess = computed(() => {
   const n = Number(route.query.mess)
   return route.query.mess != null && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : WALL_LOOK.mess
@@ -183,14 +190,6 @@ const flowSpeedVary = computed(() => {
 const flowTilt = computed(() => {
   const n = Number(route.query.tilt)
   return route.query.tilt != null && Number.isFinite(n) ? Math.min(45, Math.max(0, n)) : WALL_LOOK.tilt
-})
-/**
- * 右側每展示幾張便利貼插一次徽章動畫。?promoEvery=0 關閉。
- * 不能照上面寫成 `|| 10`：0 是有意義的值，會被當成沒填而變回 10
- */
-const promoEvery = computed(() => {
-  const n = Number(route.query.promoEvery)
-  return route.query.promoEvery != null && Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 10
 })
 
 /* ─── Conductor + 插播影片 ─── */
@@ -220,40 +219,8 @@ const {
   displayState,
   armInterstitialSlot,
   finishInterstitial,
-  clearInterstitialArmQueue,
-  finishPromo
+  clearInterstitialArmQueue
 } = useConductor()
-
-/* ─── 徽章動畫 ─── */
-const showPromo = ref(false)
-/**
- * 圓形提醒期間，右螢幕平常的漸層淡掉，換成徽章的深色色塊（左右一樣深）。
- * 跟著徽章淡入就關、開始淡出就開，兩層交叉淡換，中間不會有一段沒蓋東西
- */
-const promoDimming = ref(false)
-/**
- * 保底：動畫一輪約 10 秒，超過 15 秒還沒收到 finished 就當作播完。
- * 元件掛載失敗之類的狀況下 finished 永遠不會來，輪播會一直停在「右邊沒有便利貼」
- */
-const PROMO_FALLBACK_MS = 15_000
-let promoFallbackTimer: ReturnType<typeof setTimeout> | null = null
-
-const onPromoStart = () => {
-  showPromo.value = true
-  promoDimming.value = true
-  if (promoFallbackTimer) clearTimeout(promoFallbackTimer)
-  promoFallbackTimer = setTimeout(onPromoFinished, PROMO_FALLBACK_MS)
-}
-
-const onPromoFinished = () => {
-  if (promoFallbackTimer) {
-    clearTimeout(promoFallbackTimer)
-    promoFallbackTimer = null
-  }
-  showPromo.value = false
-  promoDimming.value = false
-  finishPromo()
-}
 
 const preloadVideo = (url: string): Promise<void> => {
   if (interstitialPreloadMap.has(url)) return interstitialPreloadMap.get(url)!
@@ -377,6 +344,22 @@ const onInterstitialVideoEnded = () => {
 const canvasRef = ref<HTMLElement | null>(null)
 /** 底層流動牆的容器 */
 const flowLayerRef = ref<HTMLElement | null>(null)
+/** 深色底的兩種樣子：平常（左螢幕漸層）與 highlight（左右一樣深） */
+const dimIdleRef = ref<HTMLElement | null>(null)
+const dimHighlightRef = ref<HTMLElement | null>(null)
+
+/**
+ * 深色底換成 highlight 的樣子（on）或平常的樣子（off）：兩層同時一淡一濃，交叉淡換。
+ * 兩層都是半透明黑，疊起來不是直線內插：左緣（0.8 → 0.55）途中最淺到 0.53，
+ * 比終點只淺 0.02、而且是一路變化中經過，看不出來；接縫那側沒有漸層層，就是直線內插
+ */
+const dimTo = (tl: gsap.core.Timeline, on: boolean, duration: number, at: number) => {
+  const idle = dimIdleRef.value
+  const highlight = dimHighlightRef.value
+  if (!idle || !highlight) return
+  tl.to(idle, { opacity: on ? 0 : 1, duration, ease: 'sine.inOut' }, at)
+  tl.to(highlight, { opacity: on ? 1 : 0, duration, ease: 'sine.inOut' }, at)
+}
 
 /** 取得便利貼唯一 ID */
 const getId = (item: any): string => item?.id ?? item?.token ?? ''
@@ -431,8 +414,10 @@ const flow = useNoteFlow({
   speedVary: flowSpeedVary.value,
   mess: flowMess.value,
   tilt: flowTilt.value,
-  // 左右兩台螢幕：便利貼不跨在中間的接縫上
+  // 左右兩台螢幕：直排時便利貼不跨在中間的接縫上（橫排本來就會一路流過接縫）
   screens: 2,
+  // 展示的便利貼從右邊螢幕挑：直排時右邊那幾欄從隊伍接最久沒展示的
+  pickScreen: 1,
   onRetired: id => onRetired(id)
 })
 /** 牆上便利貼的邊長（px），寫進 --flow-size 給 CSS */
@@ -445,12 +430,15 @@ const onFlowNoteRef = (id: string, el: unknown) => {
 const liveGridIds = () => displayState.value.liveGrid.map(getId).filter(Boolean)
 
 /**
- * 從牆上拿起、展示完放回，都只在左邊螢幕：右邊螢幕的頂層是 highlight，
- * 在它底下拿起放回看不清楚，而且左→右的飛行才有「從牆上被挑中」的感覺。
+ * 從牆上拿起、展示完放回，都只在右邊螢幕（使用者指定）：左邊螢幕常駐徽章，
+ * 右邊螢幕平常沒有深色底，拿起與放回都看得清楚；highlight 期間才換成左右一樣深的深色底。
  * 範圍扣掉中間接縫的 30px，跟展示區、插播影片一致
  */
 const SEAM = 30
-const leftScreenRight = () => (canvasRef.value?.clientWidth ?? window.innerWidth) / 2 - SEAM
+const rightScreen = (): FlowXRange => {
+  const w = canvasRef.value?.clientWidth ?? window.innerWidth
+  return [w / 2 + SEAM, w]
+}
 
 /** 按「開始」之後才切全螢幕之類的：牆照新的大小重排 */
 const onResize = () => {
@@ -489,7 +477,7 @@ let outgoing: { id: string; el: HTMLElement } | null = null
 const placeFadingCopy = (el: HTMLElement) => {
   const copy = el.cloneNode(true) as HTMLElement
   copy.classList.add('is-fading')
-  // 放在牆那一層（本尊的 transform 原樣帶過來就是同一個位置），才會跟牆一起被右螢幕的漸層蓋住
+  // 放在牆那一層（本尊的 transform 原樣帶過來就是同一個位置），才會跟牆一起被深色底蓋住
   flowLayerRef.value!.appendChild(copy)
   return copy
 }
@@ -569,10 +557,8 @@ const onAfterStateChange = async (info: StateChangeInfo) => {
     if (retiringNotes.value.some(n => getId(n) === id)) watchRetiring(id)
   }
 
-  // 這一張若是從牆上借的：從牆上拿起，原位變成它的空位跟著流
-  const pickedFrom = displayChanged && nextId && displayState.value.borrowedId === nextId
-    ? flow.take(nextId)
-    : null
+  // 這一張是不是從牆上借的（新投稿就不是）。真正從牆上拿起要等上一張落地，見下面
+  const fromWall = !!(displayChanged && nextId && displayState.value.borrowedId === nextId)
   if (displayChanged && next && nextId) {
     // 同一張還在飛回牆上的途中又被挑中（冷卻理論上會擋掉）：舊的那份直接收掉，key 才不會重複
     removeDisplay(nextId)
@@ -609,19 +595,22 @@ const onAfterStateChange = async (info: StateChangeInfo) => {
 
   // ▸ 上一張飛回牆上：拿起 → 追著牆上保留給它的位置飛 → 落地交給牆接手。
   //   那個位置本身也在流動，所以終點每幀重算：飛到最後的速度就跟牆一致，交接時看不出接縫
+  /** 上一張落地的時間（沒有要飛回去的就是 0）：下一張這時才從牆上拿起 */
+  let returnEnd = 0
   if (returning) {
     const { id, el } = returning
     const home = el.getBoundingClientRect()
     const cx = home.left + home.width / 2
     const cy = home.top + home.height / 2
-    // 落點在左邊螢幕；原位不在了要另找位置時，挑靠右（離這裡近）的，飛行距離比較短。
-    // 挑落點時用最長的飛行時間檢查「落地時還在左邊螢幕」，實際飛得比較快也只會更保險
-    // 落點那格若有便利貼，它會順著流向滑一格讓位：滑的時間用最短的飛行時間，落地前一定讓開
+    // 落點在右邊螢幕：回原位，回不去就補空位，沒有空位才插隊（見 reserveReturn）。
+    // 挑落點時用最長的飛行時間檢查「落地時還在右邊螢幕」，實際飛得比較快也只會更保險
+    // 插隊時那格的便利貼會往後退一格讓位：退的時間用最短的飛行時間，落地前一定讓開。
+    // 等一下要拿起的那張不能被推走，告訴它是哪一張
     flow.reserveReturn(
       id,
       lift + ANIM.maxMoveDuration,
-      leftScreenRight(),
-      leftScreenRight() * 0.7,
+      rightScreen(),
+      fromWall ? nextId : null,
       lift + ANIM.moveDuration
     )
     const aim = flow.rectOf(id, gsap.ticker.time + lift + ANIM.moveDuration)
@@ -655,33 +644,52 @@ const onAfterStateChange = async (info: StateChangeInfo) => {
       // 牆上那張這一幀就會現身；展示區這份留到下一幀才拿掉，重疊一幀、中間不會有空檔
       requestAnimationFrame(() => removeDisplay(id))
     }, [], lift + move)
+    returnEnd = lift + move
   }
 
-  // ▸ 這一張飛到右邊 highlight：從牆上的位置拿起（新投稿從下方飛入）→ 飛到中間放大 → 放下
+  // ▸ 這一張飛到右邊 highlight：等上一張落地，從牆上的位置拿起（新投稿從下方飛入）→ 飛到中間放大 → 放下
   const displayEl = displayChanged && nextId ? findDisplayEl(nextId) : null
-  if (displayEl) {
+  if (displayEl && nextId) {
+    const pickAt = returnEnd
     const inner = displayEl.firstElementChild as HTMLElement | null
-    // 起點必須在這裡同步設好：Vue 剛把它插進 DOM 時在最終位置（右邊正中），
-    // 晚一幀才移到起點，就會看到它先閃一下再從牆上飛過來
-    const start = getDisplayStart(pickedFrom, displayEl.getBoundingClientRect())
-    gsap.set(displayEl, start)
-    const move = pickedFrom ? flightDuration(Math.hypot(start.x, start.y)) : ANIM.moveDuration
+    const final = displayEl.getBoundingClientRect()
+    // 拿起之前先藏著：Vue 剛把它插進 DOM 時在最終位置（右邊正中），不藏就會先在那裡閃一下。
+    // 用 opacity 不用 visibility（StickyNote 內層會自己設 visible，見 useNoteFlow 的 setShown）
+    gsap.set(displayEl, { opacity: 0 })
+    // 飛行時間依距離，距離用拿起那時它會流到的位置先算好
+    const aim = fromWall ? flow.rectOf(nextId, gsap.ticker.time + pickAt) : null
+    const aimStart = getDisplayStart(aim, final)
+    const move = aim ? flightDuration(Math.hypot(aimStart.x, aimStart.y)) : ANIM.moveDuration
+    // 到點才從牆上拿起：早拿的話，牆上那張會定在原地墊底，看起來就是卡住不流了。
+    // 起點與現身在同一幀設好，不會先在別的地方閃一下
+    tl.call(() => {
+      const from = fromWall ? flow.take(nextId) : null
+      gsap.set(displayEl, { ...getDisplayStart(from, final), opacity: 1 })
+    }, [], pickAt)
     if (inner) {
-      if (pickedFrom) tl.to(inner, { scale: 1.1, duration: lift, ease: 'power2.out' }, 0)
+      if (fromWall) tl.to(inner, { scale: 1.1, duration: lift, ease: 'power2.out' }, pickAt)
       else gsap.set(inner, { scale: 1.1 })
-      tl.to(inner, { scale: 1, duration: lift, ease: 'power2.inOut' }, lift + move)
+      tl.to(inner, { scale: 1, duration: lift, ease: 'power2.inOut' }, pickAt + lift + move)
     }
-    // 牆上那張墊在底下，直到展示這份開始飛（它剛掛上，頭幾幀可能還沒畫好）
-    if (pickedFrom) tl.call(() => flow.release(nextId!), [], lift)
+    // 牆上那張墊在底下，直到展示這份開始飛
+    if (fromWall) tl.call(() => flow.release(nextId), [], pickAt + lift)
     tl.to(displayEl, {
       x: 0,
       y: 0,
       scale: 1,
       rotation: 0,
       duration: move,
-      ease: pickedFrom ? ANIM.flightEase : 'power3.out'
-    }, lift)
-    tl.call(() => { gsap.set(displayEl, { clearProps: 'transform' }) }, [], lift + move + lift)
+      ease: fromWall ? ANIM.flightEase : 'power3.out'
+    }, pickAt + lift)
+    tl.call(() => { gsap.set(displayEl, { clearProps: 'transform' }) }, [], pickAt + lift + move + lift)
+
+    // 深色底：上一張飛回去的途中換回平常的樣子（落地時右螢幕沒有底色），
+    // 這一張拿起、飛到中間的途中換成 highlight 的樣子（左右一樣深）
+    if (returning) dimTo(tl, false, returnEnd, 0)
+    dimTo(tl, true, lift + move, pickAt)
+  } else if (returning || vanishing) {
+    // 沒有下一張（插播影片、牆上沒便利貼了）：深色底跟著上一張飛回去或淡出一起換回平常的樣子
+    dimTo(tl, false, returning ? returnEnd : ANIM.fadeDuration, 0)
   }
 }
 
@@ -725,11 +733,10 @@ const beginCanvasSession = async () => {
       showInterstitial.value = true
       void startInterstitialPlayback()
     },
-    promoEvery: promoEvery.value,
-    onPromoStart,
-    // 只借左邊螢幕上的；而且盡量挑展示完時留下的空位還在左邊螢幕的，才回得去原位
-    canBorrow: id => flow.isPickable(id, leftScreenRight()),
-    preferBorrow: id => flow.isPickable(id, leftScreenRight(), displaySec.value + ANIM_TOTAL_MS / 1000),
+    // 只借右邊螢幕上的，而且等上一張飛回去、真正拿起時也還在右邊螢幕；
+    // 盡量挑展示完時還回得去原位的（見 useNoteFlow 的 fitsHome）
+    canBorrow: id => flow.isPickable(id, rightScreen(), RETURN_MAX_SEC),
+    preferBorrow: id => flow.canReturnHome(id, rightScreen(), displaySec.value + RETURN_MAX_SEC),
     onBeforeStateChange,
     onAfterStateChange
   })
@@ -788,10 +795,6 @@ onUnmounted(() => {
   if (interstitialArmTimer) {
     clearInterval(interstitialArmTimer)
     interstitialArmTimer = null
-  }
-  if (promoFallbackTimer) {
-    clearTimeout(promoFallbackTimer)
-    promoFallbackTimer = null
   }
   stopConductor()
   document.body.style.margin = ''

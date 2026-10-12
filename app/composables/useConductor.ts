@@ -52,12 +52,8 @@ export interface ConductorOptions {
      * 拿起的那一下要讓人看得到。沒有一張符合時照舊挑，不會因此停擺。
      */
     canBorrow?: (id: string) => boolean
-    /** canBorrow 之中更好的選擇（例如展示完還回得去原位的），有就先挑它 */
+    /** canBorrow 之中更好的選擇（例如展示完還回得去原位的），有就先挑它（其中再挑最久沒展示的） */
     preferBorrow?: (id: string) => boolean
-    /** 右側每展示幾張便利貼，就插一次徽章動畫（0 = 不插） */
-    promoEvery?: number
-    /** 上一張飛回左邊之後開始播徽章動畫；播完由 canvas 呼叫 finishPromo() */
-    onPromoStart?: () => void
 }
 
 interface ConductorState {
@@ -93,16 +89,15 @@ interface ConductorState {
     interstitialBlocking: boolean
     getVideoUrl: (() => string | null) | null
     onInterstitialStart: (() => void) | null
-    /** 徽章動畫：每幾張插一次（0 = 關閉） */
-    promoEvery: number
-    /** 上次徽章動畫之後，右側已經展示過幾張便利貼 */
-    notesSincePromo: number
-    /** 徽章動畫播放中：跟插播一樣暫停輪播 */
-    promoBlocking: boolean
-    onPromoStart: (() => void) | null
     canBorrow: ((id: string) => boolean) | null
     preferBorrow: ((id: string) => boolean) | null
 }
+
+/**
+ * 展示完回得去原位的（preferBorrow）可以插隊，但只能插到「比最久沒展示的那張晚展示不到幾輪」的前面。
+ * 數字是模擬比較出來的，見 tick 裡挑便利貼的那段
+ */
+const PREFER_SLACK_TURNS = 4
 
 /* ─── Singleton（跨 HMR 保持同一份狀態） ─── */
 
@@ -136,10 +131,6 @@ function getSingleton(): ConductorState {
             interstitialBlocking: false,
             getVideoUrl: null,
             onInterstitialStart: null,
-            promoEvery: 0,
-            notesSincePromo: 0,
-            promoBlocking: false,
-            onPromoStart: null,
             canBorrow: null,
             preferBorrow: null
         })
@@ -312,15 +303,10 @@ export function useConductor() {
         s.onAfter = opts?.onAfterStateChange ?? null
         s.getVideoUrl = opts?.getInterstitialVideoUrl ?? null
         s.onInterstitialStart = opts?.onInterstitialStart ?? null
-        s.promoEvery = Math.max(0, Math.floor(opts?.promoEvery ?? 0))
-        s.notesSincePromo = 0
-        s.onPromoStart = opts?.onPromoStart ?? null
         s.canBorrow = opts?.canBorrow ?? null
         s.preferBorrow = opts?.preferBorrow ?? null
 
-        console.log(
-            `[Conductor] start  gridMax=${s.gridMax}  loop=${s.loopMs}ms  promoEvery=${s.promoEvery}`
-        )
+        console.log(`[Conductor] start  gridMax=${s.gridMax}  loop=${s.loopMs}ms`)
 
         // 1) 從 queue_history 載入最多 gridMax 張並監聽遠端刪除
         const q = query(
@@ -487,17 +473,13 @@ export function useConductor() {
         s.interstitialBlocking = false
         s.getVideoUrl = null
         s.onInterstitialStart = null
-        s.promoEvery = 0
-        s.notesSincePromo = 0
-        s.promoBlocking = false
-        s.onPromoStart = null
         s.canBorrow = null
         s.preferBorrow = null
     }
 
     /* ── tick：每 N 秒執行一次 ── */
     const tick = (skipHooks = false, force = false) => {
-        if ((s.interstitialBlocking || s.promoBlocking) && !force) return
+        if (s.interstitialBlocking && !force) return
 
         // 如果正在進行動畫（且非強制中斷刪除），則進入排隊等待
         if (s.isAnimating && !force) {
@@ -551,21 +533,9 @@ export function useConductor() {
         const interstitialThisRound =
             !skipHooks && !force && s.interstitialQueue.length > 0 && !!videoUrl
 
-        // 徽章動畫：右側每展示 promoEvery 張插一次，定時插播影片優先。
-        // 只接在「剛展示完一張」的回合後面（prevPlaying 有值）：插播影片剛播完、
-        // 或牆上還沒有便利貼時都不插，免得兩段廣告連著播、或對著空牆一直播
-        const promoThisRound =
-            !interstitialThisRound && !skipHooks && !force &&
-            s.promoEvery > 0 && !!s.onPromoStart &&
-            prevPlaying !== null && s.notesSincePromo >= s.promoEvery
-
-        // ▸ Phase 3: 決定下一回合（或定時插播／徽章動畫：本張結束後不選下一張）
+        // ▸ Phase 3: 決定下一回合（或定時插播：本張結束後不選下一張）
         if (interstitialThisRound) {
             s.interstitialQueue.shift()
-            s.mode = 'waiting'
-            s.nowPlaying = null
-        } else if (promoThisRound) {
-            s.notesSincePromo = 0
             s.mode = 'waiting'
             s.nowPlaying = null
         } else {
@@ -624,11 +594,16 @@ export function useConductor() {
                     return !!t && Date.now() - t < COOLDOWN_MS
                 }
 
-                // 4) 有 canBorrow（借出範圍，例如大螢幕只挑左邊螢幕上的）時：
+                // 4) 有 canBorrow（借出範圍，例如大螢幕只挑右邊螢幕上的）時：
                 //    範圍內同時只有幾張，bag 排前面的多半剛好不在範圍內，照 bag 找會一直落到下面的降級，
                 //    反覆挑到同幾張（實測 300 秒內有一張被挑 17 次、平均才 3 次）。
-                //    改成範圍內挑「最久沒展示」的（沒展示過的最優先），每張輪到的機會才平均；
-                //    一樣久（都沒展示過）時，展示完回得去原位的（preferBorrow）優先，再照 bag 的順序。
+                //    改成範圍內挑「最久沒展示」的（沒展示過的最優先），每張輪到的機會才平均。
+                //    展示完回得去原位的（preferBorrow）可以插隊，但只能插「比最久沒展示的那張
+                //    晚展示不到 PREFER_SLACK_TURNS 輪」的：回不去原位，原位就變成空洞一路流走，
+                //    它自己還得擠進別的地方；可是不限制插隊的話，同一張會一直被插隊。
+                //    模擬一小時（直排、每分鐘一張新投稿，五種初始排法平均）：
+                //    不插隊最久 747 秒沒輪到、50% 回得去原位；隨便插隊 867 秒、63%；限 4 輪 699 秒、58%。
+                //    再照 bag 的順序。
                 //    借出的範圍比冷卻重要：範圍內全都還在冷卻，也是挑最久沒展示的那張，不越界
                 let pickedId: string | null = null
                 if (s.canBorrow) {
@@ -637,13 +612,17 @@ export function useConductor() {
                     const bagOrder = new Map(s.idleBag.map((id, i) => [id, i]))
                     const lastAt = (id: string) => s.lastPlayedAt.get(id) ?? 0
                     const preferRank = (id: string) => (prefer?.(id) ? 0 : 1)
-                    const candidates = liveIds
-                        .filter(id => !excludeIds.has(id) && canBorrow(id))
-                        .sort((a, b) =>
-                            lastAt(a) - lastAt(b) ||
-                            preferRank(a) - preferRank(b) ||
-                            (bagOrder.get(a) ?? Number.MAX_SAFE_INTEGER) - (bagOrder.get(b) ?? Number.MAX_SAFE_INTEGER)
-                        )
+                    const inRange = liveIds.filter(id => !excludeIds.has(id) && canBorrow(id))
+                    const oldest = Math.min(...inRange.map(lastAt))
+                    const slackMs = PREFER_SLACK_TURNS * s.loopMs
+                    /** 0 = 跟最久沒展示的那張差不多久，回得去原位的可以插到它前面 */
+                    const tier = (id: string) => (lastAt(id) <= oldest + slackMs ? 0 : 1)
+                    const candidates = inRange.sort((a, b) =>
+                        tier(a) - tier(b) ||
+                        (tier(a) === 0 ? preferRank(a) - preferRank(b) : 0) ||
+                        lastAt(a) - lastAt(b) ||
+                        (bagOrder.get(a) ?? Number.MAX_SAFE_INTEGER) - (bagOrder.get(b) ?? Number.MAX_SAFE_INTEGER)
+                    )
                     pickedId = candidates[0] ?? null
                     if (pickedId) {
                         const idx = s.idleBag.indexOf(pickedId)
@@ -690,9 +669,6 @@ export function useConductor() {
             }
         }
 
-        // 這一回合右側有展示便利貼（live 或 idle 都算），就算一張
-        if (s.nowPlaying) s.notesSincePromo++
-
         // ▸ Phase 5: 呼叫 AFTER hook（canvas 在此執行 Flip.from）
         if (!skipHooks) {
             s.onAfter?.({ source: 'tick' })
@@ -701,17 +677,15 @@ export function useConductor() {
             s.animTimer = setTimeout(() => {
                 s.isAnimating = false
                 if (interstitialThisRound) s.onInterstitialStart?.()
-                if (promoThisRound) s.onPromoStart?.()
             }, s.animationMs) // 整輪動畫跑完才解除守衛（拿起 + 移動 + 放下）
         }
 
-        if (interstitialThisRound || promoThisRound) {
+        if (interstitialThisRound) {
             if (s.timer) {
                 clearTimeout(s.timer)
                 s.timer = null
             }
-            if (interstitialThisRound) s.interstitialBlocking = true
-            else s.promoBlocking = true
+            s.interstitialBlocking = true
             return
         }
 
@@ -721,7 +695,7 @@ export function useConductor() {
 
     /** 排程下一次 tick（使用 setTimeout 以便重新排程） */
     const scheduleTick = (delayMs: number) => {
-        if (s.interstitialBlocking || s.promoBlocking) return
+        if (s.interstitialBlocking) return
         if (s.timer) clearTimeout(s.timer)
         s.timer = setTimeout(() => {
             tick()
@@ -745,13 +719,6 @@ export function useConductor() {
         tick()
     }
 
-    /** 徽章動畫播完。canvas 的保底計時器也會呼叫，所以重複呼叫要無害 */
-    const finishPromo = () => {
-        if (!s.promoBlocking) return
-        s.promoBlocking = false
-        tick()
-    }
-
     /* ── 暴露給 template 的 reactive 物件 ── */
     const displayState = computed(() => ({
         mode: s.mode,
@@ -766,7 +733,6 @@ export function useConductor() {
         displayState,
         armInterstitialSlot,
         clearInterstitialArmQueue,
-        finishInterstitial,
-        finishPromo
+        finishInterstitial
     }
 }

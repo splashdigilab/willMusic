@@ -54,7 +54,8 @@
   flex: 1;
   min-height: 250px;
   width: 100%;
-  background-color: #00A7C5;
+  /* 節慶主題換成它的選中色（見 base/variables） */
+  background-color: var(--theme-accent, #00A7C5);
   border-radius: 16px;
   position: relative;
   overflow: hidden;
@@ -186,7 +187,7 @@
   transition: all 0.3s ease;
 
   &.is-active {
-    background-color: #00A7C5;
+    background-color: var(--theme-accent, #00A7C5);
     transform: scale(1.2);
   }
 }
@@ -208,10 +209,14 @@
   }
 
   .c-button--secondary {
-    background: linear-gradient(to right, #ED5F80 0%, #E5224F 100%);
+    background: var(--theme-alt-bg, linear-gradient(to right, #ED5F80 0%, #E5224F 100%));
+    color: var(--theme-alt-fg, #fff);
+    box-shadow: var(--theme-alt-ring, 0 0 #0000), 0 3px 10px rgba(0, 0, 0, 0.18);
   }
 
   .c-button--primary {
-    background: linear-gradient(to right, #63C9DB 0%, #0CABC8 100%);
+    background: var(--theme-action-bg, linear-gradient(to right, #63C9DB 0%, #0CABC8 100%));
+    color: var(--theme-action-fg, #fff);
+    box-shadow: var(--theme-action-ring, 0 0 #0000), 0 3px 10px rgba(0, 0, 0, 0.18);
   }
 }

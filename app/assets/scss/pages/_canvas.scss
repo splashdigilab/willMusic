@@ -1,7 +1,7 @@
 /*
   Canvas Page Layout
-  底層：流動便利貼牆，鋪滿左右兩個螢幕（100vw），由左往右流
-  頂層：左 50vw（徽章動畫、插播影片）+ 右 50vw（highlight 的那一張、徽章動畫、插播影片）
+  底層：流動便利貼牆，鋪滿左右兩個螢幕（100vw），由下往上流
+  頂層：左 50vw（常駐的徽章動畫、插播影片）+ 右 50vw（highlight 的那一張、插播影片）
 */
 @use '../components/sticky-note' as sn;
 @use '../base/variables' as var;
@@ -109,7 +109,7 @@
 }
 
 /* ─── 底層：流動便利貼牆 ───
-   左右兩個螢幕當成一整面，由右往左（或 ?flow=up 由下往上）流，整齊的磚牆排法。每張的位置與角度由 useNoteFlow
+   左右兩個螢幕當成一整面，由下往上（或 ?flow=left 由右往左）流，整齊的磚牆排法。每張的位置與角度由 useNoteFlow
    每幀寫進 transform。左右兩半的容器是透明的，照 DOM 順序疊在它上面 */
 .p-canvas__flow {
     position: absolute;
@@ -165,36 +165,37 @@
     padding-left: 30px;
 }
 
-/* 右螢幕平常的深色漸層：蓋在流動牆上、highlight 底下，靠接縫那側淡、越往右越深，
-   讓右螢幕的 highlight 跳出來。圓形提醒期間淡掉（is-off），換成徽章的深色色塊 */
+/* 深色底：蓋在流動牆上、徽章與 highlight 底下，橫跨兩個螢幕。兩種樣子各一層，
+   輪播動畫用 opacity 交叉淡換（canvas.vue 的 dimTo）：
+   - 平常（idle）：左螢幕由左到右的漸層，左緣最深、到接縫透明；右螢幕沒有底色，拿起、放回都看得清楚
+   - highlight：左右兩個螢幕一樣深、沒有漸層，讓 highlight 跳出來 */
+$dim-idle-edge: 0.8;
+$dim-highlight: 0.55;
+
 .p-canvas__dim {
     position: absolute;
     inset: 0;
     z-index: 150;
     pointer-events: none;
-    background: linear-gradient(90deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.8));
-    // 跟徽章的淡入淡出一樣長，兩層交叉淡換
-    transition: opacity 0.5s linear;
+    will-change: opacity;
 
-    &.is-off {
+    // 漸層停在 50%（兩個螢幕的接縫），右半邊透明
+    &--idle {
+        background: linear-gradient(90deg, rgba(0, 0, 0, $dim-idle-edge), rgba(0, 0, 0, 0) 50%);
+    }
+
+    &--highlight {
+        background: rgba(0, 0, 0, $dim-highlight);
         opacity: 0;
     }
 }
 
-/* 徽章動畫（CanvasPromo）：左右兩個螢幕各一個，大小與 highlight 的便利貼相同。
-   底色是整塊深色半透明，蓋住兩邊的牆面（跟著徽章一起淡入淡出）。
-   兩邊都避開中間接縫的 30px（跟插播影片一樣），置中在剩下的範圍 */
+/* 徽章動畫（CanvasPromo）：常駐在左螢幕，大小與 highlight 的便利貼相同。
+   底下的深色是上面的 p-canvas__dim，不是徽章自己的。
+   避開中間接縫的 30px（跟插播影片一樣），置中在剩下的範圍 */
 .p-canvas__promo {
     --canvas-promo-size: calc(min(60vh, 40vw) * var(--display-scale, 1));
-    background: rgba(0, 0, 0, 0.55);
-
-    &--left {
-        padding-right: 30px;
-    }
-
-    &--right {
-        padding-left: 30px;
-    }
+    padding-right: 30px;
 }
 
 .p-canvas__interstitial__video {
@@ -225,8 +226,9 @@
     padding-left: 30px;
 }
 
-/* highlight 放大。換張時會同時有兩張（飛回牆上的、飛過來的），所以用絕對定位疊在同一個位置，
-   置中在接縫 30px 以外的範圍。從左邊螢幕的牆上飛過來時要蓋過所有東西（包含淡出用的複製品 z-index 250） */
+/* highlight 放大。換張時會短暫同時有兩張（飛回牆上的、下一張），所以用絕對定位疊在同一個位置，
+   置中在接縫 30px 以外的範圍。從右邊螢幕的牆上拿起、飛回去時要蓋過牆、深色底（z-index 150）
+   與淡出用的複製品（z-index 250） */
 .p-canvas__note-wrap--display {
     position: absolute;
     inset: 0 0 0 30px;
