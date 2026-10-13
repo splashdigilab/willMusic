@@ -4,9 +4,9 @@ import type { Messages } from '../types'
 export default {
   rules: [
     'Log in with LINE to submit a note. Browsing and making notes don\'t require logging in. Logging in shares your LINE display name, profile picture and email address with us; see the Privacy Policy for how they are used.',
-    'Sensitive words or images are not allowed. WillMusic may remove violating content without notice, and repeated or malicious violations will be handled according to their severity. WillMusic has the final say on what counts as a violation.',
+    'Sensitive words or images are not allowed. WillMusic may remove violating content without notice, and accounts with repeated malicious violations will lose the ability to submit. WillMusic decides whether content breaks these rules.',
     'Each person can submit 1 note every 5 minutes, up to 3 notes a day.',
-    'Approved notes are shown on the in-store LED wall, and each one is featured full-size for 15 seconds.'
+    'Submitted notes are shown on the in-store LED wall and featured full-size in turn. Notes that break the rules will be removed.'
   ],
   privacyPolicy: 'Privacy Policy',
   terms: 'Event Rules',

@@ -7,7 +7,7 @@
 export default {
   home: {
     title: '數位應援便利貼',
-    description: '在微樂客 WillMusic 做一張專屬的應援便利貼，審核通過後會在店內大螢幕輪播，和大家一起分享對音樂的熱愛。'
+    description: '在微樂客 WillMusic 做一張專屬的應援便利貼，送上店內大螢幕輪播，和大家一起分享對音樂的熱愛。'
   },
   editor: {
     title: '製作便利貼',

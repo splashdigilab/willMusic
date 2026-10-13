@@ -3,7 +3,7 @@ import type { Messages } from '../types'
 export default {
   home: {
     title: '디지털 응원 포스트잇',
-    description: 'WillMusic에서 나만의 응원 포스트잇을 만들어 보세요. 검토를 통과하면 매장 대형 스크린에 띄워져 모두와 음악에 대한 사랑을 나눌 수 있어요.'
+    description: 'WillMusic에서 나만의 응원 포스트잇을 만들어 매장 대형 스크린으로 보내 보세요. 모두와 음악에 대한 사랑을 나눌 수 있어요.'
   },
   editor: {
     title: '포스트잇 만들기',

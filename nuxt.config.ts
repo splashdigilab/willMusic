@@ -30,7 +30,7 @@ const isProductionData = rawFirestoreSuffix === '' || rawFirestoreSuffix === 'no
 
 // 全站預設的標題與摘要，也是首頁的。其他頁面用 usePageSeo 蓋掉
 const SITE_TITLE = '數位應援便利貼 - WillMusic'
-const SITE_DESCRIPTION = '在微樂客 WillMusic 做一張專屬的應援便利貼，審核通過後會在店內大螢幕輪播，和大家一起分享對音樂的熱愛。'
+const SITE_DESCRIPTION = '在微樂客 WillMusic 做一張專屬的應援便利貼，送上店內大螢幕輪播，和大家一起分享對音樂的熱愛。'
 
 // LINE Seed 介面字的 @font-face（約 13KB）在建置時讀進來直接內嵌到 <head>，
 // 省掉一次樣式表往返，介面文字不會有 FOUT。內容字（使用者輸入的中／韓文）

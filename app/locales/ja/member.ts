@@ -14,7 +14,7 @@ export default {
     quotaUnknown: '付箋はこのアカウントで送信されます'
   },
   dataNotice: {
-    before: 'ログインすると、LINEの表示名・プロフィール画像・メールアドレスを取得し、イベントのご連絡に使用します。',
+    before: 'ログインすると、LINEの表示名・プロフィール画像・メールアドレスを取得し、本人確認とイベントのご連絡に使用します。',
     after: ''
   },
   lineFriend: {

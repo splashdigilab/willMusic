@@ -32,7 +32,7 @@ export default {
    * 連結本身有左邊距，before 結尾不必補空白。
    */
   dataNotice: {
-    before: '登入會取得 LINE 暱稱、大頭貼與電子郵件，用於活動聯繫。',
+    before: '登入會取得 LINE 暱稱、大頭貼與電子郵件，用於確認身分與活動聯繫。',
     after: ''
   },
 

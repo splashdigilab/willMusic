@@ -1,6 +1,8 @@
 <template>
-  <!-- 等登入狀態確定了才出現，否則已登入的人會先閃一下「還沒登入」 -->
-  <div v-if="authReady" ref="rootRef" class="c-member-badge">
+  <!-- 等登入狀態確定了才出現，否則已登入的人會先閃一下「還沒登入」。
+       data-clarity-mask：GTM 載入的 Microsoft Clarity 會錄頁面，頭貼與暱稱不能被錄進去
+       （隱私權政策寫了分析資料不會識別身分） -->
+  <div v-if="authReady" ref="rootRef" class="c-member-badge" data-clarity-mask="True">
     <button
       type="button"
       class="c-member-badge__btn"

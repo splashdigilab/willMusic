@@ -139,8 +139,8 @@ export default {
       message: '위치 확인에 실패했어요. 잠시 후 다시 시도해 주세요.'
     },
     outsideArea: {
-      title: '보낼 수 있는 구역이 아니에요',
-      message: '지금 계신 곳은 보낼 수 있는 구역 밖이에요. 매장 안 지정된 구역으로 이동한 뒤 다시 시도해 주세요.'
+      title: '이벤트 구역 밖이에요',
+      message: '지금 계신 곳은 이벤트 구역 밖이에요. 매장 안에서 다시 시도해 주세요.'
     },
     banned: {
       title: '보낼 수 없어요',
@@ -164,7 +164,7 @@ export default {
     },
     textFlagged: {
       title: '내용 검사를 통과하지 못했어요',
-      message: '텍스트에 부적절한 내용이 있어요. 모두가 즐길 수 있도록 수정한 뒤 다시 시도해 주세요!'
+      message: '텍스트에 부적절한 내용이 있어요. 모두가 즐길 수 있도록 수정한 뒤 다시 시도해 주세요! 판단이 잘못됐다고 생각되면 매장 직원에게 문의해 주세요.'
     },
     nameFlagged: {
       title: '이름표를 쓸 수 없어요',
@@ -203,8 +203,7 @@ export default {
       title: '업로드 권한이 만료됐어요',
       message: 'QR 코드가 만료됐거나(제한 시간 30분) 이미 사용됐을 수 있어요. 직원에게 새 QR 코드를 요청해 주세요!'
     },
-    submitFailed: (detail: string) => `보내지 못했어요: ${detail}`,
-    retryLater: '잠시 후 다시 시도해 주세요',
+    submitFailed: '보내지 못했어요. 잠시 후 다시 시도해 주세요. 계속 실패하면 매장 직원에게 문의해 주세요. 포스트잇은 저장되어 있어요.',
     exportFailed: '이미지를 만들지 못했어요. 잠시 후 다시 시도해 주세요',
     loginCancelled: {
       title: '로그인이 끝나지 않았어요',

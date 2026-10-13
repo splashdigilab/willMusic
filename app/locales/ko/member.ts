@@ -14,7 +14,7 @@ export default {
     quotaUnknown: '포스트잇을 보낼 때 이 계정을 사용해요'
   },
   dataNotice: {
-    before: '로그인하면 LINE 닉네임, 프로필 사진, 이메일을 받아 이벤트 연락에 사용해요.',
+    before: '로그인하면 LINE 닉네임, 프로필 사진, 이메일을 받아 본인 확인과 이벤트 연락에 사용해요.',
     after: ''
   },
   lineFriend: {

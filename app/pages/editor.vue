@@ -252,8 +252,9 @@
               </div>
             </Transition>
             <!-- 以誰的身分送出、今天第幾張。送不出去的狀態（停權、額度用完、冷卻中）
-                 在按下去之前就用警示色講清楚，冷卻中的倒數每秒跳。 -->
-            <div class="p-editor__submit-identity">
+                 在按下去之前就用警示色講清楚，冷卻中的倒數每秒跳。
+                 data-clarity-mask：Clarity 錄頁面時遮掉頭貼與暱稱（見 MemberBadge.vue） -->
+            <div class="p-editor__submit-identity" data-clarity-mask="True">
               <img
                 v-if="profile?.linePicture && !avatarBroken"
                 :src="profile.linePicture"
@@ -342,7 +343,7 @@
             />
             <span class="p-editor__submit-marketing-text">
               {{ t.editor.submitModal.marketing }}
-              <span class="p-editor__submit-marketing-email">{{ t.editor.submitModal.marketingEmail(profile.lineEmail) }}</span>
+              <span class="p-editor__submit-marketing-email" data-clarity-mask="True">{{ t.editor.submitModal.marketingEmail(profile.lineEmail) }}</span>
             </span>
           </label>
           <!-- 遮罩本身就是「點任意處關閉」的接收層：底下的上傳鈕被它蓋住，
@@ -788,6 +789,7 @@
                 class="p-editor__chip-btn p-editor__signature-btn"
                 :class="{ 'is-active': hasNameTag }"
                 :aria-pressed="hasNameTag"
+                data-clarity-mask="True"
                 @click="onNameTagButton"
               >
                 <img v-if="nameTagAvatar" :src="nameTagAvatar" alt="" class="p-editor__signature-avatar" />
@@ -2787,11 +2789,8 @@ const confirmSubmit = async () => {
     ) {
       showAlert(() => t.value.editor.alerts.tokenRevoked, '⏳')
     } else {
-      const detail: string | undefined = e?.message
-      showAlert(() => {
-        const { alerts } = t.value.editor
-        return { message: alerts.submitFailed(detail || alerts.retryLater) }
-      })
+      // 錯誤細節上面已經記在 console，不給使用者看（理由見 locales/zh-TW/editor.ts 的 submitFailed）
+      showAlert(() => ({ message: t.value.editor.alerts.submitFailed }))
     }
   } finally {
     isSubmitting.value = false

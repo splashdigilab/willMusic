@@ -14,7 +14,7 @@ export default {
     quotaUnknown: 'Your notes will be sent from this account'
   },
   dataNotice: {
-    before: 'Logging in shares your LINE display name, profile picture and email with us so we can contact you about the event.',
+    before: 'Logging in shares your LINE display name, profile picture and email with us to confirm who you are and contact you about the event.',
     after: ''
   },
   lineFriend: {

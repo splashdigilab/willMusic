@@ -142,8 +142,8 @@ export default {
       message: 'Location check failed. Please try again later.'
     },
     outsideArea: {
-      title: 'Outside the allowed area',
-      message: 'You\'re not in the allowed area. Please move into the store and try again.'
+      title: 'Outside the event area',
+      message: 'You\'re not in the event area. Please try again from inside the store.'
     },
     banned: {
       title: 'Can\'t submit',
@@ -168,7 +168,7 @@ export default {
     },
     textFlagged: {
       title: 'Content check failed',
-      message: 'Your text contains inappropriate content. To keep this a friendly space, please edit it and try again!'
+      message: 'Your text contains inappropriate content. To keep this a friendly space, please edit it and try again! If you think this is a mistake, please talk to our staff.'
     },
     nameFlagged: {
       title: 'Name tag unavailable',
@@ -207,8 +207,7 @@ export default {
       title: 'Upload permission expired',
       message: 'Your QR code may have expired (30-minute limit) or already been used. Please ask our staff for a new one!'
     },
-    submitFailed: (detail: string) => `Submission failed: ${detail}`,
-    retryLater: 'Please try again later',
+    submitFailed: 'Couldn\'t send your note. Please try again later. If it keeps failing, please talk to our staff. Your note has been saved.',
     exportFailed: 'Couldn\'t create the image. Please try again later.',
     loginCancelled: {
       title: 'Login not finished',

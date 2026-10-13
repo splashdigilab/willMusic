@@ -1,7 +1,8 @@
 <template>
   <!-- 署名：頭貼＋暱稱。編輯器、確認畫面的預覽、首頁、LED 牆共用這一個元件，
-       大小全部跟著便利貼的比例走（cqw），定位與縮放由外層負責。 -->
-  <span class="c-note-name-tag">
+       大小全部跟著便利貼的比例走（cqw），定位與縮放由外層負責。
+       data-clarity-mask：Clarity 錄頁面時遮掉頭貼與暱稱（見 MemberBadge.vue） -->
+  <span class="c-note-name-tag" data-clarity-mask="True">
     <img
       v-if="avatar && !avatarBroken"
       :src="avatar"

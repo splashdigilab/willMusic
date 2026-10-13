@@ -3,7 +3,7 @@ import type { Messages } from '../types'
 export default {
   home: {
     title: 'Digital Cheer Notes',
-    description: 'Make your own cheer note at WillMusic. Once approved, it\'s shown on the big screen in the store for everyone to see.'
+    description: 'Make your own cheer note at WillMusic and send it to the big screen in the store for everyone to see.'
   },
   editor: {
     title: 'Make a Note',

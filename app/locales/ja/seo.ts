@@ -3,7 +3,7 @@ import type { Messages } from '../types'
 export default {
   home: {
     title: 'デジタル応援付箋',
-    description: 'WillMusicで自分だけの応援付箋を作ろう。審査を通過すると店内の大型スクリーンで流れ、みんなと音楽への想いをシェアできます。'
+    description: 'WillMusicで自分だけの応援付箋を作って、店内の大型スクリーンに送ろう。みんなと音楽への想いをシェアできます。'
   },
   editor: {
     title: '付箋を作る',

@@ -128,7 +128,8 @@
           />
           <span class="p-my-notes__marketing-text">
             {{ t.myNotes.marketing }}
-            <span class="p-my-notes__marketing-email">{{ t.myNotes.marketingTo(marketingEmail) }}</span>
+            <!-- data-clarity-mask：Clarity 錄頁面時遮掉 email（見 MemberBadge.vue） -->
+            <span class="p-my-notes__marketing-email" data-clarity-mask="True">{{ t.myNotes.marketingTo(marketingEmail) }}</span>
           </span>
         </label>
       </template>
