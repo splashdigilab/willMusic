@@ -96,16 +96,18 @@ export default defineNuxtConfig({
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no' },
         { name: 'description', content: SITE_DESCRIPTION },
-        // 分享到 LINE／社群時的預覽。還沒有分享圖：做好之後補 og:image（要絕對網址），
-        // twitter:card 同時改成 summary_large_image
+        // 分享到 LINE／社群時的預覽。og:image 要絕對網址、得從請求推導，所以寫在 app.vue
         { property: 'og:site_name', content: 'WillMusic' },
         { property: 'og:type', content: 'website' },
         { property: 'og:locale', content: 'zh_TW' },
         { property: 'og:title', content: SITE_TITLE },
         { property: 'og:description', content: SITE_DESCRIPTION },
-        { name: 'twitter:card', content: 'summary' }
+        { name: 'twitter:card', content: 'summary_large_image' }
       ],
       link: [
+        // 加到主畫面的圖示。favicon 只有 32px，放大會糊，所以用 willMusicLogo.png 的 W 字標放在品牌藍底上
+        // （iOS 會把透明的地方填黑，底色一定要實心）
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
         // 介面字與 HTML 平行下載（@font-face 已內嵌，preload 只是提前開始抓）。
         // 400 / 700 / 800 都要 preload：全站粗體是 700，新視覺的大標（應援便利貼!、
         // POST BOARD、START）是 800，少預載任何一個，該字重都會先以後備字型渲染再換過來。

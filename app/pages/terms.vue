@@ -82,6 +82,8 @@ usePageSeo(TERMS_TITLE, '數位應援便利貼活動的參加方式、投稿限�
 
 useHead({
   meta: [
+    // 全站預設禁止縮放（編輯器與便利貼牆有自己的手勢），這份長文件要讓人能放大來讀
+    { name: 'viewport', content: 'width=device-width, initial-scale=1' },
     ...(unfilledCount.value > 0 ? [{ name: 'robots', content: 'noindex' }] : [])
   ]
 })

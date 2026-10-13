@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<!--
+  分享預覽圖（og:image）的原稿，1200×630。產生方式見同目錄的 build.py。
+
+  沒有設計稿，是照首頁開場卡片（app/assets/scss/pages/_index.scss 的 .p-index__intro-*）
+  改成橫幅：同一張條紋底、白框半透明卡片、四角方塊、LINE Seed ExtraBold 標題、字標。
+  文案全部沿用開場卡片原有的句子，字型只用介面字集（public/fonts/line-seed-ui-*.woff2），
+  換句子時要確認新的字在介面字集裡，否則會掉到系統字。設計師出了正式版就直接換掉 public/og-image.jpg。
+-->
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: 'LINE Seed'; font-weight: 400; src: url('../../public/fonts/line-seed-ui-400.woff2') format('woff2'); }
+  @font-face { font-family: 'LINE Seed'; font-weight: 700; src: url('../../public/fonts/line-seed-ui-700.woff2') format('woff2'); }
+  @font-face { font-family: 'LINE Seed'; font-weight: 800; src: url('../../public/fonts/line-seed-ui-800.woff2') format('woff2'); }
+
+  html, body { margin: 0; padding: 0; }
+
+  .og {
+    position: relative;
+    width: 1200px;
+    height: 630px;
+    overflow: hidden;
+    background: #4CC1D6 url('../../public/stripeBg.webp') center / cover no-repeat;
+    font-family: 'LINE Seed', sans-serif;
+    color: #fff;
+  }
+
+  .card {
+    position: absolute;
+    left: 100px;
+    top: 50px;
+    width: 1000px;
+    height: 440px;
+    box-sizing: border-box;
+    padding: 58px 64px 0;
+    background: rgba(255, 255, 255, 0.35);
+    border: 4px solid #fff;
+  }
+
+  .marks { position: absolute; display: flex; gap: 8px; }
+  .marks--tl { top: 14px; left: 14px; flex-direction: column; }
+  .marks--br { right: 14px; bottom: 14px; }
+  .marks i { display: block; width: 20px; height: 20px; background: #fff; }
+
+  .caption {
+    position: absolute;
+    margin: 0;
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.85);
+    white-space: nowrap;
+  }
+  .caption--top { top: 14px; right: 16px; }
+  .caption--bottom { bottom: 14px; left: 16px; }
+
+  .title {
+    margin: 0 0 22px;
+    font-size: 92px;
+    font-weight: 800;
+    line-height: 1.355;
+    letter-spacing: 0.01em;
+  }
+  .title span { display: block; white-space: nowrap; }
+  .bang { display: inline-block; transform: rotate(9deg); transform-origin: 50% 80%; }
+
+  .desc {
+    margin: 0;
+    font-size: 29px;
+    font-weight: 700;
+    line-height: 1.39;
+  }
+
+  .logo {
+    position: absolute;
+    left: 50%;
+    bottom: 52px;
+    width: 290px;
+    transform: translateX(-50%);
+  }
+</style>
+</head>
+<body>
+  <div class="og">
+    <div class="card">
+      <div class="marks marks--tl"><i></i><i></i><i></i></div>
+      <div class="marks marks--br"><i></i><i></i><i></i></div>
+      <p class="caption caption--top">Create your customized message here and share your passion for music with everyone.</p>
+      <p class="caption caption--bottom">Create your customized message here and share your passion for music with everyone.</p>
+      <h1 class="title">
+        <span>應援便利貼<i class="bang">!</i></span>
+        <span>POST BOARD</span>
+      </h1>
+      <p class="desc">創作專屬於您的應援內容，與大家一起分享對音樂的熱愛。</p>
+    </div>
+    <img class="logo" src="../../public/willMusicLogo.png" alt="">
+  </div>
+</body>
+</html>
