@@ -12,12 +12,12 @@
   >
     <template v-if="variant === 'banner'">
       <span class="c-line-friend-prompt__text">
-        <strong>加入微樂客 LINE 好友</strong>
-        <span>活動與優惠消息，第一時間通知你</span>
+        <strong>{{ t.member.lineFriend.title }}</strong>
+        <span>{{ t.member.lineFriend.subtitle }}</span>
       </span>
-      <span class="c-line-friend-prompt__cta">加入</span>
+      <span class="c-line-friend-prompt__cta">{{ t.member.lineFriend.cta }}</span>
     </template>
-    <template v-else>＋ 加入微樂客 LINE 好友</template>
+    <template v-else>{{ t.member.lineFriend.button }}</template>
   </a>
 </template>
 
@@ -35,5 +35,6 @@ import { LINE_ADD_FRIEND_URL, useLineFriend } from '~/composables/useLineFriend'
 
 withDefaults(defineProps<{ variant?: 'button' | 'banner' }>(), { variant: 'button' })
 
+const { t } = useI18n()
 const { shouldPrompt, markPrompted } = useLineFriend()
 </script>

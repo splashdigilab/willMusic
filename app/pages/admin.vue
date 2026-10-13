@@ -831,7 +831,8 @@ import { THEMES, parseThemeId, resolveThemeId, type ThemeId } from '~/data/theme
 import { THEME_PREVIEW_COOKIE } from '~/composables/useTheme'
 
 definePageMeta({
-  layout: false
+  layout: false,
+  zhOnly: true
 })
 
 const { $firestore, $storage } = useNuxtApp()

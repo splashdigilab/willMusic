@@ -108,7 +108,7 @@ import { useNoteFlow, type FlowDirection, type FlowRect, type FlowXRange } from 
 import { useVideoMirror } from '~/composables/useVideoMirror'
 import { WALL_LOOK } from '~/utils/wall-look'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, zhOnly: true })
 
 /** 節慶主題：萬聖節時四角加蜘蛛網（徽章本身換長相由 CanvasPromo 自己看） */
 const { themeId } = useTheme()

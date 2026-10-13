@@ -22,7 +22,10 @@ export type QuotaKind =
   /** 現在就能送 */
   | 'ready'
 
-/** 毫秒 → m:ss。超過一小時的冷卻不會出現（後台只能設分鐘），不處理 */
+/**
+ * 毫秒 → m:ss。超過一小時的冷卻不會出現（後台只能設分鐘），不處理。
+ * m:ss 各語言都看得懂，所以不翻譯；呼叫端把它帶進各自翻譯好的句子裡。
+ */
 export const formatWait = (ms: number): string => {
   const total = Math.max(0, Math.ceil(ms / 1000))
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
@@ -31,6 +34,8 @@ export const formatWait = (ms: number): string => {
 export const useQuotaStatus = () => {
   const { loadUsage } = useSubmissionQuota()
   const { isSelfBanned } = useBannedUsers()
+  // 三個呼叫端（頭像小卡、編輯器、我的便利貼）都在 setup 裡呼叫，這裡拿得到 Nuxt 的 context
+  const { t } = useI18n()
 
   const loading = ref(false)
   const loaded = ref(false)
@@ -106,14 +111,19 @@ export const useQuotaStatus = () => {
   /** 送不出去的狀態，畫面上用警示色 */
   const isBlocked = computed(() => ['banned', 'exhausted', 'cooldown'].includes(kind.value))
 
-  /** 一句話的摘要。unlimited 與 loading 回 ''，由各處自己決定要不要顯示別的 */
+  /**
+   * 一句話的摘要。unlimited 與 loading 回 ''，由各處自己決定要不要顯示別的。
+   * 在 computed 裡讀 t：切換語言時跟著換。
+   * exhausted／cooldown／ready 一定有 usage，`?? 0` 只是給型別看的
+   */
   const summary = computed(() => {
+    const msg = t.value.quota
     const u = usage.value
     switch (kind.value) {
-      case 'banned': return '這個帳號已停止投稿資格'
-      case 'exhausted': return `今天的 ${u?.dailyLimit} 張已經送完了，明天再來`
-      case 'cooldown': return `今天還能送 ${remaining.value} 張，${waitText.value} 後可以送下一張`
-      case 'ready': return `今天還能送 ${remaining.value} 張`
+      case 'banned': return msg.banned
+      case 'exhausted': return msg.exhausted(u?.dailyLimit ?? 0)
+      case 'cooldown': return msg.remainingWithWait(remaining.value ?? 0, waitText.value)
+      case 'ready': return msg.remaining(remaining.value ?? 0)
       default: return ''
     }
   })

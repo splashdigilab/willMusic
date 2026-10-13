@@ -23,6 +23,24 @@ body {
   color: #333;
 }
 
+// 日文、韓文介面：介面字先用該語言的 LINE Seed 子集（只有選了那個語言才載入，見 utils/locale-fonts.ts）。
+// 日文介面不能沿用 LINE Seed TW：日文的漢字（応、気、択）TW 沒有，共用的漢字字形也是台灣的寫法。
+// 便利貼本身（StickyNote、NoteNameTag）明寫 $font-sans，不跟介面語言走 ——
+// 編輯器的預覽、下載的圖、LED 牆上的樣子必須一模一樣。
+html:lang(ja) body {
+  font-family: 'LINE Seed JP UI', $font-sans;
+}
+
+html:lang(ko) body {
+  font-family: 'LINE Seed KR UI', $font-sans;
+}
+
+// 頁面裡明確標成繁中的區塊（法律文件本文、品牌標題）不跟著日文／韓文介面換字型。
+// 只比對寫在元素上的屬性：<html> 本身在繁中介面也是這個值，但 body 有自己的規則，不受影響
+[lang='zh-Hant-TW'] {
+  font-family: $font-sans;
+}
+
 #__nuxt,
 #app {
   min-height: 100dvh;

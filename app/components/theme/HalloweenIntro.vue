@@ -18,11 +18,13 @@
     <img src="/themes/halloween/logo-intro.svg" alt="WillMusic" class="t-hw-intro__logo" />
 
     <div class="t-hw-intro__stage">
-      <!-- 標題已轉成外框畫在南瓜圖裡（介面字型沒有「聖」這個字），這裡留給讀屏軟體 -->
-      <h1 class="t-hw-intro__sr-only">POST BOARD 萬聖便利貼</h1>
+      <!-- 標題已轉成外框畫在南瓜圖裡（介面字型沒有「聖」這個字），這裡留給讀屏軟體。
+           圖裡的字標每個語言都一樣，所以這裡也不翻譯，標成繁中讓讀屏軟體用中文念 -->
+      <h1 class="t-hw-intro__sr-only" lang="zh-Hant-TW">POST BOARD 萬聖便利貼</h1>
       <img src="/themes/halloween/intro-hero.svg" alt="" class="t-hw-intro__hero" />
 
-      <p class="t-hw-intro__desc">歡迎來到 WILL MUSIC 數位應援便利貼<br>在這裡，您可以創作專屬於您的應援內容<br>與大家一起分享對音樂的熱愛。</p>
+      <!-- 一個元素一行，各語言行數不同（最多四行，再多會壓到 START） -->
+      <p class="t-hw-intro__desc"><template v-for="(line, i) in t.home.halloween.intro" :key="i"><br v-if="i > 0">{{ line }}</template></p>
 
       <div class="t-hw-intro__start-wrap">
         <button
@@ -33,7 +35,7 @@
         >
           <span v-if="loading" class="p-index__intro-btn-inner">
             <span class="p-index__intro-spinner" aria-hidden="true" />
-            載入中...
+            {{ t.home.loading }}
           </span>
           <span v-else>START</span>
         </button>
@@ -46,6 +48,8 @@
 <script setup lang="ts">
 defineProps<{ loading: boolean }>()
 const emit = defineEmits<{ start: [] }>()
+
+const { t } = useI18n()
 </script>
 
 <style scoped>

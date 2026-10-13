@@ -29,7 +29,7 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { doc, onSnapshot } from 'firebase/firestore'
 import QRCode from 'qrcode'
 
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, zhOnly: true })
 
 const { $firestore } = useNuxtApp()
 const db = $firestore as any

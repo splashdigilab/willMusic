@@ -54,6 +54,28 @@ TW 與 KR 的涵蓋範圍天然互補，合成同一個 `font-family` 後瀏覽�
 KR 會先裁掉拉丁與標點（與 TW 重疊的 568 個碼位），確保兩層的 unicode-range
 完全不重疊，否則瀏覽器可能為了一個拉丁字母多抓一個韓文分片。
 
+## 語言層（日文、韓文介面）
+
+介面有英、日、韓文之後（見專案 README「多國語系」），日文、韓文的介面字各裁一份：
+
+| | 來源 | 字重 | 大小（每個字重） | 載入時機 |
+|---|---|---|---|---|
+| `line-seed-ui-ja-*.woff2` | LINE Seed JP | 400 / 700 / 800 | 約 66 KB | 介面是日文才內嵌 @font-face 並預載 |
+| `line-seed-ui-ko-*.woff2` | LINE Seed Sans KR | 400 / 700 | 約 22 KB | 介面是韓文才載入 |
+
+- **用獨立的 font-family**（`LINE Seed JP UI`、`LINE Seed KR UI`），由 `base/_global.scss` 的
+  `html:lang(ja)`／`html:lang(ko)` 排在 `LINE Seed` 前面。不併進同一個 family：日文的漢字（応、気）
+  TW 沒有，共用的漢字字形也是台灣的寫法；跟內容分片搶同一個字時，後宣告的會贏，會多抓分片。
+- **便利貼不吃語言層**：StickyNote、NoteNameTag 明寫 `$font-sans`，不然同一張便利貼在日文介面的預覽、
+  下載的圖，跟 LED 牆上看起來會不一樣。
+- 字集從 `app/locales/ja`、`ko` 的字串掃出來（加上語言選單上的名稱）；這三個語言的翻譯檔**不算進**
+  TW 介面字集，否則日文的漢字會塞進每個人都要預載的檔案。
+- 韓文沒有 800（LINE Seed Sans KR 只有 Th／Rg／Bd），800 的大標由瀏覽器挑 700。
+- **改了日文或韓文翻譯就跑 `python3 scripts/fonts/build.py --locale-ui`**（幾秒鐘，只重建這一層）。
+  沒跑的話新字會退回 TW 的字型：顯示得出來，但字形不一致。
+- 英文與韓文的翻譯不要用彎引號（’ “ ”）和 …：LINE Seed TW 的這幾個字是全形的，
+  夾在英文裡會多出一大塊空白。用直引號和三個句點。
+
 ## 分片大小怎麼定的
 
 每個 woff2 分片有約 4.7 KB 的固定開銷，所以分片越小、單張便利貼抓得越少，

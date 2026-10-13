@@ -24,24 +24,24 @@
           <div class="c-modal__actions" :class="{ 'c-modal__actions--stacked': stackedActions }">
             <!-- Secondary/Cancel Button -->
             <button
-              v-if="cancelText"
+              v-if="cancelLabel"
               class="c-button c-button--secondary c-modal__cancel"
               @click="handleCancel"
               :disabled="loading"
             >
-              {{ cancelText }}
+              {{ cancelLabel }}
             </button>
             <slot name="secondary-action"></slot>
 
             <!-- Primary/Confirm Button -->
             <button
-              v-if="confirmText"
+              v-if="confirmLabel"
               class="c-button c-modal__confirm"
               :class="confirmButtonClass"
               @click="handleConfirm"
               :disabled="loading"
             >
-              {{ loading ? loadingText : confirmText }}
+              {{ loading ? loadingLabel : confirmLabel }}
             </button>
             <slot name="primary-action"></slot>
           </div>
@@ -52,6 +52,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -69,13 +71,19 @@ const props = defineProps({
     type: String,
     default: ''
   },
+  /**
+   * 按鈕上的三種字（confirmText、cancelText、loadingText）預設值跟著介面語言走，
+   * 而 props 的 default 裡呼叫不了 useI18n，所以 default 留 undefined，由下面的 computed 補上。
+   * 沒傳（undefined）→ 用翻譯的預設字；傳了字串就照用，包括空字串 ——
+   * 呼叫端靠 cancel-text="" 把取消鈕藏起來。
+   */
   confirmText: {
     type: String,
-    default: '確認'
+    default: undefined
   },
   cancelText: {
     type: String,
-    default: '取消'
+    default: undefined
   },
   confirmButtonClass: {
     type: String,
@@ -87,7 +95,7 @@ const props = defineProps({
   },
   loadingText: {
     type: String,
-    default: '處理中...'
+    default: undefined
   },
   closeOnOverlay: {
     type: Boolean,
@@ -104,6 +112,13 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'confirm', 'cancel', 'opened'])
+
+// 後台這類只有中文的頁面，useI18n 自己會回繁中
+const { t } = useI18n()
+// 用 ?? 而不是 ||：空字串是「不要這顆按鈕」，不能被換回預設字
+const confirmLabel = computed(() => props.confirmText ?? t.value.common.confirm)
+const cancelLabel = computed(() => props.cancelText ?? t.value.common.cancel)
+const loadingLabel = computed(() => props.loadingText ?? t.value.common.processing)
 
 const handleOverlayClick = () => {
   if (props.closeOnOverlay && !props.loading) {

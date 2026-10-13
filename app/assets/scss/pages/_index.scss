@@ -445,6 +445,17 @@ $edge-inset: 1rem;
     flex-shrink: 0;
 }
 
+/* 語言選單：開場最上方置中，卡片上緣上面的空白。
+   多數人看到的已經是自己的語言（照瀏覽器設定），這裡只給要換的人，不搶卡片的視線 */
+.p-index__locale {
+    position: absolute;
+    top: calc(0.5rem + env(safe-area-inset-top, 0px));
+    left: 0;
+    right: 0;
+    z-index: 20;
+    color: #fff;
+}
+
 /* 字標：稿子放在卡片下方置中，寬 431 / 1080 = 40% */
 .p-index__intro-logo {
     display: block;
@@ -549,13 +560,16 @@ $edge-inset: 1rem;
 
     /* 桌機整組乘 $bottom-bar-desktop-scale，稿子的內部比例不變。
        這裡不跟著撐滿：橫條是整個視窗寬，1400 的螢幕上會變成一顆一公尺長的黃藥丸。
-       固定寬度置中就好。 */
+       固定寬度置中就好。
+       寬度是下限不是定值：英文、韓文比較長，要撐開而不是溢出藥丸。
+       左右 24px 是算好的：繁中五個字 35px × 5 = 175，加上兩邊剛好 223，跟原本的定寬一樣。 */
     @include bp.respond-from('tablet-lg') {
         margin-left: auto;
         margin-right: auto;
         flex: 0 0 auto;
-        width: 223px;
-        max-width: 223px;
+        min-width: 223px;
+        padding: 0 24px;
+        box-sizing: border-box;
         height: 62px;
         max-height: 62px;
         box-shadow: 0 3px 9px rgba(0, 0, 0, 0.28);

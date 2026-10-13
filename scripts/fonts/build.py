@@ -10,13 +10,18 @@
           已扣掉 UI 層的字，兩者 unicode-range 不重疊。
           字重為 700：便利貼上的文字統一走粗體。這一層只有單一字重，
           所以是「換一份」而非「多一份」，檔案數與體積不變。
-  KR 層   使用者輸入的韓文，同上，字重同樣是 700。介面沒有韓文。
+  KR 層   使用者輸入的韓文，同上，字重同樣是 700。
+  語言層  日文、韓文介面的字（app/locales/ja、ko 掃出來的），各一個小檔，
+          只有選了那個語言才載入（app/utils/locale-fonts.ts）。用獨立的 font-family，
+          不跟上面幾層搶同一個字：日文介面不能沿用 TW，日文的漢字（応、気）TW 沒有，
+          共用的漢字字形也是台灣的寫法。
 
 來源字型會自動從 seed.line.me 下載到 .src/（已 gitignore）。
 產出會 commit 進 repo，所以正常開發與部署都不需要跑這支腳本。
 
 用法：
-    python3 scripts/fonts/build.py
+    python3 scripts/fonts/build.py              # 全部重建
+    python3 scripts/fonts/build.py --locale-ui  # 只重建語言層（改了日文、韓文翻譯之後跑這個）
 
 需要：python3、fonttools、brotli、npx（會自動取用 cn-font-split）
 """
@@ -47,6 +52,7 @@ CHUNK_SIZE = "8000"
 DOWNLOADS = {
     "LINE_Seed_TW.zip": "https://seed.line.me/src/images/fonts/LINE_Seed_TW.zip",
     "LINE_Seed_Sans_KR.zip": "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip",
+    "LINE_Seed_JP.zip": "https://seed.line.me/src/images/fonts/LINE_Seed_JP.zip",
 }
 
 # zip 內的來源檔（zip 目錄名含空白，所以用 endswith 比對）
@@ -56,7 +62,32 @@ MEMBERS = {
     "tw-800": ("LINE_Seed_TW.zip", "WOFF2/LINESeedTW_OTF_Eb.woff2"),
     "kr-400": ("LINE_Seed_Sans_KR.zip", "Web/woff2/LINESeedKR-Rg.woff2"),
     "kr-700": ("LINE_Seed_Sans_KR.zip", "Web/woff2/LINESeedKR-Bd.woff2"),
+    "jp-400": ("LINE_Seed_JP.zip", "Web/WOFF2/LINESeedJP_OTF_Rg.woff2"),
+    "jp-700": ("LINE_Seed_JP.zip", "Web/WOFF2/LINESeedJP_OTF_Bd.woff2"),
+    "jp-800": ("LINE_Seed_JP.zip", "Web/WOFF2/LINESeedJP_OTF_Eb.woff2"),
 }
+
+# 語言層：每個介面語言用哪一套字、哪幾個字重、收哪些字。
+# 韓文沒有 800（LINE Seed Sans KR 只有 Th／Rg／Bd），800 的大標由瀏覽器挑 700。
+# 拉丁字母與一般標點不收，交給介面層的 TW，各語言的英數字長得一樣。
+LOCALE_UI = {
+    "ja": {
+        "family": "LINE Seed JP UI",
+        "source": "jp",
+        "weights": (400, 700, 800),
+        # 全形標點、假名、漢字、全形英數
+        "chars": re.compile(r"[　-ヿ㐀-䶿一-鿿＀-￯]"),
+    },
+    "ko": {
+        "family": "LINE Seed KR UI",
+        "source": "kr",
+        "weights": (400, 700),
+        "chars": re.compile(r"[ᄀ-ᇿ㄰-㆏가-힣]"),
+    },
+}
+
+# 這些語言的翻譯檔不算進繁中介面字集，否則日文的漢字會被塞進每個人都要預載的 TW 介面字型
+LOCALE_DIRS_EXCLUDED_FROM_TW = ("app/locales/en/", "app/locales/ja/", "app/locales/ko/")
 
 HANGUL_RANGES = "U+1100-11FF,U+3130-318F,U+A960-A97F,U+AC00-D7A3,U+D7B0-D7FF"
 
@@ -121,6 +152,8 @@ def ui_charset() -> set[str]:
     patterns = ("app/**/*.vue", "app/**/*.ts", "app/**/*.scss", "server/**/*.ts", "nuxt.config.ts")
     for pattern in patterns:
         for path in ROOT.glob(pattern):
+            if path.relative_to(ROOT).as_posix().startswith(LOCALE_DIRS_EXCLUDED_FROM_TW):
+                continue
             text = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
             chars.update(cjk.findall(text))
 
@@ -233,9 +266,63 @@ def collect_faces(css_path: Path, url_prefix: str) -> list[str]:
     return faces
 
 
+def locale_charset(locale: str) -> set[str]:
+    """某個介面語言要收的字：那個語言的翻譯檔，加上語言選單上的名稱（utils/i18n.ts 的 LOCALE_LABELS，
+    例如韓文介面上的「日本語」也要用韓文介面的字型畫得出來才一致——對不到的字會退回 TW）。"""
+    pattern = LOCALE_UI[locale]["chars"]
+    paths = list((ROOT / "app" / "locales" / locale).rglob("*.ts")) + [ROOT / "app" / "utils" / "i18n.ts"]
+    chars: set[str] = set()
+    for path in paths:
+        text = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
+        chars.update(pattern.findall(text))
+    return chars
+
+
+def build_locale_ui() -> None:
+    """語言層：日文、韓文介面字各裁一份小字型，產生各自的 @font-face 樣式表。
+
+    樣式表由 app/utils/locale-fonts.ts 在建置時讀進來，選了那個語言才內嵌到 <head>，
+    跟介面層一樣不用多一次樣式表往返。"""
+    header = (
+        "/* 由 scripts/fonts/build.py 產生，請勿手動編輯。\n"
+        " * LINE Seed JP / LINE Seed Sans KR, (c) LY Corporation,\n"
+        " * SIL Open Font License 1.1 — https://seed.line.me/\n"
+        " */\n"
+    )
+    for locale, spec in LOCALE_UI.items():
+        chars = locale_charset(locale)
+        if not chars:
+            log(f"{locale}：翻譯檔裡沒有要收的字，跳過")
+            continue
+        faces: list[str] = []
+        for weight in spec["weights"]:
+            dest = OUT_DIR / f"line-seed-ui-{locale}-{weight}.woff2"
+            subset(SRC_DIR / f"{spec['source']}-{weight}.woff2", dest, text="".join(sorted(chars)))
+            # unicode-range 以字型實際收到的字為準（理由同介面層）
+            actual = font_codepoints(dest)
+            missing = sorted(c for c in chars if ord(c) not in actual)
+            faces.append(
+                f'@font-face{{font-family:"{spec["family"]}";'
+                f'src:url("/fonts/line-seed-ui-{locale}-{weight}.woff2")format("woff2");'
+                f"font-style:normal;font-display:swap;font-weight:{weight};"
+                f"unicode-range:{format_unicode_range(actual)};}}"
+            )
+            log(f"{locale} {weight}：{dest.stat().st_size / 1024:.0f} KB，{len(actual)} 字")
+            if missing:
+                # 字型沒有的字會退回 $font-sans（LINE Seed TW → 系統字），顯示得出來，但字形不一致
+                log(f"  {spec['source']} 沒有的字：{''.join(missing)}")
+        (OUT_DIR / f"line-seed-ui-{locale}.css").write_text(
+            header + "\n".join(faces) + "\n", encoding="utf-8"
+        )
+
+
 def main() -> None:
     fetch_sources()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    if "--locale-ui" in sys.argv[1:]:
+        build_locale_ui()
+        return
 
     ui_chars = ui_charset()
     log(f"介面字集：{len(ui_chars)} 字")
@@ -301,6 +388,8 @@ def main() -> None:
     (OUT_DIR / "line-seed.css").write_text(
         header + "\n".join(tw_faces + kr_faces) + "\n", encoding="utf-8"
     )
+
+    build_locale_ui()
 
     total = sum(p.stat().st_size for p in OUT_DIR.rglob("*") if p.is_file())
     log(f"完成：public/fonts 共 {total / 1048576:.2f} MB")

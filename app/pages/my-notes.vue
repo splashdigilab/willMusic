@@ -2,24 +2,24 @@
   <div class="p-my-notes">
     <div class="p-my-notes__container">
       <header class="p-my-notes__header">
-        <NuxtLink to="/" class="p-index__icon-btn" aria-label="回到首頁">
+        <NuxtLink to="/" class="p-index__icon-btn" :aria-label="t.myNotes.backHome">
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M15 18l-6-6 6-6"></path>
           </svg>
         </NuxtLink>
-        <h1 class="p-my-notes__title">我的便利貼</h1>
+        <h1 class="p-my-notes__title">{{ t.myNotes.title }}</h1>
       </header>
 
-      <div v-if="!authReady" class="p-my-notes__hint">載入中…</div>
+      <div v-if="!authReady" class="p-my-notes__hint">{{ t.common.loading }}</div>
 
       <!-- 直接打開這個網址、但沒登入的人 -->
       <section v-else-if="!isMember" class="p-my-notes__empty">
         <div class="p-my-notes__empty-art" aria-hidden="true"><i /><i /><i /></div>
-        <p class="p-my-notes__empty-title">用 LINE 登入</p>
-        <p class="p-my-notes__empty-text">就可以看到自己送出的便利貼<br>以及今天還能送幾張</p>
-        <p v-if="loginError" class="p-my-notes__signin-error">{{ loginError }}</p>
+        <p class="p-my-notes__empty-title">{{ t.myNotes.login.title }}</p>
+        <p class="p-my-notes__empty-text"><template v-for="(line, i) in t.myNotes.login.text" :key="i"><br v-if="i > 0">{{ line }}</template></p>
+        <p v-if="loginFailed" class="p-my-notes__signin-error">{{ t.myNotes.login.failed }}</p>
         <button type="button" class="p-my-notes__btn p-my-notes__btn--line" @click="startLogin(route.path)">
-          LINE 登入
+          {{ t.myNotes.login.button }}
         </button>
         <LoginDataNotice />
       </section>
@@ -28,22 +28,22 @@
         <!-- 額度：冷卻中每秒倒數 -->
         <section class="p-my-notes__quota">
           <template v-if="quotaKind === 'banned'">
-            <p class="p-my-notes__quota-alert">這個帳號已停止投稿資格</p>
-            <p class="p-my-notes__quota-note">如有疑問，請洽現場工作人員。</p>
+            <p class="p-my-notes__quota-alert">{{ t.myNotes.quota.banned }}</p>
+            <p class="p-my-notes__quota-note">{{ t.myNotes.quota.bannedNote }}</p>
           </template>
 
           <!-- 後台關掉頻率限制、或讀不到用量：不猜數字，只留一句話和按鈕 -->
           <p v-else-if="quotaKind === 'unlimited'" class="p-my-notes__quota-note">
-            畫一張應援便利貼，送上 LED 大螢幕
+            {{ t.myNotes.quota.unlimited }}
           </p>
 
           <template v-else>
             <div class="p-my-notes__quota-row">
               <div>
-                <p class="p-my-notes__quota-label">今天還能送</p>
+                <p class="p-my-notes__quota-label">{{ t.myNotes.quota.label }}</p>
                 <p class="p-my-notes__quota-count" :class="{ 'is-loading': quotaKind === 'loading' }">
                   <strong>{{ quotaRemaining ?? '–' }}</strong>
-                  <span v-if="quotaUsage">/ {{ quotaUsage.dailyLimit }} 張</span>
+                  <span v-if="quotaUsage">{{ t.myNotes.quota.of(quotaUsage.dailyLimit) }}</span>
                 </p>
               </div>
               <span v-if="quotaChip" class="p-my-notes__chip" :class="{ 'is-warning': quotaBlocked }">
@@ -60,22 +60,22 @@
             </ol>
           </template>
 
-          <NuxtLink v-if="canMakeMore" to="/editor" class="p-my-notes__btn">＼ 製作便利貼 ／</NuxtLink>
+          <NuxtLink v-if="canMakeMore" to="/editor" class="p-my-notes__btn">{{ t.myNotes.quota.makeNote }}</NuxtLink>
           <LineFriendPrompt />
         </section>
 
-        <div v-if="notesLoading" class="p-my-notes__hint">載入中…</div>
+        <div v-if="notesLoading" class="p-my-notes__hint">{{ t.common.loading }}</div>
 
         <div v-else-if="notes.length === 0" class="p-my-notes__empty">
           <div class="p-my-notes__empty-art" aria-hidden="true"><i /><i /><i /></div>
-          <p class="p-my-notes__empty-title">{{ myIds.length ? '目前沒有可以顯示的便利貼' : '還沒有送出過便利貼' }}</p>
-          <p class="p-my-notes__empty-text">送出的便利貼會出現在這裡<br>還能看到它排到第幾、什麼時候上牆</p>
+          <p class="p-my-notes__empty-title">{{ myIds.length ? t.myNotes.empty.hidden : t.myNotes.empty.none }}</p>
+          <p class="p-my-notes__empty-text"><template v-for="(line, i) in t.myNotes.empty.text" :key="i"><br v-if="i > 0">{{ line }}</template></p>
         </div>
 
         <template v-else>
           <!-- 排隊中的在前：使用者最想知道的是「我那張什麼時候上牆」 -->
           <section v-if="pendingNotes.length" class="p-my-notes__section">
-            <h2 class="p-my-notes__section-title">排隊中<span>{{ pendingNotes.length }}</span></h2>
+            <h2 class="p-my-notes__section-title">{{ t.myNotes.pending }}<span>{{ pendingNotes.length }}</span></h2>
             <ul class="p-my-notes__queue">
               <li
                 v-for="note in pendingNotes"
@@ -89,26 +89,27 @@
                 <div class="p-my-notes__ticket-meta">
                   <!-- 位置 0 可能是正在播、也可能是下一張：兩種都是「現在去看牆」 -->
                   <template v-if="queueAhead(note) === 0">
-                    <p class="p-my-notes__ticket-main">輪到你了！</p>
-                    <p class="p-my-notes__ticket-sub">請看 LED 牆</p>
+                    <p class="p-my-notes__ticket-main">{{ t.myNotes.yourTurn }}</p>
+                    <p class="p-my-notes__ticket-sub">{{ t.myNotes.watchScreen }}</p>
                   </template>
                   <template v-else>
-                    <p class="p-my-notes__ticket-main">前面還有 <strong>{{ queueAhead(note) }}</strong> 張</p>
+                    <!-- 張數要放大加粗，字拆成前後兩段（前後的空白在翻譯檔裡） -->
+                    <p class="p-my-notes__ticket-main">{{ t.myNotes.aheadBefore }}<strong>{{ queueAhead(note) }}</strong>{{ t.myNotes.aheadAfter(queueAhead(note)) }}</p>
                   </template>
-                  <p class="p-my-notes__time">送出於 {{ formatTime(note.timestamp) }}</p>
+                  <p class="p-my-notes__time">{{ t.myNotes.sentAt(formatTime(note.timestamp)) }}</p>
                 </div>
               </li>
             </ul>
           </section>
 
           <section v-if="playedNotes.length" class="p-my-notes__section">
-            <h2 class="p-my-notes__section-title">已上牆<span>{{ playedNotes.length }}</span></h2>
+            <h2 class="p-my-notes__section-title">{{ t.myNotes.played }}<span>{{ playedNotes.length }}</span></h2>
             <ul class="p-my-notes__gallery">
               <li v-for="note in playedNotes" :key="note.id" class="p-my-notes__tile">
                 <div class="p-my-notes__thumb">
                   <StickyNote :note="note" />
                 </div>
-                <p class="p-my-notes__time">{{ formatTime(note.playedAt) }} 上牆</p>
+                <p class="p-my-notes__time">{{ t.myNotes.shownAt(formatTime(note.playedAt)) }}</p>
               </li>
             </ul>
           </section>
@@ -126,8 +127,8 @@
             @change="onMarketingToggle"
           />
           <span class="p-my-notes__marketing-text">
-            我願意收到微樂客的活動與優惠資訊
-            <span class="p-my-notes__marketing-email">寄到 {{ marketingEmail }}</span>
+            {{ t.myNotes.marketing }}
+            <span class="p-my-notes__marketing-email">{{ t.myNotes.marketingTo(marketingEmail) }}</span>
           </span>
         </label>
       </template>
@@ -140,10 +141,10 @@
             <path d="M3 10.5L12 3l9 7.5"></path>
             <path d="M5 9v11a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9"></path>
           </svg>
-          回到首頁
+          {{ t.myNotes.backHome }}
         </NuxtLink>
         <!-- 還沒送過的人不需要先讀到「會被撤下」 -->
-        <p v-if="myIds.length" class="p-my-notes__footnote">不符合活動規範的便利貼會被撤下，不會出現在這裡。</p>
+        <p v-if="myIds.length" class="p-my-notes__footnote">{{ t.myNotes.footnote }}</p>
       </footer>
     </div>
   </div>
@@ -161,6 +162,7 @@ import {
 } from 'firebase/firestore'
 import type { QueueHistoryItem, QueuePendingItem } from '~/types'
 import { getDocsByIds } from '~/utils/firestore-batch'
+import { HTML_LANG } from '~/utils/i18n'
 import StickyNote from '~/components/StickyNote.vue'
 
 /**
@@ -178,7 +180,8 @@ import StickyNote from '~/components/StickyNote.vue'
  */
 definePageMeta({ layout: false, ssr: false })
 
-usePageSeo('我的便利貼', '看自己送出的便利貼、排到第幾張，以及今天還能送幾張。')
+const { t, locale } = useI18n()
+usePageSeo(() => t.value.seo.myNotes.title, () => t.value.seo.myNotes.description)
 
 const route = useRoute()
 const { $firestore } = useNuxtApp() as any
@@ -200,9 +203,9 @@ const {
 /** 張數旁邊的狀態標籤。停權與 unlimited 不走這一格（版面另外處理） */
 const quotaChip = computed(() => {
   switch (quotaKind.value) {
-    case 'exhausted': return '明天再來吧！'
-    case 'cooldown': return `${quotaWaitText.value} 後可以送`
-    case 'ready': return '現在就可以送'
+    case 'exhausted': return t.value.myNotes.quota.exhausted
+    case 'cooldown': return t.value.myNotes.quota.cooldown(quotaWaitText.value)
+    case 'ready': return t.value.myNotes.quota.ready
     default: return ''
   }
 })
@@ -316,15 +319,20 @@ const playedNotes = computed(() =>
     .sort((a, b) => toMillis(b.playedAt) - toMillis(a.playedAt))
 )
 
-const pad2 = (n: number) => String(n).padStart(2, '0')
-
-/** 今天的只寫時間；活動多半是當天，日期是多餘的 */
+/**
+ * 今天的只寫時間；活動多半是當天，日期是多餘的。
+ *
+ * 月日的寫法交給瀏覽器依介面語言決定（繁中、英、日是 10/12，韓文是 10. 12.）。
+ * 時間一律 24 小時制：繁中、韓文預設是「下午 2:05」「오후 2:05」，比原本的 14:05 長，
+ * 已上牆那一格只有半張卡寬。用 hourCycle 而不是 hour12: false —— 後者在部分瀏覽器會把午夜寫成 24:00。
+ */
 const formatTime = (ts: any): string => {
   const date: Date | undefined = ts?.toDate?.()
   if (!date) return '—'
-  const hm = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
-  if (date.toDateString() === new Date().toDateString()) return `今天 ${hm}`
-  return `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())} ${hm}`
+  const lang = HTML_LANG[locale.value]
+  const hm = date.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  if (date.toDateString() === new Date().toDateString()) return t.value.myNotes.today(hm)
+  return `${date.toLocaleDateString(lang, { month: '2-digit', day: '2-digit' })} ${hm}`
 }
 
 // ── 行銷信的同意 ──────────────────────────────────────
@@ -367,11 +375,12 @@ watch(() => (isMember.value ? user.value?.uid : null), (uid) => {
 
 // ── 從這一頁登入 ──────────────────────────────────────
 // 沒登入的人點頭像的「我的便利貼」、或直接打開這個網址，都會落在這裡。
-const loginError = ref('')
+// 只記「失敗了」，字在畫面上才查：存成字串的話，之後切換語言那句話不會跟著換。
+const loginFailed = ref(false)
 
 onMounted(async () => {
   if (await completeLoginReturn() === 'error') {
-    loginError.value = '登入沒有完成，請再試一次。'
+    loginFailed.value = true
   }
 })
 

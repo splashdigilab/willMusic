@@ -1,0 +1,33 @@
+// 語言選單（LocaleSwitcher.vue）。顏色跟著放它的地方走（currentColor），位置由頁面決定。
+
+.c-locale-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+.c-locale-switcher__item {
+  appearance: none;
+  background: none;
+  border: 0;
+  // 字小但點擊範圍要夠大（約 32px 高）
+  padding: 0.6rem 0.25rem;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  // 一律粗體：韓文在非韓文介面時由內容分片供應，那一層只有 700，細體會掉到系統字
+  font-weight: 700;
+  opacity: 0.7;
+  cursor: pointer;
+  text-decoration: none;
+
+  &.is-active {
+    opacity: 1;
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+    text-decoration-thickness: 2px;
+  }
+}

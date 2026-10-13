@@ -23,7 +23,7 @@
               <div v-if="currentStepData" class="tutorial-demo__object-wrap">
                 <img :src="currentStepData.image" class="tutorial-demo__guesture" alt="" />
                 <div class="tutorial-demo__object">
-                  <span class="tutorial-demo__object-text">文字</span>
+                  <span class="tutorial-demo__object-text">{{ t.editor.tutorial.demoText }}</span>
                 </div>
               </div>
             </div>
@@ -44,20 +44,20 @@
               class="c-button c-button--secondary"
               @click="prevStep"
             >
-              上一步
+              {{ t.editor.prev }}
             </button>
             <button
               v-else
               class="c-button c-button--secondary"
               @click="finish"
             >
-              略過
+              {{ t.editor.tutorial.skip }}
             </button>
             <button
               class="c-button c-button--primary"
               @click="nextStep"
             >
-              {{ currentStep === steps.length - 1 ? '開始體驗' : '下一步' }}
+              {{ currentStep === steps.length - 1 ? t.editor.tutorial.start : t.editor.next }}
             </button>
           </div>
         </div>
@@ -78,27 +78,21 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'finish'])
 
+const { t } = useI18n()
+
 const currentStep = ref(0)
 
+/** 三頁的示意圖。標題與說明在翻譯檔的 t.editor.tutorial，以 id 對應 */
 const steps = [
-  {
-    title: '單指拖移',
-    message: '選取文字或貼紙，即可隨心移動位置。',
-    image: '/tutorial-drag.svg'
-  },
-  {
-    title: '雙指旋轉',
-    message: '雙指旋轉物件，輕鬆調整呈現角度。',
-    image: '/tutorial-rotate.svg'
-  },
-  {
-    title: '雙指縮放',
-    message: '雙指捏合或張開，自由放大縮小物件。',
-    image: '/tutorial-scale.svg'
-  }
-]
+  { id: 'drag', image: '/tutorial-drag.svg' },
+  { id: 'rotate', image: '/tutorial-rotate.svg' },
+  { id: 'scale', image: '/tutorial-scale.svg' }
+] as const
 
-const currentStepData = computed(() => steps[currentStep.value] ?? steps[0])
+const currentStepData = computed(() => {
+  const step = steps[currentStep.value] ?? steps[0]
+  return { ...t.value.editor.tutorial[step.id], image: step.image }
+})
 
 const touchStartX = ref(0)
 const touchEndX = ref(0)

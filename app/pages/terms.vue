@@ -10,37 +10,43 @@
         </p>
       </aside>
 
-      <header class="p-legal__header">
-        <h1 class="p-legal__title">{{ TERMS_TITLE }}</h1>
-        <p class="p-legal__updated">最後更新日期：{{ TERMS_LAST_UPDATED }}</p>
-      </header>
+      <!-- 本文只有繁中版，其他語言的介面先說明以中文版為準 -->
+      <p v-if="t.legal.chineseOnly" class="p-legal__locale-note">{{ t.legal.chineseOnly }}</p>
 
-      <div class="p-legal__intro">
-        <LegalBlocks :blocks="TERMS_INTRO" />
+      <!-- 本文標明繁中：日文、韓文介面的字型不套到這裡（見 base/_global.scss） -->
+      <div lang="zh-Hant-TW">
+        <header class="p-legal__header">
+          <h1 class="p-legal__title">{{ TERMS_TITLE }}</h1>
+          <p class="p-legal__updated">最後更新日期：{{ TERMS_LAST_UPDATED }}</p>
+        </header>
+
+        <div class="p-legal__intro">
+          <LegalBlocks :blocks="TERMS_INTRO" />
+        </div>
+
+        <nav class="p-legal__toc" aria-label="目錄">
+          <p class="p-legal__toc-title">目錄</p>
+          <ol class="p-legal__toc-list">
+            <li v-for="section in TERMS_SECTIONS" :key="section.id">
+              <a :href="`#${section.id}`">{{ section.heading }}</a>
+            </li>
+          </ol>
+        </nav>
+
+        <section
+          v-for="section in TERMS_SECTIONS"
+          :id="section.id"
+          :key="section.id"
+          class="p-legal__section"
+        >
+          <h2 class="p-legal__heading">{{ section.heading }}</h2>
+          <LegalBlocks :blocks="section.blocks" />
+        </section>
       </div>
 
-      <nav class="p-legal__toc" aria-label="目錄">
-        <p class="p-legal__toc-title">目錄</p>
-        <ol class="p-legal__toc-list">
-          <li v-for="section in TERMS_SECTIONS" :key="section.id">
-            <a :href="`#${section.id}`">{{ section.heading }}</a>
-          </li>
-        </ol>
-      </nav>
-
-      <section
-        v-for="section in TERMS_SECTIONS"
-        :id="section.id"
-        :key="section.id"
-        class="p-legal__section"
-      >
-        <h2 class="p-legal__heading">{{ section.heading }}</h2>
-        <LegalBlocks :blocks="section.blocks" />
-      </section>
-
       <footer class="p-legal__footer">
-        <NuxtLink to="/privacy" class="p-legal__link">隱私權政策</NuxtLink>
-        <NuxtLink to="/" class="p-legal__back">回到便利貼牆</NuxtLink>
+        <NuxtLink to="/privacy" class="p-legal__link">{{ t.legal.privacyPolicy }}</NuxtLink>
+        <NuxtLink to="/" class="p-legal__back">{{ t.common.backToWall }}</NuxtLink>
       </footer>
     </div>
   </main>
@@ -66,6 +72,8 @@ import { countPlaceholders } from '~/utils/legal-doc'
 definePageMeta({
   layout: false
 })
+
+const { t } = useI18n()
 
 const unfilledCount = computed(() =>
   countPlaceholders(

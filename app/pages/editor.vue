@@ -2,12 +2,12 @@
   <div class="p-editor">
       <!-- 稿子的編輯器畫面沒有上方橫條，返回與說明改為浮動圓鈕（與首頁一致） -->
       <div class="p-editor__float-actions">
-        <button type="button" class="p-index__icon-btn" aria-label="返回" @click="goBack">
+        <button type="button" class="p-index__icon-btn" :aria-label="t.editor.back" @click="goBack">
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
             <path d="M15 18l-6-6 6-6"></path>
           </svg>
         </button>
-        <button type="button" class="p-index__icon-btn" aria-label="說明" @click="showTutorialModal = true">
+        <button type="button" class="p-index__icon-btn" :aria-label="t.editor.help" @click="showTutorialModal = true">
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
@@ -31,7 +31,7 @@
             <path d="M3.5 12a8.5 8.5 0 1 1 2.8 6.3" />
             <path d="M3 6.5V12h5.5" />
           </svg>
-          全部重來
+          {{ t.editor.startOver }}
         </button>
         <!-- 登入狀態（已登入是頭貼、沒登入是人像輪廓），放最右邊，與首頁同一個角落。
              從這裡登入要能回到同一步接著編輯，見 loginFromBadge -->
@@ -55,16 +55,17 @@
             <p class="p-index__intro-caption p-index__intro-caption--bottom">Create your customized message here<br>and share your passion for music with everyone.</p>
 
             <h1 class="p-index__intro-title">
-              <span>活動規範</span>
+              <span>{{ t.legal.terms }}</span>
               <span>RULES</span>
             </h1>
 
-            <!-- 規範文字來自 ~/data/terms（與 /terms 頁同一份），
+            <!-- 規範文字來自 ~/data/terms（與 /terms 頁同一份；繁中的 t.legal.rules 就是它，
+                 其他語言是它的翻譯，見 locales/zh-TW/legal.ts），
                  不要在這裡寫死：兩邊各改各的話，客戶看到的規範與 LINE 後台
                  登記的那一頁就會不一致。這裡顯示的是摘要，完整版在 /terms。 -->
             <div class="p-index__intro-desc p-index__intro-rules">
               <ol>
-                <li v-for="(rule, i) in TERMS_RULES" :key="i">{{ rule }}</li>
+                <li v-for="(rule, i) in t.legal.rules" :key="i">{{ rule }}</li>
               </ol>
             </div>
 
@@ -77,19 +78,19 @@
             <label class="p-index__intro-terms">
               <input type="checkbox" v-model="termsAccepted" />
               <span>
-                我已閱讀並同意<a
+                {{ t.editor.intro.agreeBefore }}<a
                   href="/terms"
                   target="_blank"
                   rel="noopener"
                   class="p-index__intro-terms-link"
                   @click.stop
-                >活動規範</a>與<a
+                >{{ t.legal.terms }}</a>{{ t.editor.intro.agreeBetween }}<a
                   href="/privacy"
                   target="_blank"
                   rel="noopener"
                   class="p-index__intro-terms-link"
                   @click.stop
-                >隱私權政策</a>
+                >{{ t.legal.privacyPolicy }}</a>{{ t.editor.intro.agreeAfter }}
               </span>
             </label>
 
@@ -101,7 +102,7 @@
             >
               <span v-if="loading" class="p-index__intro-btn-inner">
                 <span class="p-index__intro-spinner" aria-hidden="true" />
-                載入中...
+                {{ t.editor.intro.loading }}
               </span>
               <span v-else>START</span>
             </button>
@@ -130,22 +131,26 @@
               class="p-index__intro-line p-index__intro-line--action"
               @click="loginFromIntro"
             >
-              先用 LINE 登入（送出時才需要，也可以稍後再登）
+              {{ t.editor.intro.loginEarly }}
             </button>
           </div>
 
           <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__intro-logo" />
+
+          <!-- 語言選單：跟首頁開場同一個位置。規範要看得懂才能勾同意，這裡也要換得了語言 -->
+          <LocaleSwitcher class="p-index__locale" />
         </div>
       </Transition>
 
     <!-- Tutorial Modal -->
     <EditorTutorialModal v-model="showTutorialModal" />
 
+    <!-- AppModal 的 message 是 v-html，翻譯的字一律經過 toModalMessage 跳脫（見 script） -->
     <AppModal
       v-model="showTermsModal"
-      title="提示"
-      message="請先閱讀並同意活動規範"
-      confirm-text="確定"
+      :title="t.editor.alertTitle"
+      :message="toModalMessage(t.editor.intro.termsRequired)"
+      :confirm-text="t.common.ok"
       cancel-text=""
       @confirm="showTermsModal = false"
     />
@@ -154,10 +159,10 @@
     <AppModal
       v-model="showDraftModal"
       icon="📝"
-      title="發現草稿"
-      message="您有一份未完成的草稿，要繼續編輯還是重新開始？"
-      confirmText="使用草稿"
-      cancelText="重新開始"
+      :title="t.editor.draft.title"
+      :message="toModalMessage(t.editor.draft.message)"
+      :confirmText="t.editor.draft.use"
+      :cancelText="t.editor.draft.discard"
       @confirm="handleDraftDecision(true)"
       @cancel="handleDraftDecision(false)"
     />
@@ -165,10 +170,10 @@
     <!-- Exit Confirmation Modal -->
     <AppModal
       v-model="showExitModal"
-      title="確定離開？"
-      message="目前的進度已經為您自動儲存為草稿。確定要離開編輯器嗎？"
-      confirmText="確定離開"
-      cancelText="留在本頁"
+      :title="t.editor.exit.title"
+      :message="toModalMessage(t.editor.exit.message)"
+      :confirmText="t.editor.exit.confirm"
+      :cancelText="t.editor.exit.stay"
       @confirm="handleExitConfirm"
       @cancel="showExitModal = false"
     />
@@ -177,9 +182,9 @@
     <AppModal
       v-model="showAlertModal"
       :icon="alertIcon"
-      :title="alertTitle"
-      :message="alertMessage"
-      :confirmText="alertConfirmText"
+      :title="alertView.title"
+      :message="alertView.message"
+      :confirmText="alertView.confirmText"
       :cancelText="''"
       @confirm="handleAlertConfirm"
     />
@@ -194,12 +199,14 @@
          只是字與顏色換了。 -->
     <AppModal
       v-model="showSubmitModal"
-      :title="justSignedIn ? '登入成功' : '確認上傳'"
-      message="請確認您的便利貼樣貌，上傳後將無法修改。"
-      :confirm-text="isMember ? '上傳大螢幕' : 'LINE 登入並上傳大螢幕'"
+      :title="justSignedIn ? t.editor.submitModal.titleSignedIn : t.editor.submitModal.title"
+      :message="toModalMessage(t.editor.submitModal.message)"
+      :confirm-text="isMember ? t.editor.submitModal.confirm : t.editor.submitModal.confirmWithLogin"
+      :cancel-text="t.common.cancel"
       :confirm-button-class="isMember ? 'c-button--primary' : 'c-button--line'"
       stacked-actions
       :loading="isSubmitting"
+      :loading-text="t.editor.submitModal.processing"
       @confirm="confirmSubmit"
       @cancel="showSubmitModal = false"
       @opened="submitModalEntered = true"
@@ -234,14 +241,14 @@
                 role="status"
               >
                 <template v-if="signatureTour === 'adjust'">
-                  <strong>署名已經貼上</strong>
-                  上面的預覽就是上牆的樣子，想換位置就按「調整位置」。
+                  <strong>{{ t.editor.nameTag.tourAdjustTitle }}</strong>
+                  {{ t.editor.nameTag.tourAdjustBody(t.editor.nameTag.adjust) }}
                 </template>
                 <template v-else>
-                  <strong>要在便利貼上署名嗎？</strong>
-                  打開開關會貼上你的 LINE 頭貼與名字，不開就是匿名。
+                  <strong>{{ t.editor.nameTag.tourToggleTitle }}</strong>
+                  {{ t.editor.nameTag.tourToggleBody }}
                 </template>
-                <span class="p-editor__submit-spotlight-dismiss">點任意處關閉</span>
+                <span class="p-editor__submit-spotlight-dismiss">{{ t.editor.nameTag.tourDismiss }}</span>
               </div>
             </Transition>
             <!-- 以誰的身分送出、今天第幾張。送不出去的狀態（停權、額度用完、冷卻中）
@@ -263,7 +270,7 @@
                 <!-- 暱稱獨立一行、不塞進「以…送出」的句子裡：一個字的暱稱夾在句子中間
                      會變成「以 江 送出」，讀起來像三個詞。LINE 標籤負責說明這是哪種帳號 -->
                 <span class="p-editor__submit-identity-name">
-                  <span class="p-editor__submit-identity-name-text">{{ profile?.lineName || 'LINE 帳號' }}</span>
+                  <span class="p-editor__submit-identity-name-text">{{ profile?.lineName || t.editor.submitModal.lineAccount }}</span>
                   <span class="p-editor__submit-identity-tag">LINE</span>
                 </span>
                 <span
@@ -271,10 +278,12 @@
                   class="p-editor__submit-identity-quota"
                   :class="{ 'is-exhausted': quotaBlocked }"
                 >
-                  <template v-if="quotaKind === 'banned'">這個帳號已停止投稿資格</template>
-                  <template v-else-if="quotaKind === 'exhausted'">今天的 {{ quotaUsage?.dailyLimit }} 張已經送完了</template>
-                  <template v-else-if="quotaKind === 'cooldown'">{{ quotaWaitText }} 後才能送出</template>
-                  <template v-else>今天第 {{ quotaUsage?.nth }} 張，共 {{ quotaUsage?.dailyLimit }} 張</template>
+                  <!-- 走到 exhausted／cooldown／ready 時 quotaUsage 一定有值（沒有的話 kind 是 unlimited），
+                       ?? 0 只是給型別看的 -->
+                  <template v-if="quotaKind === 'banned'">{{ t.editor.submitModal.quotaBanned }}</template>
+                  <template v-else-if="quotaKind === 'exhausted'">{{ t.editor.submitModal.quotaExhausted(quotaUsage?.dailyLimit ?? 0) }}</template>
+                  <template v-else-if="quotaKind === 'cooldown'">{{ t.editor.submitModal.quotaCooldown(quotaWaitText) }}</template>
+                  <template v-else>{{ t.editor.submitModal.quotaNth(quotaUsage?.nth ?? 0, quotaUsage?.dailyLimit ?? 0) }}</template>
                 </span>
               </span>
               <button
@@ -283,7 +292,7 @@
                 :disabled="isSubmitting"
                 @click="logout"
               >
-                登出
+                {{ t.editor.submitModal.logout }}
               </button>
             </div>
             <!-- 署名的最後一道入口。多數人是在這個畫面才登入的，STEP 5 那一列他們看到時
@@ -303,8 +312,8 @@
                 />
                 <span class="p-editor__submit-signature-switch" aria-hidden="true" />
                 <span class="p-editor__submit-signature-text">
-                  <span class="p-editor__submit-signature-label">在便利貼上署名</span>
-                  <span class="p-editor__submit-signature-state">{{ hasNameTag ? '顯示頭貼與名字' : '匿名上牆' }}</span>
+                  <span class="p-editor__submit-signature-label">{{ t.editor.nameTag.toggle }}</span>
+                  <span class="p-editor__submit-signature-state">{{ hasNameTag ? t.editor.nameTag.on : t.editor.nameTag.off }}</span>
                 </span>
               </label>
               <button
@@ -314,7 +323,7 @@
                 :disabled="isSubmitting"
                 @click="adjustNameTag"
               >
-                調整位置
+                {{ t.editor.nameTag.adjust }}
               </button>
             </div>
           </div>
@@ -332,8 +341,8 @@
               @change="onMarketingToggle"
             />
             <span class="p-editor__submit-marketing-text">
-              我願意收到微樂客的活動與優惠資訊
-              <span class="p-editor__submit-marketing-email">寄到 {{ profile.lineEmail }}</span>
+              {{ t.editor.submitModal.marketing }}
+              <span class="p-editor__submit-marketing-email">{{ t.editor.submitModal.marketingEmail(profile.lineEmail) }}</span>
             </span>
           </label>
           <!-- 遮罩本身就是「點任意處關閉」的接收層：底下的上傳鈕被它蓋住，
@@ -357,7 +366,7 @@
           :disabled="isSubmitting || isSharing"
           @click="handleShare"
         >
-          {{ isSharing ? '處理中...' : '分享便利貼' }}
+          {{ isSharing ? t.editor.submitModal.processing : t.editor.submitModal.share }}
         </button>
       </template>
     </AppModal>
@@ -366,10 +375,10 @@
     <AppModal
       v-model="showClearAllModal"
       icon="⚠️"
-      title="確認清除嗎？"
-      message="－ 此動作將無法復原 －"
-      confirmText="確認"
-      cancelText="取消"
+      :title="t.editor.clearAll.title"
+      :message="toModalMessage(t.editor.clearAll.message)"
+      :confirmText="t.common.confirm"
+      :cancelText="t.common.cancel"
       @confirm="confirmClearAll"
       @cancel="showClearAllModal = false"
     />
@@ -425,7 +434,7 @@
                 @click.stop="() => { if (!block.locked) selectTextBlock(block.id) }"
                 @focus="() => { isTextFieldFocused = true; if (!block.locked) selectTextBlock(block.id) }"
                 @blur="onTextFieldBlur"
-                data-placeholder="在這裡輸入文字..."
+                :data-placeholder="t.editor.textPlaceholder"
               />
             </div>
           </div>
@@ -518,7 +527,7 @@
               class="p-editor__edit-frame-delete"
               @click.stop="removeTextBlock(block.id)"
               @touchstart.stop.prevent="removeTextBlock(block.id)"
-              aria-label="刪除"
+              :aria-label="t.editor.delete"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M18 6L6 18M6 6l12 12" />
@@ -557,7 +566,7 @@
               class="p-editor__edit-frame-delete"
               @click.stop="removeSticker(sticker.id)"
               @touchstart.stop.prevent="removeSticker(sticker.id)"
-              aria-label="刪除"
+              :aria-label="t.editor.delete"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M18 6L6 18M6 6l12 12" />
@@ -589,7 +598,7 @@
           type="button"
           class="p-editor__step-dot"
           :class="{ 'is-active': step === i, 'is-done': i < step }"
-          :aria-label="`第 ${i + 1} 步：${s.label}`"
+          :aria-label="t.editor.stepDot(i + 1, t.editor.steps[s.id])"
           :aria-current="step === i ? 'step' : undefined"
           @click="goToStep(i)"
         >
@@ -603,7 +612,7 @@
       <transition name="p-editor-tab">
         <div v-if="activeTab === 'note'" class="p-editor__tab-content">
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">STEP 1. 挑選材質</h3>
+            <h3 class="p-editor__control-title">STEP 1. {{ t.editor.stepTitles.material }}</h3>
             <div class="p-editor__background-grid">
               <button
                 v-for="bg in backgrounds"
@@ -624,7 +633,7 @@
             </div>
           </div>
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">STEP 2. 挑選造型</h3>
+            <h3 class="p-editor__control-title">STEP 2. {{ t.editor.stepTitles.shape }}</h3>
             <div class="p-editor__shape-grid">
               <button
                 v-for="shapeItem in shapes"
@@ -649,7 +658,7 @@
           <!-- 沒有選取文字時不再整片換成提示文字：控制項停用、「＋ 新增文字」照樣可按，
                面板高度也才不會在選取切換時上下跳。 -->
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">STEP 3. 挑選文字顏色 &amp; 對齊</h3>
+            <h3 class="p-editor__control-title">STEP 3. {{ t.editor.stepTitles.text }}</h3>
             <div class="p-editor__color-grid p-editor__color-grid--text">
               <button
                 v-for="color in TEXT_COLORS"
@@ -658,7 +667,7 @@
                 :class="{ 'is-active': selectedBlock?.color === color.value }"
                 :style="{ '--btn-color': color.value }"
                 :disabled="!selectedBlock || !isSwatchUsable(color.value)"
-                :title="isSwatchUsable(color.value) ? undefined : '這個顏色在目前的材質上看不到'"
+                :title="isSwatchUsable(color.value) ? undefined : t.editor.swatchHidden"
                 @click="() => { if (selectedBlock) { selectedBlock.color = color.value; saveDraftData() } }"
               />
             </div>
@@ -671,7 +680,7 @@
                 type="button"
                 class="p-editor__align-btn"
                 :class="{ 'is-active': selectedBlock?.align === opt.value }"
-                :aria-label="opt.value === 'left' ? '置左' : opt.value === 'center' ? '置中' : '置右'"
+                :aria-label="t.editor.align[opt.value]"
                 :disabled="!selectedBlock"
                 @click="() => { if (selectedBlock) { selectedBlock.align = opt.value; saveDraftData() } }"
               >
@@ -693,7 +702,7 @@
                 <svg class="p-editor__chip-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
-                新增文字
+                {{ t.editor.addText }}
               </button>
             </div>
           </div>
@@ -704,7 +713,7 @@
       <transition name="p-editor-tab">
         <div v-if="activeTab === 'draw'" class="p-editor__tab-content">
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">STEP 4. 挑選筆刷顏色 &amp; 寬度</h3>
+            <h3 class="p-editor__control-title">STEP 4. {{ t.editor.stepTitles.draw }}</h3>
             <div class="p-editor__color-grid">
               <!-- 橡皮擦按鈕（第一個） -->
               <button
@@ -712,7 +721,7 @@
                 :class="{ 'is-active': eraserMode }"
                 @click="eraserMode = true"
               >
-                <img src="/erase.svg" alt="橡皮擦" class="p-editor__color-eraser-icon" />
+                <img src="/erase.svg" :alt="t.editor.eraser" class="p-editor__color-eraser-icon" />
               </button>
               <button
                 v-for="c in BRUSH_COLORS"
@@ -721,7 +730,7 @@
                 :class="{ 'is-active': !eraserMode && brushColor === c.value }"
                 :style="{ '--btn-color': c.value }"
                 :disabled="!isSwatchUsable(c.value)"
-                :title="isSwatchUsable(c.value) ? undefined : '這個顏色在目前的材質上看不到'"
+                :title="isSwatchUsable(c.value) ? undefined : t.editor.swatchHidden"
                 @click="() => { brushColor = c.value; eraserMode = false }"
               >
                 <img v-if="!eraserMode && brushColor === c.value" src="/check.svg" alt="" class="p-editor__color-check" />
@@ -736,7 +745,7 @@
                 type="button"
                 class="p-editor__draw-btn"
                 :disabled="!drawCanUndo"
-                aria-label="復原一筆"
+                :aria-label="t.editor.undoStroke"
                 @click="fabricBrush.undo()"
               >
                 <img src="/undo.svg" alt="" class="p-editor__draw-btn-icon" />
@@ -753,7 +762,7 @@
                 type="button"
                 class="p-editor__draw-btn"
                 :disabled="!drawCanRedo"
-                aria-label="重做一筆"
+                :aria-label="t.editor.redoStroke"
                 @click="fabricBrush.redo()"
               >
                 <img src="/undo.svg" alt="" class="p-editor__draw-btn-icon p-editor__draw-btn-icon--redo" />
@@ -767,7 +776,7 @@
       <transition name="p-editor-tab">
         <div v-if="activeTab === 'sticker'" class="p-editor__tab-content">
           <div class="p-editor__control-section">
-            <h3 class="p-editor__control-title">STEP 5. 挑選貼圖</h3>
+            <h3 class="p-editor__control-title">STEP 5. {{ t.editor.stepTitles.sticker }}</h3>
             <!-- 署名：把 LINE 頭貼與暱稱當成一張貼紙貼上去，不貼就是匿名。
                  跟 STEP 3 的「＋ 新增文字」一樣自成一列放在格子上面。
                  沒登入時這一列就是登入鈕：多數人要到送出才會登入，走到這裡時還沒有名牌，
@@ -784,7 +793,7 @@
                 <img v-if="nameTagAvatar" :src="nameTagAvatar" alt="" class="p-editor__signature-avatar" />
                 <span v-else class="p-editor__signature-avatar p-editor__signature-avatar--initial" aria-hidden="true">{{ nameInitial(nameTagName) }}</span>
                 <span class="p-editor__signature-name">{{ nameTagName }}</span>
-                <span class="p-editor__signature-action">{{ hasNameTag ? '已署名' : '＋ 貼上署名' }}</span>
+                <span class="p-editor__signature-action">{{ hasNameTag ? t.editor.nameTag.added : t.editor.nameTag.add }}</span>
               </button>
               <button
                 v-else
@@ -796,7 +805,7 @@
                   <circle cx="12" cy="8" r="4" />
                   <path d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5" />
                 </svg>
-                用 LINE 登入，貼上頭貼與名字署名
+                {{ t.editor.nameTag.login }}
               </button>
             </div>
             <div class="p-editor__sticker-grid">
@@ -846,7 +855,7 @@
         class="p-editor__action-btn p-editor__action-btn--secondary"
         @click="goPrevStep"
       >
-        ＼ 上一步 ／
+        ＼ {{ t.editor.prev }} ／
       </button>
       <button
         v-if="step < EDITOR_STEPS.length - 1"
@@ -854,7 +863,7 @@
         class="p-editor__action-btn p-editor__action-btn--primary"
         @click="goNextStep"
       >
-        ＼ 下一步 ／
+        ＼ {{ t.editor.next }} ／
       </button>
       <button
         v-else
@@ -863,7 +872,7 @@
         :disabled="isSubmitting || isSharing"
         @click="openSubmitModal"
       >
-        ＼ 送出 ／
+        ＼ {{ t.editor.submit }} ／
       </button>
     </div>
     </div>
@@ -871,7 +880,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { StickerInstance, DraftData, StickyNoteStyle, TextBlockInstance, NameTagDraft, NameTagPlacement } from '~/types'
 import { getStickerById, getStickerThumb } from '~/data/stickers'
 import { getThemeMaterials, getThemeShapes, getThemeStickers } from '~/data/themes'
@@ -886,7 +895,6 @@ import {
 import { BACKGROUND_IMAGES, isColorMaterial } from '~/data/backgrounds'
 import { DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_STEPS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
-import { TERMS_RULES } from '~/data/terms'
 import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z } from '~/utils/sticky-note-style'
 import { isSwatchVisibleOn } from '~/utils/color-contrast'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
@@ -909,7 +917,9 @@ import NoteNameTag from '~/components/NoteNameTag.vue'
 
 definePageMeta({ ssr: false })
 
-usePageSeo('製作便利貼', '選材質與造型、寫字、手繪、貼貼紙，做一張自己的應援便利貼，用 LINE 登入就能送上微樂客店內的大螢幕。')
+const { t } = useI18n()
+
+usePageSeo(() => t.value.seo.editor.title, () => t.value.seo.editor.description)
 
 useHead({
   meta: [
@@ -1205,11 +1215,36 @@ const showTutorialModal = ref(false)
 const showExitModal = ref(false)
 const showSubmitModal = ref(false)
 
+/**
+ * 把翻譯的字轉成 AppModal 的 message。
+ *
+ * AppModal 的 message 是用 v-html 顯示的（原本靠它在提示裡換行），所以一律先跳脫：
+ * 不管哪個語言的翻譯、或錯誤訊息裡夾帶的 e.message，都不會被當成 HTML。
+ * 要換行的在翻譯檔寫成字串陣列，到這裡才接成 <br>，翻譯檔裡不出現任何標籤。
+ */
+const escapeHtml = (text: string) =>
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const toModalMessage = (message: string | readonly string[]) =>
+  (typeof message === 'string' ? [message] : message).map(escapeHtml).join('<br>')
+
+/** 提示框的字。message 是陣列的一個元素一行；title、confirmText 沒給就用「提示」「關閉」 */
+type AlertText = { title?: string; message: string | readonly string[]; confirmText?: string }
+
 const showAlertModal = ref(false)
 const alertIcon = ref('⚠️')
-const alertTitle = ref('提示')
-const alertMessage = ref('')
-const alertConfirmText = ref('關閉')
+/**
+ * 存的是「取字的函式」而不是字串，畫面要顯示時才去 t 裡拿：
+ * 提示開著的時候切換語言，標題、內文、按鈕也要跟著換。
+ */
+const alertText = shallowRef<() => AlertText>(() => ({ message: '' }))
+const alertView = computed(() => {
+  const { title, message, confirmText } = alertText.value()
+  return {
+    title: title ?? t.value.editor.alertTitle,
+    message: toModalMessage(message),
+    confirmText: confirmText || t.value.common.close
+  }
+})
 const alertConfirmHandler = ref<(() => void | Promise<void>) | null>(null)
 
 const handleAlertConfirm = async () => {
@@ -1221,29 +1256,33 @@ const handleAlertConfirm = async () => {
   showAlertModal.value = false
 }
 
+/**
+ * 跳出提示框。text 是取字的函式（理由見 alertText），例如
+ *   showAlert(() => t.value.editor.alerts.empty)
+ */
 const showAlert = (
-  msg: string,
-  title = '提示',
+  text: () => AlertText,
   icon = '⚠️',
-  options?: {
-    confirmText?: string
-    onConfirm?: () => void | Promise<void>
-  }
+  onConfirm?: () => void | Promise<void>
 ) => {
   alertIcon.value = icon
-  alertTitle.value = title
-  alertMessage.value = msg
-  alertConfirmText.value = options?.confirmText || '關閉'
-  alertConfirmHandler.value = options?.onConfirm || null
+  alertText.value = text
+  alertConfirmHandler.value = onConfirm || null
   showAlertModal.value = true
 }
 
-// Token 相關提示：標題、內文與 icon
-const TOKEN_ALERT_TITLE = '只差最後一步！'
+// Token 相關提示的 icon（標題與內文在 t.editor.alerts.tokenMissing）
 const TOKEN_ALERT_ICON = '🛍️'
-const TOKEN_ALERT_MESSAGE = '目前您還沒有取得大螢幕的上傳權限。<br>請放心，剛剛的作品已經保存在您的手機裡了！<br>只要在店內消費，結帳時掃描店員提供的 QR Code，系統就會自動幫您一鍵發送上牆喔！'
-const GPS_DENIED_MESSAGE = '需要開啟定位權限才能上傳大螢幕。<br><br>iPhone（Safari）：到「設定 > Safari > 定位」改為「允許」。<br>Android（Chrome）：到「瀏覽器網址列左側鎖頭/網站設定 > 位置」改為「允許」。<br><br>完成後回到此頁，點擊「重新詢問定位」再試一次。'
-const GPS_OUTSIDE_MESSAGE = '您目前不在合法上傳區域內，請移動到店內指定範圍後再試。'
+
+/** 定位被拒：說明怎麼打開權限，按鈕是「重新詢問定位」。送出前與重新詢問失敗時兩處共用 */
+const showLocationDenied = () => showAlert(
+  () => {
+    const alert = t.value.editor.alerts.locationDenied
+    return { title: alert.title, message: alert.message, confirmText: alert.retry }
+  },
+  '📍',
+  requestGpsPermissionAgain
+)
 const tokenRequiredForSubmit = ref(false)
 let unsubTokenRequirement: (() => void) | null = null
 
@@ -1255,8 +1294,8 @@ let unsubTokenRequirement: (() => void) | null = null
 const { check: checkQuota } = useSubmissionQuota()
 const { isSelfBanned } = useBannedUsers()
 
-/** 被停權的人按送出時看到的說明。不寫原因：原因是後台的備註，不對外 */
-const BANNED_ALERT_MESSAGE = '這個 LINE 帳號已被停止投稿資格，無法再送出便利貼。如有疑問，請洽現場工作人員。'
+/** 被停權的人按送出時看到的說明（t.editor.alerts.banned）。不寫原因：原因是後台的備註，不對外 */
+const showBannedAlert = () => showAlert(() => t.value.editor.alerts.banned, '🚫')
 
 // ====== 額度狀態：活動規範頁與確認畫面的身分列共用 ======
 
@@ -1356,9 +1395,10 @@ const formatCooldownRemaining = (remainingMs: number): string => {
   const totalSeconds = Math.max(1, Math.ceil(remainingMs / 1000))
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
-  if (minutes <= 0) return `${seconds} 秒`
-  if (seconds <= 0) return `${minutes} 分鐘`
-  return `${minutes} 分 ${seconds} 秒`
+  const { duration } = t.value.editor
+  if (minutes <= 0) return duration.seconds(seconds)
+  if (seconds <= 0) return duration.minutes(minutes)
+  return duration.minutesSeconds(minutes, seconds)
 }
 
 const exportNodeRef = ref<HTMLElement | null>(null)
@@ -1369,7 +1409,7 @@ const { isSharing, showExportNode, share: handleShare } = useNoteExport(exportNo
   getText: () => [previewNoteData.value.content, previewNoteData.value.style.nameTag?.name]
     .filter(Boolean)
     .join('\n'),
-  onError: (message) => showAlert(message)
+  onError: (getMessage) => showAlert(() => ({ message: getMessage() }))
 })
 
 // 手繪筆刷
@@ -1608,8 +1648,6 @@ const commitComposingContent = () => {
   composingPreviewText.value = null
 }
 
-const TEXT_PLACEHOLDER = '在這裡輸入文字...'
-
 /**
  * 編輯框量尺要顯示的文字。
  * 空白判斷必須與模板上的 is-empty（同樣用 .trim()）一致：
@@ -1620,7 +1658,7 @@ const sizerTextFor = (block: { id: string; content: string }) => {
   const raw = (selectedTextBlockId.value === block.id && composingPreviewText.value != null)
     ? composingPreviewText.value
     : block.content
-  return raw.trim() ? raw : TEXT_PLACEHOLDER
+  return raw.trim() ? raw : t.value.editor.textPlaceholder
 }
 
 // Methods
@@ -1852,8 +1890,10 @@ const MAX_STICKERS = 10
 const addSticker = (stickerType: string) => {
   if (regularStickers.value.length >= MAX_STICKERS) {
     showAlert(
-      `每張便利貼最多只能貼 ${MAX_STICKERS} 個貼紙喔！如果需要更多空間，可以先刪除一些。`,
-      '貼紙數量達上限',
+      () => {
+        const alert = t.value.editor.alerts.stickerLimit
+        return { title: alert.title, message: alert.message(MAX_STICKERS) }
+      },
       '⚠️'
     )
     return
@@ -2176,14 +2216,15 @@ const loadDraftData = async (draft: DraftData) => {
     textBlocks.value = draft.textBlocks
   } else if (draft.content) {
     // 向下相容：舊格式只有一個文字區塊
-    const t = draft.textTransform
+    // （不叫 t：那是上面 useI18n 的翻譯，同名會把它遮住）
+    const transform = draft.textTransform
     textBlocks.value = [{
       id: `text-legacy-${Date.now()}`,
       content: draft.content,
-      x: t?.x ?? 50,
-      y: t?.y ?? 50,
-      scale: t?.scale ?? 2,
-      rotation: t?.rotation ?? 0,
+      x: transform?.x ?? 50,
+      y: transform?.y ?? 50,
+      scale: transform?.scale ?? 2,
+      rotation: transform?.rotation ?? 0,
       color: draft.textColor ?? '#ffffff',
       align: draft.textAlign ?? 'center'
     }]
@@ -2271,7 +2312,7 @@ const hasSubmittableContent = computed(() =>
  */
 const openSubmitModal = () => {
   if (!hasSubmittableContent.value) {
-    showAlert('便利貼上還沒有任何內容，寫點字、畫張圖或貼個貼紙都可以。', '還是空白的')
+    showAlert(() => t.value.editor.alerts.empty)
     return
   }
 
@@ -2429,15 +2470,7 @@ const requestGpsPermissionAgain = async () => {
   } catch (error: any) {
     const geoError = mapGeoErrorFromAny(error)
     if (geoError.kind === 'permission-denied') {
-      showAlert(
-        GPS_DENIED_MESSAGE,
-        '需要定位權限',
-        '📍',
-        {
-          confirmText: '重新詢問定位',
-          onConfirm: requestGpsPermissionAgain
-        }
-      )
+      showLocationDenied()
       return
     }
     if (
@@ -2445,10 +2478,10 @@ const requestGpsPermissionAgain = async () => {
       geoError.kind === 'timeout' ||
       geoError.kind === 'geolocation-unavailable'
     ) {
-      showAlert('無法取得目前位置，請確認定位服務已開啟並稍後再試。', '定位失敗', '📍')
+      showAlert(() => t.value.editor.alerts.locationUnavailable, '📍')
       return
     }
-    showAlert('定位驗證失敗，請稍後再試。', '定位失敗', '📍')
+    showAlert(() => t.value.editor.alerts.locationFailed, '📍')
   }
 }
 
@@ -2564,7 +2597,7 @@ const confirmSubmit = async () => {
   // 停權放在配額之前：被封鎖的人不該看到「請 3 分鐘後再試」這種會讓人以為還能送的訊息
   if (await isSelfBanned()) {
     showSubmitModal.value = false
-    showAlert(BANNED_ALERT_MESSAGE, '無法送出', '🚫')
+    showBannedAlert()
     return
   }
 
@@ -2574,15 +2607,23 @@ const confirmSubmit = async () => {
   if (!quota.allowed) {
     showSubmitModal.value = false
     if (quota.reason === 'daily') {
+      // reason 是 daily 時一定帶著 dailyLimit，?? 0 只是給型別看的
+      const dailyLimit = quota.dailyLimit ?? 0
       showAlert(
-        `每人每天最多只能送出 ${quota.dailyLimit} 張便利貼，今天的份額已經用完了。明天再來吧！`,
-        '今天的額度用完了',
+        () => {
+          const alert = t.value.editor.alerts.dailyLimit
+          return { title: alert.title, message: alert.message(dailyLimit) }
+        },
         '📅'
       )
     } else {
+      // 等待時間是按下當時算好的，之後不再倒數；切換語言只是換個說法
+      const retryAfterMs = quota.retryAfterMs ?? 0
       showAlert(
-        `每次送出後需要間隔一段時間。請於 ${formatCooldownRemaining(quota.retryAfterMs ?? 0)} 後再試。`,
-        '請稍候',
+        () => {
+          const alert = t.value.editor.alerts.cooldown
+          return { title: alert.title, message: alert.message(formatCooldownRemaining(retryAfterMs)) }
+        },
         '⏱️'
       )
     }
@@ -2593,7 +2634,7 @@ const confirmSubmit = async () => {
   if (tokenRequiredForSubmit.value && !tokenForSubmit) {
     // 與上面的冷卻分支一致先收掉 modal，否則提示會疊在確認畫面上
     showSubmitModal.value = false
-    showAlert(TOKEN_ALERT_MESSAGE, TOKEN_ALERT_TITLE, TOKEN_ALERT_ICON)
+    showAlert(() => t.value.editor.alerts.tokenMissing, TOKEN_ALERT_ICON)
     return
   }
 
@@ -2610,25 +2651,17 @@ const confirmSubmit = async () => {
       const normalizedGeoError = mapGeoErrorFromAny(geoError)
       showSubmitModal.value = false
       if (normalizedGeoError.kind === 'permission-denied') {
-        showAlert(
-          GPS_DENIED_MESSAGE,
-          '需要定位權限',
-          '📍',
-          {
-            confirmText: '重新詢問定位',
-            onConfirm: requestGpsPermissionAgain
-          }
-        )
+        showLocationDenied()
       } else if (
         normalizedGeoError.kind === 'position-unavailable' ||
         normalizedGeoError.kind === 'timeout' ||
         normalizedGeoError.kind === 'geolocation-unavailable'
       ) {
-        showAlert('無法取得目前位置，請確認定位服務已開啟並稍後再試。', '定位失敗', '📍')
+        showAlert(() => t.value.editor.alerts.locationUnavailable, '📍')
       } else if (normalizedGeoError.kind === 'geo-fence-fetch-failed') {
-        showAlert('目前無法驗證定位（網路或服務暫時異常），請稍後再試。', '定位失敗', '📍')
+        showAlert(() => t.value.editor.alerts.locationServiceDown, '📍')
       } else {
-        showAlert('定位驗證失敗，請稍後再試。', '定位失敗', '📍')
+        showAlert(() => t.value.editor.alerts.locationFailed, '📍')
       }
       isSubmitting.value = false
       return
@@ -2636,7 +2669,7 @@ const confirmSubmit = async () => {
 
     if (!isWithinAllowedArea) {
       showSubmitModal.value = false
-      showAlert(GPS_OUTSIDE_MESSAGE, '不在合法區域', '📍')
+      showAlert(() => t.value.editor.alerts.outsideArea, '📍')
       isSubmitting.value = false
       return
     }
@@ -2654,7 +2687,7 @@ const confirmSubmit = async () => {
 
     if (textFlagged) {
       showSubmitModal.value = false
-      showAlert('您的文字包含不妥適的內容，為維護良好環境，請修改後再試一次！', '內容安全檢查未通過', '🚫')
+      showAlert(() => t.value.editor.alerts.textFlagged, '🚫')
       isSubmitting.value = false
       return
     }
@@ -2663,44 +2696,28 @@ const confirmSubmit = async () => {
     if (nameFlagged) {
       showSubmitModal.value = false
       removeNameTag()
-      showAlert(
-        '你的 LINE 名稱無法顯示在便利貼上，署名已經先幫你拿掉了。不署名的話，再按一次送出就可以了。',
-        '署名無法使用',
-        '🚫'
-      )
+      showAlert(() => t.value.editor.alerts.nameFlagged, '🚫')
       isSubmitting.value = false
       return
     }
 
     if (status === 'expired') {
       showSubmitModal.value = false
-      showAlert(
-        '這個 QR Code 已經超過 30 分鐘的有效期限囉！請向店員重新索取新的 QR Code。', 
-        '時間到了！', 
-        '⏳'
-      )
+      showAlert(() => t.value.editor.alerts.tokenExpired, '⏳')
       isSubmitting.value = false
       return
     }
 
     if (status === 'used') {
       showSubmitModal.value = false
-      showAlert(
-        '這個 QR Code 已經被使用過囉！如果還想再傳一張，請向店員重新索取新的 QR Code。', 
-        '已經用過囉！', 
-        '❌'
-      )
+      showAlert(() => t.value.editor.alerts.tokenUsed, '❌')
       isSubmitting.value = false
       return
     }
 
     if (status === 'invalid') {
       showSubmitModal.value = false
-      showAlert(
-        '這個 QR Code 無效或不存在，請確認您掃描的是由店員提供的正確條碼。', 
-        '無效代碼', 
-        '❓'
-      )
+      showAlert(() => t.value.editor.alerts.tokenInvalid, '❓')
       isSubmitting.value = false
       return
     }
@@ -2740,51 +2757,41 @@ const confirmSubmit = async () => {
     // 直接把人再送去登入一次，草稿還在，回來接著送。
     if (e?.message === 'NOT_LOGGED_IN') {
       showAlert(
-        '登入狀態已失效，請重新用 LINE 登入後再送出。你的便利貼已經幫你留著了。',
-        '需要重新登入',
+        () => {
+          const alert = t.value.editor.alerts.sessionExpired
+          return { title: alert.title, message: alert.message, confirmText: alert.confirm }
+        },
         '🔑',
-        { confirmText: '重新登入', onConfirm: redirectToLogin }
+        redirectToLogin
       )
     } else if (e?.message === 'QUOTA_EXCEEDED') {
       // 前面的 checkQuota 已經先擋過一次，走到這裡代表兩者判斷不一致：
       // 多半是在別的分頁／裝置上剛送出一張，或是裝置時鐘與伺服器差太多
       // （submitDate 對不上）。訊息保持籠統，不要猜原因。
-      showAlert(
-        '目前無法送出，可能是剛剛已經送過一張、或是今天的額度用完了。請稍後再試。',
-        '送出次數已達上限',
-        '⏱️'
-      )
+      showAlert(() => t.value.editor.alerts.quotaExceeded, '⏱️')
     } else if (e?.message === 'NOTE_CREATE_DENIED') {
       // 已經登入卻還是被規則擋下：剛好在這幾秒內被封鎖（送出前的檢查已經過了）、
       // 後台開著 Token 驗證但這次沒帶憑證，或是線上規則跟這一版程式對不上
       // （程式先上、規則還沒部署）。只有真的開著 Token 驗證才提 QR Code ——
       // 驗證關著時講 QR Code，使用者會去找店員要一個根本不存在的東西
       if (await isSelfBanned()) {
-        showAlert(BANNED_ALERT_MESSAGE, '無法送出', '🚫')
+        showBannedAlert()
       } else if (tokenRequiredForSubmit.value) {
-        showAlert(
-          '目前送出需要店員提供的 QR Code，請向店員索取後再試一次。',
-          '無法送出',
-          '🚫'
-        )
+        showAlert(() => t.value.editor.alerts.tokenRequired, '🚫')
       } else {
-        showAlert(
-          '系統暫時無法接受這張便利貼，請稍後再試一次。一直失敗的話，請洽現場工作人員。你的便利貼已經幫你留著了。',
-          '無法送出',
-          '🚫'
-        )
+        showAlert(() => t.value.editor.alerts.createDenied, '🚫')
       }
     } else if (
       tokenRequiredForSubmit.value &&
       (e?.code === 'permission-denied' || e?.message?.includes('Missing or insufficient permissions'))
     ) {
-      showAlert(
-        '您的專屬 QR Code 可能已失效 (超過限時 30 分鐘) 或已經被使用過。請向店員重新索取新的 QR Code！', 
-        '上傳授權失效', 
-        '⏳'
-      )
+      showAlert(() => t.value.editor.alerts.tokenRevoked, '⏳')
     } else {
-      showAlert(`提交失敗：${e?.message || '請稍後再試'}`)
+      const detail: string | undefined = e?.message
+      showAlert(() => {
+        const { alerts } = t.value.editor
+        return { message: alerts.submitFailed(detail || alerts.retryLater) }
+      })
     }
   } finally {
     isSubmitting.value = false
@@ -2855,13 +2862,17 @@ const checkInitialModals = async () => {
   initFabricBrush()
 }
 
-/** LINE 登入失敗的原因對應到使用者看得懂的說法 */
-const LOGIN_ERROR_MESSAGES: Record<string, string> = {
-  unconfigured: '登入服務尚未設定完成，請聯絡店員。',
-  state_expired: '登入逾時了，請再試一次。',
-  state_invalid: '這次登入沒有成功，請再按一次登入。',
-  token_exchange_failed: '與 LINE 連線失敗，請稍後再試。',
-  id_token_invalid: '無法驗證你的 LINE 身分，請再試一次。'
+/**
+ * LINE 登入失敗的原因（網址上的 reason）對應到使用者看得懂的說法，
+ * 說法在 t.editor.alerts.loginFailed.reasons；不認得的原因用籠統的那句。
+ * 用 hasOwn 判斷，reason 剛好是 toString 這類物件內建的名字時才不會撈到函式。
+ */
+const loginErrorMessage = (reason: string): string => {
+  const { loginFailed } = t.value.editor.alerts
+  const { reasons } = loginFailed
+  return Object.hasOwn(reasons, reason)
+    ? reasons[reason as keyof typeof reasons]
+    : loginFailed.message
 }
 
 /**
@@ -2926,15 +2937,14 @@ const handleLoginReturn = async (): Promise<void> => {
   if (outcome === 'cancelled') {
     // 從規範頁登入又取消的人還站在規範頁，登入連結就在眼前，不必再多一個提示
     if (resumingSubmit) {
-      showAlert('送出便利貼需要用 LINE 登入。你做的內容都還在，登入後就能送出。', '還沒完成登入', '🔑')
+      showAlert(() => t.value.editor.alerts.loginCancelled, '🔑')
     }
     return
   }
 
   if (outcome !== 'ok') {
     showAlert(
-      LOGIN_ERROR_MESSAGES[reason] || '登入時發生問題，請再試一次。',
-      '登入失敗',
+      () => ({ title: t.value.editor.alerts.loginFailed.title, message: loginErrorMessage(reason) }),
       '⚠️'
     )
     return
@@ -2942,7 +2952,13 @@ const handleLoginReturn = async (): Promise<void> => {
 
   const signedIn = await completeLogin()
   if (!signedIn) {
-    showAlert('登入沒有完成，請再試一次。', '登入失敗', '⚠️')
+    showAlert(
+      () => {
+        const alert = t.value.editor.alerts.loginFailed
+        return { title: alert.title, message: alert.incomplete }
+      },
+      '⚠️'
+    )
     return
   }
 

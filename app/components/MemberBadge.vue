@@ -5,7 +5,7 @@
       type="button"
       class="c-member-badge__btn"
       :class="{ 'is-guest': !isMember }"
-      :aria-label="isMember ? `LINE 帳號：${name}` : '還沒登入'"
+      :aria-label="isMember ? t.member.badge.accountWithName(name) : t.member.badge.notLoggedIn"
       aria-haspopup="dialog"
       :aria-expanded="open"
       @click="toggle"
@@ -38,21 +38,21 @@
     </button>
 
     <Transition name="member-pop">
-      <div v-if="open && isMember" class="c-member-badge__card" role="dialog" aria-label="LINE 帳號">
+      <div v-if="open && isMember" class="c-member-badge__card" role="dialog" :aria-label="t.member.badge.account">
         <p class="c-member-badge__name">{{ name }}</p>
         <p class="c-member-badge__status" :class="{ 'is-warning': quotaBlocked }">{{ statusText }}</p>
         <NuxtLink to="/my-notes" class="c-member-badge__link" @click="open = false">
-          我的便利貼 <span aria-hidden="true">›</span>
+          {{ t.member.badge.myNotes }} <span aria-hidden="true">›</span>
         </NuxtLink>
         <LineFriendPrompt />
-        <button type="button" class="c-member-badge__logout" @click="onLogout">登出</button>
+        <button type="button" class="c-member-badge__logout" @click="onLogout">{{ t.member.badge.logout }}</button>
       </div>
-      <div v-else-if="open" class="c-member-badge__card" role="dialog" aria-label="登入狀態">
-        <p class="c-member-badge__name">還沒登入</p>
+      <div v-else-if="open" class="c-member-badge__card" role="dialog" :aria-label="t.member.badge.loginStatus">
+        <p class="c-member-badge__name">{{ t.member.badge.notLoggedIn }}</p>
         <p class="c-member-badge__status">
-          瀏覽和製作都不用登入，送出便利貼時才需要。登入後可以看到自己送出的便利貼，以及今天還能送幾張。
+          {{ t.member.badge.guestHint }}
         </p>
-        <button type="button" class="c-member-badge__login" @click="onLogin">LINE 登入</button>
+        <button type="button" class="c-member-badge__login" @click="onLogin">{{ t.member.badge.login }}</button>
         <LoginDataNotice />
       </div>
     </Transition>
@@ -85,6 +85,7 @@ const props = defineProps<{
 }>()
 
 const route = useRoute()
+const { t } = useI18n()
 const { ready: authReady, isMember, profile, startLogin, logout } = useMemberAuth()
 const {
   load: loadQuota,
@@ -98,16 +99,16 @@ const rootRef = ref<HTMLElement | null>(null)
 const open = ref(false)
 const avatarBroken = ref(false)
 
-const name = computed(() => profile.value?.lineName || 'LINE 帳號')
+const name = computed(() => profile.value?.lineName || t.value.member.badge.account)
 // 暱稱可能以 emoji 開頭，用 Array.from 才不會切到半個字
 const initial = computed(() => Array.from(name.value)[0] ?? '?')
 
 watch(() => profile.value?.linePicture, () => { avatarBroken.value = false })
 
 const statusText = computed(() => {
-  if (quotaKind.value === 'loading') return '讀取中…'
+  if (quotaKind.value === 'loading') return t.value.member.badge.quotaLoading
   // 後台關掉頻率限制、或讀不到用量：不猜數字
-  if (quotaKind.value === 'unlimited') return '送出便利貼時會使用這個帳號'
+  if (quotaKind.value === 'unlimited') return t.value.member.badge.quotaUnknown
   return quotaSummary.value
 })
 

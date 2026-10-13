@@ -23,8 +23,11 @@ export interface UseNoteExportOptions {
   getBackgroundUrl: () => string | undefined
   /** 這張便利貼的文字，用來決定要嵌入哪些字型分片 */
   getText: () => string
-  /** 非「使用者主動取消」的失敗要怎麼通知使用者 */
-  onError: (message: string) => void
+  /**
+   * 非「使用者主動取消」的失敗要怎麼通知使用者。
+   * 傳的是取字的函式而不是字串：提示開著的時候切換語言，字也要跟著換。
+   */
+  onError: (getMessage: () => string) => void
 }
 
 const blobToDataURL = (blob: Blob): Promise<string> =>
@@ -142,6 +145,7 @@ export function useNoteExport(
   exportNodeRef: Ref<HTMLElement | null>,
   { getBackgroundUrl, getText, onError }: UseNoteExportOptions
 ) {
+  const { t } = useI18n()
   const isSharing = ref(false)
   /** 控制 1080px export node 的掛載時機：只在分享當下才建立，避免長期佔用 GPU 記憶體 */
   const showExportNode = ref(false)
@@ -226,8 +230,8 @@ export function useNoteExport(
 
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
-          title: 'WillMusic 便利貼',
-          text: '這是我剛畫好的便利貼！',
+          title: t.value.editor.share.title,
+          text: t.value.editor.share.text,
           files: [file]
         })
       } else {
@@ -241,7 +245,7 @@ export function useNoteExport(
         console.warn('使用者取消分享/下載動作:', error)
       } else {
         console.error('分享失敗:', error)
-        onError('圖片生成失敗，請稍後再試')
+        onError(() => t.value.editor.alerts.exportFailed)
       }
     } finally {
       isSharing.value = false

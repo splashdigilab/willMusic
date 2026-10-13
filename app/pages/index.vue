@@ -20,12 +20,15 @@
           <p class="p-index__intro-caption p-index__intro-caption--top">Create your customized message here<br>and share your passion for music with everyone.</p>
           <p class="p-index__intro-caption p-index__intro-caption--bottom">Create your customized message here<br>and share your passion for music with everyone.</p>
 
-          <h1 class="p-index__intro-title">
+          <!-- 標題是字標，每個語言都照中文原樣、不翻譯。標成繁中：日文／韓文介面會換成該語言的字型，
+               字標要維持原本的字形（見 base/_global.scss），讀屏軟體也才會用中文念 -->
+          <h1 class="p-index__intro-title" lang="zh-Hant-TW">
             <span>應援便利貼<i class="p-index__intro-bang">!</i></span>
             <span>POST BOARD</span>
           </h1>
+          <!-- 說明文一個元素一行，各語言行數不同 -->
           <div class="p-index__intro-desc p-index__intro-rules">
-            <p>歡迎來到 WillMusic 數位應援便利貼<br>在這裡，您可以創作專屬於您的應援內容<br>與大家一起分享對音樂的熱愛。</p>
+            <p><template v-for="(line, i) in t.home.intro" :key="i"><br v-if="i > 0">{{ line }}</template></p>
           </div>
           <button
             type="button"
@@ -35,7 +38,7 @@
           >
             <span v-if="loading" class="p-index__intro-btn-inner">
               <span class="p-index__intro-spinner" aria-hidden="true" />
-              載入中...
+              {{ t.home.loading }}
             </span>
             <span v-else>START</span>
           </button>
@@ -43,6 +46,9 @@
 
         <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__intro-logo" />
         </template>
+
+        <!-- 語言選單：兩種開場都放，位置各自調（萬聖節見 themes/_halloween.scss） -->
+        <LocaleSwitcher class="p-index__locale" />
       </div>
     </Transition>
 
@@ -74,7 +80,7 @@
       @touchstart.stop
       @wheel.stop
     >
-      <button class="p-index__icon-btn" @click="showIntroOverlay = true" aria-label="說明">
+      <button class="p-index__icon-btn" @click="showIntroOverlay = true" :aria-label="t.home.help">
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
           <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
@@ -106,7 +112,7 @@
         @touchstart.stop
         @wheel.stop
       >
-        <button class="p-index__icon-btn" @click="centerContent" aria-label="回到中央">
+        <button class="p-index__icon-btn" @click="centerContent" :aria-label="t.home.recenter">
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19 12h2"></path>
@@ -136,15 +142,15 @@
     >
       <!-- 萬聖節的稿子把字標放回按鈕左邊，只有設了 wallBarLogo 的主題才出現 -->
       <img v-if="theme.wallBarLogo" src="/willMusicLogo.png" alt="WillMusic" class="p-index__bar-logo" />
-      <NuxtLink to="/editor" class="p-index__make-btn">製作便利貼</NuxtLink>
+      <NuxtLink to="/editor" class="p-index__make-btn">{{ t.home.makeNote }}</NuxtLink>
     </div>
 
     <AppModal
       v-model="loginFailed"
       icon="⚠️"
-      title="登入失敗"
-      message="登入沒有完成，請再試一次。"
-      confirm-text="確定"
+      :title="t.home.loginFailedTitle"
+      :message="t.home.loginFailedMessage"
+      :confirm-text="t.common.ok"
       cancel-text=""
       @confirm="loginFailed = false"
     />
@@ -165,6 +171,9 @@ import AppModal from '~/components/AppModal.vue'
 import HalloweenIntro from '~/components/theme/HalloweenIntro.vue'
 
 definePageMeta({ layout: false, ssr: false })
+
+const { t } = useI18n()
+usePageSeo(() => t.value.seo.home.title, () => t.value.seo.home.description)
 
 const { theme, themeId } = useTheme()
 
