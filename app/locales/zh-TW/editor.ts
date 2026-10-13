@@ -105,6 +105,13 @@ export default {
     toggle: '在便利貼上署名',
     on: '顯示頭貼與名字',
     off: '匿名上牆',
+    /**
+     * 暱稱冒充店家、不能署名（server/utils/reserved-names.ts）。blocked 放在 STEP 5 那一列，
+     * 跟 add 一樣短；blockedState 是確認畫面開關底下的灰字。
+     * 不講是哪些字被擋：講了等於教人怎麼繞過，真的被誤擋的人可以照常匿名送出
+     */
+    blocked: '不能署名',
+    blockedState: '這個暱稱不能用來署名，會匿名上牆',
     /** 回 STEP 5 調整名牌位置 */
     adjust: '調整位置',
     /** 在確認畫面才登入的人，回來時框出這張卡的導覽泡泡（見 editor.vue 的 signatureTour） */

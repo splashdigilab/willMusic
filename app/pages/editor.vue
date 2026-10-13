@@ -308,13 +308,13 @@
                   role="switch"
                   class="p-editor__submit-signature-input"
                   :checked="hasNameTag"
-                  :disabled="isSubmitting"
+                  :disabled="isSubmitting || nameTagBlocked"
                   @change="onSignatureToggle"
                 />
                 <span class="p-editor__submit-signature-switch" aria-hidden="true" />
                 <span class="p-editor__submit-signature-text">
                   <span class="p-editor__submit-signature-label">{{ t.editor.nameTag.toggle }}</span>
-                  <span class="p-editor__submit-signature-state">{{ hasNameTag ? t.editor.nameTag.on : t.editor.nameTag.off }}</span>
+                  <span class="p-editor__submit-signature-state">{{ nameTagBlocked ? t.editor.nameTag.blockedState : hasNameTag ? t.editor.nameTag.on : t.editor.nameTag.off }}</span>
                 </span>
               </label>
               <button
@@ -789,13 +789,14 @@
                 class="p-editor__chip-btn p-editor__signature-btn"
                 :class="{ 'is-active': hasNameTag }"
                 :aria-pressed="hasNameTag"
+                :disabled="nameTagBlocked"
                 data-clarity-mask="True"
                 @click="onNameTagButton"
               >
                 <img v-if="nameTagAvatar" :src="nameTagAvatar" alt="" class="p-editor__signature-avatar" />
                 <span v-else class="p-editor__signature-avatar p-editor__signature-avatar--initial" aria-hidden="true">{{ nameInitial(nameTagName) }}</span>
                 <span class="p-editor__signature-name">{{ nameTagName }}</span>
-                <span class="p-editor__signature-action">{{ hasNameTag ? t.editor.nameTag.added : t.editor.nameTag.add }}</span>
+                <span class="p-editor__signature-action">{{ nameTagBlocked ? t.editor.nameTag.blocked : hasNameTag ? t.editor.nameTag.added : t.editor.nameTag.add }}</span>
               </button>
               <button
                 v-else
@@ -1055,6 +1056,11 @@ const regularStickers = computed(() => stickers.value.filter(s => !isNameTagStic
 const nameTagName = computed(() => profile.value?.lineName ?? '')
 /** 縮圖後的頭貼（data URL），讀自 users/{uid}。沒有就是 null，名牌顯示暱稱第一個字 */
 const nameTagAvatar = ref<string | null>(null)
+/**
+ * 暱稱冒充店家（微樂客、官方、店長…），不能署名、只能匿名送出。
+ * 判斷在伺服器登入時（server/utils/reserved-names.ts），規則也會擋，這裡只負責不給入口
+ */
+const nameTagBlocked = computed(() => isMember.value && profile.value?.nameTagBlocked === true)
 
 const stickerLayerZ = (sticker: StickerInstance) =>
   isNameTagSticker(sticker) ? NOTE_LAYER_Z.nameTag : NOTE_LAYER_Z.sticker
@@ -1116,7 +1122,7 @@ watch(memberUid, (uid, prevUid) => {
 watch([memberUid, pendingDraftNameTag], ([uid, pending]) => {
   if (!pending || !uid) return
   pendingDraftNameTag.value = null
-  if (pending.uid !== uid || nameTagSticker.value) return
+  if (pending.uid !== uid || nameTagSticker.value || nameTagBlocked.value) return
   const { x, y, scale, rotation } = pending
   stickers.value.push({ id: NAME_TAG_STICKER_ID, type: NAME_TAG_STICKER_TYPE, x, y, scale, rotation })
 })
@@ -1389,7 +1395,8 @@ watch(() => profile.value?.linePicture, () => { avatarBroken.value = false })
 watch([submitModalEntered, quotaKind], ([entered, kind]) => {
   if (!signatureTourPending.value || !entered || kind === 'loading') return
   signatureTourPending.value = false
-  if (kind === 'banned' || kind === 'exhausted') return
+  // 送不出去，或暱稱不能署名：問了也沒意義
+  if (kind === 'banned' || kind === 'exhausted' || nameTagBlocked.value) return
   signatureTour.value = hasNameTag.value ? 'adjust' : 'toggle'
 })
 
@@ -2157,7 +2164,7 @@ const removeSticker = (id: string) => {
  * 位置優先用上次拿掉時的，沒有就依造型放在下緣置中（見 defaultNameTagPlacement）。
  */
 const addNameTag = (): StickerInstance | null => {
-  if (!memberUid.value) return null
+  if (!memberUid.value || nameTagBlocked.value) return null
   const existing = nameTagSticker.value
   if (existing) return existing
   const tag: StickerInstance = {
@@ -2174,6 +2181,12 @@ const removeNameTag = () => {
   const tag = nameTagSticker.value
   if (tag) removeSticker(tag.id)
 }
+
+// 登入完成才知道暱稱不能署名：已經在畫面上的名牌（例如換了一個暱稱重新登入）要拿掉，
+// 否則送出時會被規則擋下，使用者只會看到一個說不出原因的失敗
+watch(nameTagBlocked, (blocked) => {
+  if (blocked) removeNameTag()
+})
 
 /** STEP 5 的署名鈕：還沒貼就貼上，已經貼了就選取它，讓人看到它在哪、可以拖 */
 const onNameTagButton = () => {

@@ -75,6 +75,8 @@ export default {
     toggle: 'Add a name tag',
     on: 'Shows your photo and name',
     off: 'Posted anonymously',
+    blocked: 'Not available',
+    blockedState: 'This name can\'t be used as a name tag, so your note will be anonymous',
     adjust: 'Adjust',
     tourToggleTitle: 'Add a name tag to your note?',
     tourToggleBody: 'Turn it on to add your LINE photo and name. Leave it off to stay anonymous.',

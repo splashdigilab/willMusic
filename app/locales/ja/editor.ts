@@ -73,6 +73,8 @@ export default {
     toggle: '付箋にネームタグを付ける',
     on: 'プロフィール画像と名前を表示',
     off: '匿名で掲載',
+    blocked: '使用できません',
+    blockedState: 'この名前はネームタグに使えないため、匿名で掲載されます',
     adjust: '位置を調整',
     tourToggleTitle: '付箋にネームタグを付けますか？',
     tourToggleBody: 'オンにすると、LINEのプロフィール画像と名前が付きます。オフのままなら匿名です。',

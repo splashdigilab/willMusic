@@ -31,6 +31,11 @@ export interface MemberClaims {
   lineEmail: string | null
   /** 登入那一刻是不是官方帳號好友。server 查不到時是 null（不知道，就不提醒） */
   lineFriend: boolean | null
+  /**
+   * 暱稱冒充店家，不能署名（server/utils/reserved-names.ts 判斷、規則會擋）。
+   * 沒有這個 claim 的是功能上線前就登入的人，當成可以署名 —— 跟規則的預設一致
+   */
+  nameTagBlocked: boolean
 }
 
 export interface AuthSessionState {
@@ -78,7 +83,8 @@ export const useAuthSession = () => {
             lineName: typeof claims.lineName === 'string' ? claims.lineName : '',
             linePicture: typeof claims.linePicture === 'string' ? claims.linePicture : null,
             lineEmail: typeof claims.lineEmail === 'string' ? claims.lineEmail : null,
-            lineFriend: typeof claims.lineFriend === 'boolean' ? claims.lineFriend : null
+            lineFriend: typeof claims.lineFriend === 'boolean' ? claims.lineFriend : null,
+            nameTagBlocked: claims.nameTagBlocked === true
           }
         }
       }

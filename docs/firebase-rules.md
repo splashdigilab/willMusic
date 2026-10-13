@@ -235,6 +235,12 @@ Firestore 才做得到，還牽涉測試／正式兩組名單），所以被封�
 便利貼的 `style` 其他部分都只驗「是 map」，署名是唯一被細驗的欄位（`isValidNameTag`）：
 
 - `name` 必須等於 custom token 的 `lineName` claim，否則自己打 API 就能用別人的名字上牆
+- custom token 的 `nameTagBlocked` 不能是 true（2026-10-13 加）：暱稱冒充店家或自稱藝人本人、經紀公司
+  （「微樂客」「官方」「店長」「本人」「娛樂公司」…，清單在 `server/utils/reserved-names.ts`），
+  伺服器登入時判斷。沒有這個 claim 的（功能上線前就登入的人）先放行。
+  以 `:test` 跑過 5 項：一般暱稱可署名、冒名不可、冒名的人匿名照樣可送、沒有 claim 放行、名字對不上照擋。
+  **跟程式的上線順序沒有限制**：規則先上，舊程式不簽這個 claim、等於全部放行；程式先上，
+  只是少了規則這一道（前台本來就不給冒名的人署名鈕）
 - `avatar` 只收 `data:image/(jpeg|png|webp);base64,...`，上限 30000 字元。擋的是外部網址
 - 【過渡期】的匿名舊格式一律不收 `nameTag`（匿名請求沒有 `lineName` 可比對）
 

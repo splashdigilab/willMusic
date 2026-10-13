@@ -22,6 +22,7 @@ import {
   truncateDisplayName
 } from '~~/server/utils/line-login'
 import { signFirebaseCustomToken } from '~~/server/utils/firebase-custom-token'
+import { isReservedDisplayName } from '~~/server/utils/reserved-names'
 
 interface LineTokenResponse {
   access_token?: string
@@ -157,6 +158,8 @@ export default defineEventHandler(async (event) => {
         // 前端寫不進別人的信箱
         ...(profile.email ? { lineEmail: profile.email } : {}),
         ...(isFriend !== undefined ? { lineFriend: isFriend } : {}),
+        // 判斷的是截斷後的暱稱：署名上顯示的就是它，被截掉的部分不會出現在牆上
+        nameTagBlocked: isReservedDisplayName(displayName),
         role: 'member'
       },
       { clientEmail: config.clientEmail, privateKey: config.privateKey }

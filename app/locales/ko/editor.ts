@@ -73,6 +73,8 @@ export default {
     toggle: '포스트잇에 이름표 붙이기',
     on: '프로필 사진과 이름 표시',
     off: '익명으로 게시',
+    blocked: '사용 불가',
+    blockedState: '이 이름은 이름표로 쓸 수 없어서 익명으로 게시돼요',
     adjust: '위치 조정',
     tourToggleTitle: '포스트잇에 이름표를 붙일까요?',
     tourToggleBody: '켜면 LINE 프로필 사진과 이름이 붙고, 끄면 익명이에요.',

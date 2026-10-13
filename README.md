@@ -533,6 +533,12 @@ server/api/             # moderation.post.ts
   `moderatableText`（內文）與 `moderatableName`（暱稱），**之後再多一種會上牆的使用者文字，
   也要加進那裡**。分開送是因為暱稱在這個網站改不了：被擋時要告訴使用者拿掉署名，
   而不是「請修改文字」。跟內文一樣是 fail-open；頭貼沒有審核路徑，跟手繪圖一樣靠後台下架。
+- **冒名分三層擋**（2026-10-13）。署名用的 LINE 暱稱使用者自己改得到：
+  ① 暱稱含「微樂客」「官方」「店長」「本人」「娛樂公司」等字眼的不能署名（伺服器登入時判斷、
+  簽成 `nameTagBlocked` claim，規則照著擋，清單在 `server/utils/reserved-names.ts`），可以匿名送出；
+  ② AI 審核擋以店家名義發的假公告、以藝人本人口吻發言的內文（`server/api/moderation.post.ts`）；
+  ③ 只有名字、沒有身分字眼的冒名（暱稱就叫「Jennie」）擋不了，靠後台拿掉署名、封鎖。
+  **不要請 AI 判斷「這個名字是不是冒名」**：試過，連「Kevin Chiang」「Jennie老婆」都被擋。
 
 ## 授權
 

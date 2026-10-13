@@ -136,6 +136,10 @@ service cloud.firestore {
                && style.nameTag.keys().hasAll(['name', 'x', 'y', 'scale', 'rotation'])
                && style.nameTag.name is string
                && style.nameTag.name == request.auth.token.lineName
+               // 暱稱冒充店家（微樂客、官方、店長…）不能署名，由伺服器登入時判斷（server/utils/reserved-names.ts）。
+               // 沒有這個 claim 的是規則上線前就登入的人，先放行：要擋得等他重新登入，
+               // 而那時只有測試站有 LINE 登入，不值得為此讓所有人的署名先壞掉
+               && request.auth.token.get('nameTagBlocked', false) == false
                && (
                  !('avatar' in style.nameTag)
                  || (
