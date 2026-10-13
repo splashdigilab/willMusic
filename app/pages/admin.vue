@@ -701,7 +701,7 @@
           <!-- 行銷名單只收本人勾了「我願意收到…」的人；沒勾的人 email 只能用在活動聯繫 -->
           <div v-if="memberFilter === 'marketing'" class="p-admin__member-export">
             <p class="p-admin__video-hint p-admin__video-hint--compact">
-              只列出本人勾選「願意收到活動與優惠資訊」的會員。沒勾的人，email 只能用來聯繫活動相關事項（例如得獎通知），不能寄行銷信。
+              只列出本人勾選「願意收到活動與優惠資訊」的會員。沒勾的人，email 只能用來聯繫活動相關事項（例如活動異動通知），不能寄行銷信。
             </p>
             <button
               type="button"
