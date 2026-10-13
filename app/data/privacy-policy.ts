@@ -205,7 +205,7 @@ export const POLICY_SECTIONS: LegalSection[] = [
       },
       {
         type: 'p',
-        text: '行使方式：請來信【聯絡信箱】或致電【聯絡電話】，並說明您要行使的項目。為保護您的權益，我們可能需要先確認您的身分。本公司將於收到請求後【◯ 個工作天】內回覆。'
+        text: '行使方式：請來信willmusictaiwan@gmail.com或致電【聯絡電話】，並說明您要行使的項目。為保護您的權益，我們可能需要先確認您的身分。本公司將於收到請求後【◯ 個工作天】內回覆。'
       },
       {
         type: 'p',
@@ -268,7 +268,7 @@ export const POLICY_SECTIONS: LegalSection[] = [
         items: [
           '【微樂客／公司全名】',
           '【地址】',
-          '【聯絡信箱】',
+          'willmusictaiwan@gmail.com',
           '【聯絡電話】'
         ]
       }

@@ -32,6 +32,9 @@ export const TERMS_LAST_UPDATED = '【YYYY-MM-DD】'
 /**
  * 編輯器開場卡片上的摘要。完整版在 /terms。
  * 順序有意義：先講怎麼參加，再講限制，最後講會被怎麼展示。
+ *
+ * 英、日、韓文介面顯示的是 app/locales/{en,ja,ko}/legal.ts 的翻譯，**改這裡要一起改那三份**
+ * （完整版只有繁中，其他語言的頁首會說明以中文版為準）。
  */
 export const TERMS_RULES: string[] = [
   '以 LINE 帳號登入即可送出便利貼；瀏覽與製作不需要登入。登入時將取得 LINE 暱稱、大頭貼與電子郵件，用途詳見隱私權政策。',
@@ -60,7 +63,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
         type: 'ul',
         items: [
           '活動期間：【起訖日期】',
-          '展示地點：【南西旗艦店完整店名與地址】的店內 LED 牆',
+          '展示地點：微樂客 WillMusic 南西旗艦門市（台北市中山區中山北路二段16巷25號2樓）的店內 LED 牆',
           '參加資格：持有 LINE 帳號者皆可參加，無消費門檻。未滿 18 歲者，請在法定代理人同意後參加。'
         ]
       }
@@ -218,7 +221,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
         items: [
           '【微樂客／公司全名】',
           '【地址】',
-          '【聯絡信箱】',
+          'willmusictaiwan@gmail.com',
           '【聯絡電話】'
         ]
       }
