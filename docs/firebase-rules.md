@@ -17,6 +17,12 @@
 是已知代價）。仍是步驟 ① 的過渡版，步驟 ②③ 未做。
 上一版 ruleset 是 `2d20da99-dc68-4bdd-86bc-a12bddd4d627`，要退回時把 release 指回去即可。
 
+**2026-10-13 部署冒名檢查（`nameTagBlocked`，見 3d）**：部署前確認線上與 repo 的差別只有這一段
+（其餘是 820d23f 的註解），以 `:test` 跑過 5 項後部署，讀回與 repo 逐字相同。
+現行 ruleset `d914a223-2e65-4b55-ae38-8f54a911971c`，上一版 `0257171b-edc5-4c05-be6c-e5488eb7e129`。
+部署方式是 Rules API（開發機沒有 firebase CLI）：POST `rulesets` → PATCH `releases/cloud.firestore`，
+帳號 `gcloud --account=splash.digilab@gmail.com`，請求要帶 `x-goog-user-project: willmusic-dd6ae`。
+
 ## 這些規則改了什麼
 
 目前線上的規則（依 README 舊版的紀錄）大致是「全部開放」：

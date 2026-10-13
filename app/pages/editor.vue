@@ -2387,14 +2387,21 @@ const moderatableText = computed(() => previewNoteData.value.content)
 const moderatableName = computed(() => previewNoteData.value.style.nameTag?.name ?? '')
 
 /** 送審一段文字，回傳是否被擋。fail-open：空字串、沒金鑰、服務掛掉都當成沒問題 */
-const isTextFlagged = async (text: string): Promise<boolean> => {
-  if (!text.trim()) return false
+/**
+ * 審核結果。simplified 是只因為簡體字被擋：要講「本活動以繁體字書寫」，
+ * 不能跟一般違規一樣說內容不妥適（見 server/api/moderation.post.ts）
+ */
+type ModerationVerdict = 'pass' | 'flagged' | 'simplified'
+
+const moderate = async (text: string): Promise<ModerationVerdict> => {
+  if (!text.trim()) return 'pass'
   try {
     const res: any = await $fetch('/api/moderation', { method: 'POST', body: { text } })
-    return !!res?.flagged
+    if (!res?.flagged) return 'pass'
+    return res.reason === 'simplified' ? 'simplified' : 'flagged'
   } catch (err) {
     console.warn('Moderation check failed or bypassed, proceeding...', err)
-    return false
+    return 'pass'
   }
 }
 
@@ -2695,20 +2702,25 @@ const confirmSubmit = async () => {
       : 'valid'
     
     // 中介檢查：OpenAI Moderation API 擋下不好的文字。內文與署名同時送審
-    const [textFlagged, nameFlagged] = await Promise.all([
-      isTextFlagged(moderatableText.value),
-      isTextFlagged(moderatableName.value)
+    const [textVerdict, nameVerdict] = await Promise.all([
+      moderate(moderatableText.value),
+      moderate(moderatableName.value)
     ])
 
-    if (textFlagged) {
+    if (textVerdict !== 'pass') {
       showSubmitModal.value = false
-      showAlert(() => t.value.editor.alerts.textFlagged, '🚫')
+      if (textVerdict === 'simplified') {
+        showAlert(() => t.value.editor.alerts.textSimplified, '✍️')
+      } else {
+        showAlert(() => t.value.editor.alerts.textFlagged, '🚫')
+      }
       isSubmitting.value = false
       return
     }
 
-    // 名字的問題使用者在這裡改不了，直接替他拿掉署名，再按一次送出就是匿名投稿
-    if (nameFlagged) {
+    // 名字的問題使用者在這裡改不了，直接替他拿掉署名，再按一次送出就是匿名投稿。
+    // 簡體字的暱稱也走這裡：nameFlagged 的說法本來就沒有說內容不妥適
+    if (nameVerdict !== 'pass') {
       showSubmitModal.value = false
       removeNameTag()
       showAlert(() => t.value.editor.alerts.nameFlagged, '🚫')

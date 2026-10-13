@@ -172,6 +172,10 @@ export default {
       title: 'Content check failed',
       message: 'Your text contains inappropriate content. To keep this a friendly space, please edit it and try again! If you think this is a mistake, please talk to our staff.'
     },
+    textSimplified: {
+      title: 'Please use Traditional Chinese',
+      message: 'Notes for this event are written in Traditional Chinese. Text with Simplified Chinese characters can\'t be sent, so please switch to Traditional characters and try again.'
+    },
     nameFlagged: {
       title: 'Name tag unavailable',
       message: 'Your LINE name can\'t be shown on notes, so we removed the name tag. To send without it, just tap Submit again.'

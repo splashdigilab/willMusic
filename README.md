@@ -68,8 +68,11 @@
   （`utils/locale-fonts.ts`），**改了日文或韓文翻譯要跑 `python3 scripts/fonts/build.py --locale-ui`**，
   沒跑的話新的字會退回繁中字型。便利貼本身不跟介面語言換字型，預覽、下載的圖、LED 牆才會一模一樣。
 - **LINE 授權頁**跟著網站的語言（`ui_locales`，見 `server/api/auth/line/start.get.ts`）。
-- **內容審核**：外國粉絲的日韓英文留言照內容判斷；簡體中文照舊攔截。
-  日文漢字（応、気）長得像簡體字，提示詞裡特別寫了不算，改提示詞時別拿掉。
+- **內容審核**：外國粉絲的日韓英文留言照內容判斷；**簡體中文照舊攔截**（2026-10-13 確認），
+  但規範寫明了「中文請以繁體字書寫」，被擋時講的是書寫規則，不說內容不妥適。
+  簡體字是**查表判斷**（`server/utils/simplified.ts`），不靠 AI：審核模型對「我爱你们」都放行。
+  字表只收繁體不用的字，由 `scripts/moderation/build_simplified_chars.py` 從 Unicode Unihan 產生；
+  含假名的內容當成日文不檢查（日文的国、学、会跟簡體同形）。
 
 ## 兩種登入
 

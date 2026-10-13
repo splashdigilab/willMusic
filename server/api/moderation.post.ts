@@ -1,4 +1,5 @@
 import { defineEventHandler, readBody, createError, getHeaders } from 'h3'
+import { containsSimplifiedChinese } from '~~/server/utils/simplified'
 
 export default defineEventHandler(async (event) => {
     const body = await readBody(event)
@@ -6,6 +7,18 @@ export default defineEventHandler(async (event) => {
 
     if (!text) {
         throw createError({ statusCode: 400, message: 'Missing text content for moderation' })
+    }
+
+    // 簡體字查表判斷（server/utils/simplified.ts），放在 AI 之前：沒設金鑰、OpenAI 出錯時也照樣擋。
+    // 前台看到 reason 是 simplified，會講「本活動以繁體字書寫」，不說內容不妥適 ——
+    // 那句話截圖出去就成了「簡體字＝不妥適」
+    if (containsSimplifiedChinese(text)) {
+        return {
+            flagged: true,
+            reason: 'simplified',
+            categories: { simplified_chinese: true },
+            bypassed: false
+        }
     }
 
     // Runtime context API Key (e.g configured via standard host env variable)
@@ -82,17 +95,16 @@ export default defineEventHandler(async (event) => {
 
                                 【增加包容規則】
                                 1. 興奮亂碼與符號：粉絲有時會因為太興奮而打出無意義的英數組合 (如：asdfghjk, A5a5a5) 或重複字元 (如：IIIIII, ！！！！！)，只要不包含髒話，請一律 PASS。
-                                2. 品牌與可愛語：提到或感謝「微樂客」、「WillMusic」（如：謝謝微樂客、微樂客讚），以及「喵喵」、「QQ」，都 PASS（以店家名義發公告除外，見攔截第 6 條）。
+                                2. 品牌與可愛語：提到或感謝「微樂客」、「WillMusic」（如：謝謝微樂客、微樂客讚），以及「喵喵」、「QQ」，都 PASS（以店家名義發公告除外，見攔截第 5 條）。
                                 3. 灰色地帶從寬：台灣常用的「立馬、優化、質量」等詞彙請 PASS。
                                 4. 外國粉絲：日文、韓文、英文的應援留言是正常投稿，照內容判斷。日文的漢字（如：応、気、楽、売、写、駅）是日文本來的寫法，不是簡體字；內容含平假名或片假名就是日文。
 
                                 【嚴格攔截 (FLAG)】
                                 1. 髒話與攻擊：中英日韓文直接髒話、性暗示、針對藝人的辱罵 (如：XX狗、去死)。
-                                2. 簡體中文：全文包含簡體字，直接 FLAG（日文不算，見包容規則第 4 條）。
-                                3. 強烈中國網路詞：僅攔截「yyds、絕絕子、栓Q、集美」等強烈對岸色彩詞彙。
-                                4. 惡意廣告：博弈、情色網址、非法交易。
-                                5. 冒充藝人或官方：以藝人本人、經紀公司或官方帳號的口吻發言（如：「我是Jennie本人，謝謝大家」「BTS官方：新專輯明天發售」）。提到、感謝或應援藝人與經紀公司照常 PASS（如：謝謝 HYBE、Jennie老婆在這裡、愛IU一輩子）。
-                                6. 冒充店家：以微樂客／WillMusic 的名義發布公告、折扣、贈品、抽獎或活動訊息（如：「微樂客公告：今天全館五折」「WillMusic 官方：留言抽專輯」）。
+                                2. 強烈中國網路詞：僅攔截「yyds、絕絕子、栓Q、集美」等強烈對岸色彩詞彙。
+                                3. 惡意廣告：博弈、情色網址、非法交易。
+                                4. 冒充藝人或官方：以藝人本人、經紀公司或官方帳號的口吻發言（如：「我是Jennie本人，謝謝大家」「BTS官方：新專輯明天發售」）。提到、感謝或應援藝人與經紀公司照常 PASS（如：謝謝 HYBE、Jennie老婆在這裡、愛IU一輩子）。
+                                5. 冒充店家：以微樂客／WillMusic 的名義發布公告、折扣、贈品、抽獎或活動訊息（如：「微樂客公告：今天全館五折」「WillMusic 官方：留言抽專輯」）。
 
                                 【判斷邏輯】
                                 - 如果內容「看不懂但無害」（例如：A5a5a5oooo），請視為粉絲的興奮表達，回傳 PASS。
@@ -122,6 +134,7 @@ export default defineEventHandler(async (event) => {
             if (judgment === 'FLAG') {
                 return {
                     flagged: true,
+                    reason: 'content',
                     categories: { profanity_strict: true },
                     bypassed: false
                 }
