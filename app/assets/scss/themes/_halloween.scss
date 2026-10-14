@@ -255,6 +255,40 @@ $bottom-bar-overflow: min(1.43vw, 11px);
     }
 
     /* 說明：40px Bold、行距 60，第一行基線在 y 1242.4 */
+    /* 非繁中的南瓜標題（HalloweenIntro.vue）。原圖「萬聖便利貼」那一行在稿子座標 x 240–840、y 861–963，
+       非繁中改用拿掉那一行的圖（intro-hero-blank.svg），文字疊在同一個框裡置中。
+       字色、字重照原圖的外框字（#141414、最粗）；韓文 LINE Seed 沒有 800，瀏覽器會用 700 */
+    &__hero-title {
+        position: absolute;
+        left: u(240);
+        top: u(861);
+        width: u(600);
+        height: u(102);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: $hw-black;
+        /* 日文「ハロウィン」五個全形字，跟原圖的中文差不多寬 */
+        font-size: u(110);
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+
+        /* 字數差很多，各語言自己定字級，量過都落在 600 寬的框裡。
+           英文九個大寫字母，照日文的字級會寬到 836 */
+        :lang(en) & {
+            font-size: u(76);
+            letter-spacing: 0.02em;
+        }
+
+        /* 韓文只有三個字，放大一點，字高接近原圖的中文 */
+        :lang(ko) & {
+            font-size: u(115);
+        }
+    }
+
     &__desc {
         position: absolute;
         left: 0;

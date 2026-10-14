@@ -14,6 +14,7 @@ export default {
   loginFailedTitle: 'Login failed',
   loginFailedMessage: 'Login didn\'t go through. Please try again.',
   halloween: {
+    title: 'HALLOWEEN',
     intro: [
       'Welcome to WILL MUSIC',
       'Digital Cheer Notes!',

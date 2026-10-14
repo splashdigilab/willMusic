@@ -14,6 +14,7 @@ export default {
   loginFailedTitle: '로그인 실패',
   loginFailedMessage: '로그인이 완료되지 않았어요. 다시 시도해 주세요.',
   halloween: {
+    title: '할로윈',
     intro: [
       'WILL MUSIC 디지털 응원 포스트잇에',
       '오신 걸 환영해요!',

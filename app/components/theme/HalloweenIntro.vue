@@ -18,10 +18,16 @@
     <img src="/themes/halloween/logo-intro.svg" alt="WillMusic" class="t-hw-intro__logo" />
 
     <div class="t-hw-intro__stage">
-      <!-- 標題已轉成外框畫在南瓜圖裡（介面字型沒有「聖」這個字），這裡留給讀屏軟體。
-           圖裡的字標每個語言都一樣，所以這裡也不翻譯，標成繁中讓讀屏軟體用中文念 -->
-      <h1 class="t-hw-intro__sr-only" lang="zh-Hant-TW">POST BOARD 萬聖便利貼</h1>
-      <img src="/themes/halloween/intro-hero.svg" alt="" class="t-hw-intro__hero" />
+      <!-- 標題畫在南瓜圖裡（「萬聖便利貼」是外框：介面字型沒有「聖」這個字），這裡留給讀屏軟體 -->
+      <h1 class="t-hw-intro__sr-only">POST BOARD {{ t.home.halloween.title }}</h1>
+      <!-- 繁中用原圖，字標跟稿子一模一樣。其他語言用拿掉「萬聖便利貼」那一行的圖
+           （intro-hero-blank.svg：從原圖刪掉 y 850 以下的子路徑），標題改用文字疊在同一個位置 -->
+      <img
+        :src="locale === 'zh-TW' ? '/themes/halloween/intro-hero.svg' : '/themes/halloween/intro-hero-blank.svg'"
+        alt=""
+        class="t-hw-intro__hero"
+      />
+      <p v-if="locale !== 'zh-TW'" class="t-hw-intro__hero-title" aria-hidden="true">{{ t.home.halloween.title }}</p>
 
       <!-- 一個元素一行，各語言行數不同（最多四行）。四行的縮小字級，否則會貼到 START（見 themes/_halloween.scss） -->
       <p
@@ -52,7 +58,7 @@
 defineProps<{ loading: boolean }>()
 const emit = defineEmits<{ start: [] }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 </script>
 
 <style scoped>

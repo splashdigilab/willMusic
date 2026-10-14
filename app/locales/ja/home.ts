@@ -14,6 +14,7 @@ export default {
   loginFailedTitle: 'ログインに失敗しました',
   loginFailedMessage: 'ログインが完了しませんでした。もう一度お試しください。',
   halloween: {
+    title: 'ハロウィン',
     intro: [
       'WILL MUSICデジタル応援付箋へようこそ',
       'あなただけの応援メッセージを作って、',
