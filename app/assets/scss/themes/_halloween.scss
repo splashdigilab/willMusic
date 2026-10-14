@@ -266,6 +266,16 @@ $bottom-bar-overflow: min(1.43vw, 11px);
         line-height: u(60);
         letter-spacing: 0.025em;
         text-align: center;
+
+        /* 四行的語言（英、韓）。稿子照三行排：三行高 180，離 START（y 1446.9）留 68；
+           四行照原本的字級是 240，第四行只剩 8，貼著 START。
+           字級與行距一起縮（34／50），四行高 200，起點往上提一點（南瓜底在 y 1170），
+           離 START 留回 57，接近稿子的間距 */
+        &--compact {
+            top: u(1190);
+            font-size: u(34);
+            line-height: u(50);
+        }
     }
 
     /* START：外框 5 的外緣 x 310.9–769.1、y 1446.9–1566.8 */

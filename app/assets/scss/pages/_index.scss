@@ -430,7 +430,9 @@ $edge-inset: 1rem;
     align-items: center;
     justify-content: center;
     gap: 2.2cqw;
-    font-size: 9.5cqw;
+    /* 轉圈圈加文字要落在藥丸兩端的圓弧（半徑 7.5cqw）之內。原本 9.5cqw，
+       英文「Loading」兩端只剩 3.6cqw、貼著圓弧，繁中「載入中...」右邊也很擠 */
+    font-size: 8.2cqw;
     font-weight: 800;
     line-height: 1;
 }

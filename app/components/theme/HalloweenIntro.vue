@@ -23,8 +23,11 @@
       <h1 class="t-hw-intro__sr-only" lang="zh-Hant-TW">POST BOARD 萬聖便利貼</h1>
       <img src="/themes/halloween/intro-hero.svg" alt="" class="t-hw-intro__hero" />
 
-      <!-- 一個元素一行，各語言行數不同（最多四行，再多會壓到 START） -->
-      <p class="t-hw-intro__desc"><template v-for="(line, i) in t.home.halloween.intro" :key="i"><br v-if="i > 0">{{ line }}</template></p>
+      <!-- 一個元素一行，各語言行數不同（最多四行）。四行的縮小字級，否則會貼到 START（見 themes/_halloween.scss） -->
+      <p
+        class="t-hw-intro__desc"
+        :class="{ 't-hw-intro__desc--compact': t.home.halloween.intro.length > 3 }"
+      ><template v-for="(line, i) in t.home.halloween.intro" :key="i"><br v-if="i > 0">{{ line }}</template></p>
 
       <div class="t-hw-intro__start-wrap">
         <button
