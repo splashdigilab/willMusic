@@ -33,6 +33,8 @@
           </svg>
           {{ t.editor.startOver }}
         </button>
+        <!-- 語言選單，跟首頁一樣放在登入狀態左邊 -->
+        <LocaleMenu />
         <!-- 登入狀態（已登入是頭貼、沒登入是人像輪廓），放最右邊，與首頁同一個角落。
              從這裡登入要能回到同一步接著編輯，見 loginFromBadge -->
         <MemberBadge :custom-login="loginFromBadge" />
@@ -136,9 +138,6 @@
           </div>
 
           <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__intro-logo" />
-
-          <!-- 語言選單：跟首頁開場同一個位置。規範要看得懂才能勾同意，這裡也要換得了語言 -->
-          <LocaleSwitcher class="p-index__locale" />
         </div>
       </Transition>
 

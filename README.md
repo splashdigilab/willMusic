@@ -60,7 +60,9 @@
 - **語言怎麼決定**（`app/utils/i18n.ts`）：自己選過的（cookie `wm-locale`）→ 瀏覽器語言 → 繁中。
   網址不帶語言前綴，因為使用者是掃碼進來的，而 LINE 登入的回程網址已經帶著 resume 參數。
   伺服器畫頁面時就決定（`plugins/i18n.ts`），瀏覽器沿用同一個值，hydration 才對得上。
-  爬蟲不送語言偏好，拿到的是繁中版。選單在首頁開場與編輯器開場（`LocaleSwitcher`）。
+  爬蟲不送語言偏好，拿到的是繁中版。選單是右上角登入狀態左邊的地球鈕（`LocaleMenu`），
+  首頁的便利貼牆與編輯器都有。開場畫面會蓋住它，所以要換語言的人得先按 START ——
+  多數人進來時已經照手機語言切好，開場不另外放選單，免得動到開場的版面。
 - **翻譯檔**在 `app/locales/<語言>/<namespace>.ts`，繁中是型別基準：其他語言少一個 key 或參數對不上，
   `npm run typecheck` 就會報錯。用法是 `const { t } = useI18n()`，模板裡 `{{ t.editor.next }}`，
   要帶數字的寫成函式（`t.quota.remaining(n)`）。

@@ -445,17 +445,6 @@ $edge-inset: 1rem;
     flex-shrink: 0;
 }
 
-/* 語言選單：開場最上方置中，卡片上緣上面的空白。
-   多數人看到的已經是自己的語言（照瀏覽器設定），這裡只給要換的人，不搶卡片的視線 */
-.p-index__locale {
-    position: absolute;
-    top: calc(0.5rem + env(safe-area-inset-top, 0px));
-    left: 0;
-    right: 0;
-    z-index: 20;
-    color: #fff;
-}
-
 /* 字標：稿子放在卡片下方置中，寬 431 / 1080 = 40% */
 .p-index__intro-logo {
     display: block;
@@ -593,6 +582,9 @@ $edge-inset: 1rem;
     top: calc(0.75rem + env(safe-area-inset-top, 0px));
     right: 0.75rem;
     z-index: 100;
+    /* 語言選單與登入狀態並排，間距與左上的說明鈕列一致 */
+    display: flex;
+    gap: 0.6rem;
 }
 
 /* 回到中央：右下角的畫布控制 */

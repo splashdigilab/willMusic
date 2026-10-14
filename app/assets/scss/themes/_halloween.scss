@@ -309,15 +309,6 @@ $bottom-bar-overflow: min(1.43vw, 11px);
     }
 }
 
-/* 語言選單（pages/index.vue 的 .p-index__locale）。原本的主題放在畫面最上緣，
-   這裡上緣右邊是英文小字（到 y 105），改放到小字與南瓜（y 249 起）之間的空檔。
-   只管首頁的萬聖節開場（選單緊接在 .t-hw-intro 後面）；編輯器的開場還是原本的卡片版面，位置照舊。
-   選單不在 .t-hw-intro 裡面，--u 用同一套算法自己算一次 */
-.t-hw-intro ~ .p-index__locale {
-    --u: calc(min(100vw, calc(100dvh * 9 / 16)) / 1080);
-    top: calc(#{u(122)} + env(safe-area-inset-top, 0px));
-}
-
 /* ===================== 大螢幕徽章（CanvasPromo，畫板 03 正面、04 背面） =====================
    動畫與原本的圓形徽章完全一樣（彈出、正反面來回翻），只換長相：
    圓片換成南瓜外形，正面橘、背面黃；南瓜上的圖文與 QR 在 CanvasPromo.vue。

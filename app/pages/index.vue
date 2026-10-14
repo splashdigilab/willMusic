@@ -46,9 +46,6 @@
 
         <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__intro-logo" />
         </template>
-
-        <!-- 語言選單：兩種開場都放，位置各自調（萬聖節見 themes/_halloween.scss） -->
-        <LocaleSwitcher class="p-index__locale" />
       </div>
     </Transition>
 
@@ -98,6 +95,9 @@
       @touchstart.stop
       @wheel.stop
     >
+      <!-- 語言選單放登入狀態左邊。開場畫面會蓋住這一排，多數人進來時已經照手機語言切好，
+           要換的人按 START 之後在這裡換 -->
+      <LocaleMenu />
       <MemberBadge />
     </div>
 
