@@ -4,6 +4,9 @@
 @use '../components/sticky-note' as sn;
 @use '../mixins/editor' as edm;
 
+/// 畫布區的內距，也就是便利貼與頁面邊緣的最小距離。「全部重來」的位置要扣掉它（見 .p-editor__reset-btn）
+$canvas-section-pad: 0.5rem;
+
 /* ========== 全域：編輯器頁面鎖定視窗 ========== */
 /* --editor-locked-h 由 editor.vue 在鍵盤出現前量好寫進 <html>，
    讓鍵盤只是蓋在頁面上而不把版面頂上去（內建瀏覽器不認 meta 的 interactive-widget）。
@@ -42,8 +45,13 @@ body.is-editor-page {
 .p-editor__reset-btn {
   @include btn.btn-reset;
   position: absolute;
-  right: 0.5rem;
-  bottom: 0.5rem;
+  /* 右緣跟右上角的圓鈕切齊（離頁面右緣 $editor-float-btn-inset）。按鈕在畫布容器裡，
+     容器寬就是便利貼的邊長（100cqw），而便利貼是置中的、常比頁面窄，要扣掉兩邊的空白：
+       頁面寬 min(100vw, $editor-control-max-width) 減掉便利貼邊長，除以 2
+     便利貼撐滿寬度時按鈕在便利貼裡面一點；便利貼被高度限制、比較窄時會超出便利貼右緣，跟上排對齊 */
+  right: calc(#{ed.$editor-float-btn-inset} - (min(100vw, #{ed.$editor-control-max-width}) - 100cqw) / 2);
+  /* 下緣貼著便利貼的下緣：容器常比便利貼高（便利貼上下置中），差的一半就是便利貼底邊離容器底邊的距離 */
+  bottom: calc((100% - 100cqw) / 2 + 0.5rem);
   /* 疊在 UI 層（編輯框、z-index 10）上面 */
   z-index: 20;
   height: 2rem;
@@ -140,16 +148,12 @@ body.is-editor-page #app {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.5rem;
-    /* 上方替浮動按鈕列留位：那排是 absolute，不佔版面高度，而便利貼是置中的，
-       面板一高（STEP 4 最高）加上瀏海的 safe-area，上方空隙就會小於按鈕高度，
-       便利貼會滑到按鈕底下。這裡把它們的高度算進來，任何機型都不會重疊。
-       尺寸與起始位置都取自變數 —— 寫死的話，日後按鈕一改大這裡不會跟著動，
-       重疊會無聲地回來。0.5rem 是按鈕底緣到便利貼的間隙。 */
-    padding-top: calc(
-      #{ed.$editor-float-btn-inset} + env(safe-area-inset-top, 0px) +
-      #{ed.$editor-float-btn-size} + 0.5rem
-    );
+    padding: $canvas-section-pad;
+    /* 上方只留瀏海的 safe-area，不替浮動按鈕列留位：返回、說明、語言、登入狀態疊在便利貼的上緣，
+       便利貼才能放到最大（2026-10-14 使用者決定）。原本多留一個按鈕的高度（約 62px），
+       面板一高、便利貼被高度限制住的時候，整張就小了這麼多。
+       代價是貼紙、文字放在最上緣時會被圓鈕蓋住，往下拖就好 */
+    padding-top: calc(#{$canvas-section-pad} + env(safe-area-inset-top, 0px));
     touch-action: pan-x pan-y;
     /* 允許 pan、禁用 pinch-zoom，讓 touchmove 能觸發且不縮放畫面 */
   }
@@ -166,6 +170,10 @@ body.is-editor-page #app {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* 容器寬＝便利貼的邊長（縮放層照這個寬度縮放），但高度常比寬度大（直式手機上，
+       便利貼在裡面上下置中）。讓「全部重來」用 cqw 拿到便利貼的邊長（見 .p-editor__reset-btn）。
+       便利貼裡的名牌也用 cqw，但它最近的容器是縮放層，不受這裡影響 */
+    container-type: inline-size;
   }
 
   /* 虛擬縮放層：永遠固定 600px 大小 */
