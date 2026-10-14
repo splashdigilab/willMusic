@@ -445,6 +445,17 @@ $edge-inset: 1rem;
     flex-shrink: 0;
 }
 
+/* 開場畫面的語言選單（首頁開場與編輯器規範頁共用）。開場蓋住了右上角那一排，
+   只把地球鈕放上來，位置跟按 START 之後的右上角對齊。
+   多掛一層 overlay：元件的樣式（.c-locale-menu 的 position: relative）比頁面晚載入，
+   同樣一個 class 的話會被它蓋掉，變成排在開場內容的最下面 */
+.p-index__intro-overlay .p-index__intro-locale {
+    position: absolute;
+    top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    right: 0.75rem;
+    z-index: 30;
+}
+
 /* 字標：稿子放在卡片下方置中，寬 431 / 1080 = 40% */
 .p-index__intro-logo {
     display: block;

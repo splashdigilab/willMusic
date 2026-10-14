@@ -46,6 +46,10 @@
 
         <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__intro-logo" />
         </template>
+
+        <!-- 開場會蓋住右上角那一排，只把地球鈕放上來：照手機語言自動選錯的人，按 START 之前就換得了。
+             萬聖節的開場右上角有英文小字與蜘蛛，改放左上（見 themes/_halloween.scss） -->
+        <LocaleMenu class="p-index__intro-locale" />
       </div>
     </Transition>
 

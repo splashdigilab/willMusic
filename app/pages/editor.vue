@@ -138,6 +138,9 @@
           </div>
 
           <img src="/willMusicLogo.png" alt="WillMusic" class="p-index__intro-logo" />
+
+          <!-- 規範要看得懂才能勾同意：開場蓋住了右上角，地球鈕另外放一顆在這裡（同首頁開場） -->
+          <LocaleMenu class="p-index__intro-locale" />
         </div>
       </Transition>
 

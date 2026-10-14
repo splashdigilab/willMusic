@@ -309,6 +309,19 @@ $bottom-bar-overflow: min(1.43vw, 11px);
     }
 }
 
+/* 開場的語言選單（pages/index.vue 的 .p-index__intro-locale）。右上角有英文小字與垂吊的蜘蛛，
+   改放左上角的蜘蛛網上，展開的選單也改成往右開，不然會超出畫面左緣。
+   只管首頁的萬聖節開場（選單緊接在 .t-hw-intro 後面）；編輯器規範頁還是卡片版面，照舊放右上 */
+.t-hw-intro ~ .p-index__intro-locale {
+    left: 0.75rem;
+    right: auto;
+
+    .c-locale-menu__list {
+        left: 0;
+        right: auto;
+    }
+}
+
 /* ===================== 大螢幕徽章（CanvasPromo，畫板 03 正面、04 背面） =====================
    動畫與原本的圓形徽章完全一樣（彈出、正反面來回翻），只換長相：
    圓片換成南瓜外形，正面橘、背面黃；南瓜上的圖文與 QR 在 CanvasPromo.vue。
