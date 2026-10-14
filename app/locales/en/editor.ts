@@ -11,7 +11,7 @@ export default {
     agreeBefore: 'I have read and agree to the ',
     agreeBetween: ' and the ',
     agreeAfter: '',
-    loading: 'Loading...',
+    loading: 'Loading',
     loginEarly: 'Log in with LINE now (only needed to submit, so it can wait)',
     termsRequired: 'Please read and agree to the Event Rules first.'
   },
@@ -71,12 +71,12 @@ export default {
   nameTag: {
     added: 'Added',
     add: '+ Add name tag',
-    login: 'Log in with LINE to add a name tag',
+    login: 'Log in to add a name tag',
     toggle: 'Add a name tag',
     on: 'Shows your photo and name',
     off: 'Posted anonymously',
     blocked: 'Not available',
-    blockedState: 'This name can\'t be used as a name tag, so your note will be anonymous',
+    blockedState: 'This name can\'t be used, so it\'ll post anonymously',
     adjust: 'Adjust',
     tourToggleTitle: 'Add a name tag to your note?',
     tourToggleBody: 'Turn it on to add your LINE photo and name. Leave it off to stay anonymous.',
@@ -86,11 +86,11 @@ export default {
   },
 
   submitModal: {
-    title: 'Ready to send?',
-    titleSignedIn: 'You\'re logged in',
+    title: 'Confirm',
+    titleSignedIn: 'Logged in!',
     message: 'Check how your note looks. You can\'t edit it after sending.',
     confirm: 'Send to the big screen',
-    confirmWithLogin: 'Log in with LINE & send',
+    confirmWithLogin: 'LINE login & send',
     processing: 'Processing...',
     share: 'Share note',
     lineAccount: 'LINE account',

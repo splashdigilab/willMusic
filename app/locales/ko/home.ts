@@ -15,7 +15,8 @@ export default {
   loginFailedMessage: '로그인이 완료되지 않았어요. 다시 시도해 주세요.',
   halloween: {
     intro: [
-      'WILL MUSIC 디지털 응원 포스트잇에 오신 걸 환영해요!',
+      'WILL MUSIC 디지털 응원 포스트잇에',
+      '오신 걸 환영해요!',
       '나만의 응원 메시지를 만들어',
       '모두와 음악에 대한 사랑을 나눠 보세요.'
     ]

@@ -15,9 +15,10 @@ export default {
   loginFailedMessage: 'Login didn\'t go through. Please try again.',
   halloween: {
     intro: [
-      'Welcome to WILL MUSIC Digital Cheer Notes!',
+      'Welcome to WILL MUSIC',
+      'Digital Cheer Notes!',
       'Create your own cheer message',
-      'and share your love of music with everyone.'
+      'and share your love of music.'
     ]
   }
 } satisfies Messages['home']

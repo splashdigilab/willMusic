@@ -2,7 +2,7 @@
   <main class="p-legal">
     <div class="p-legal__container">
       <!-- 與 /privacy 同一套：掃描內容裡還有沒有【，有就現身，填完自動消失 -->
-      <aside v-if="unfilledCount > 0" class="p-legal__draft" role="alert">
+      <aside v-if="unfilledCount > 0" class="p-legal__draft" role="alert" lang="zh-Hant-TW">
         <p class="p-legal__draft-title">⚠️ 這份規範尚未定稿，請勿對外公開</p>
         <p class="p-legal__draft-body">
           還有 {{ unfilledCount }} 處以【】標示的內容需要填寫或決定。

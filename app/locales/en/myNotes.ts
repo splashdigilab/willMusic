@@ -6,7 +6,7 @@ export default {
 
   login: {
     title: 'Log in with LINE',
-    text: ['to see the notes you\'ve sent', 'and how many more you can send today'],
+    text: ['to see your notes', 'and how many you can send today'],
     button: 'Log in with LINE',
     failed: 'Login didn\'t go through. Please try again.'
   },

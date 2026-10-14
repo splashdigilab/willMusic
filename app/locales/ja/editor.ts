@@ -9,7 +9,7 @@ export default {
     agreeBefore: '',
     agreeBetween: 'と',
     agreeAfter: 'を読み、同意します',
-    loading: '読み込み中…',
+    loading: 'ロード中',
     loginEarly: '先にLINEでログイン（送信時にだけ必要です。あとからでも大丈夫です）',
     termsRequired: '先に参加規約を読んで同意してください。'
   },
@@ -236,15 +236,15 @@ export default {
 
   tutorial: {
     drag: {
-      title: '1本指でドラッグ',
+      title: '移動',
       message: '文字やステッカーを選ぶと、好きな位置に動かせます。'
     },
     rotate: {
-      title: '2本指で回転',
+      title: '回転',
       message: '2本指で回して、角度を自由に調整できます。'
     },
     scale: {
-      title: '2本指でズーム',
+      title: '拡大・縮小',
       message: '2本指でピンチして、大きさを自由に変えられます。'
     },
     demoText: '文字',

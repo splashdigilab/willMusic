@@ -21,6 +21,6 @@ export default {
     title: 'WillMusicをLINEで友だち追加',
     subtitle: 'お知らせ・特典をいち早くお届けします',
     cta: '追加',
-    button: '＋ WillMusicをLINEで友だち追加'
+    button: '＋ LINE友だち追加'
   }
 } satisfies Messages['member']

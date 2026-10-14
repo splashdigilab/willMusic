@@ -33,12 +33,19 @@ html:lang(ja) body {
 
 html:lang(ko) body {
   font-family: 'LINE Seed KR UI', $font-sans;
+  // 韓文在空格處換行：瀏覽器預設把韓文當成漢字，任何兩個音節之間都能斷，
+  // 「기다려 주세요」會被拆成「주／세요」。單字長到放不下時才在字中間斷（overflow-wrap）。
+  // 便利貼的文字自己寫了 word-break（_sticky-note.scss、_editor.scss），不受這裡影響
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 // 頁面裡明確標成繁中的區塊（法律文件本文、品牌標題）不跟著日文／韓文介面換字型。
-// 只比對寫在元素上的屬性：<html> 本身在繁中介面也是這個值，但 body 有自己的規則，不受影響
+// 只比對寫在元素上的屬性：<html> 本身在繁中介面也是這個值，但 body 有自己的規則，不受影響。
+// 換行也要還原：中文沒有空格，繼承到韓文介面的 keep-all 會整段不換行、撐破版面
 [lang='zh-Hant-TW'] {
   font-family: $font-sans;
+  word-break: normal;
 }
 
 #__nuxt,

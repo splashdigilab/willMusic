@@ -21,6 +21,6 @@ export default {
     title: 'Add WillMusic on LINE',
     subtitle: 'Be the first to get news and offers',
     cta: 'Add',
-    button: '+ Add WillMusic on LINE'
+    button: '+ Add us on LINE'
   }
 } satisfies Messages['member']

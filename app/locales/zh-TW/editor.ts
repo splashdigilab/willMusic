@@ -23,7 +23,10 @@ export default {
     agreeBefore: '我已閱讀並同意',
     agreeBetween: '與',
     agreeAfter: '',
-    /** START 鈕載入中。跟 common.loading 的「載入中…」不是同一個字，不能共用 */
+    /**
+     * START 鈕載入中。跟 common.loading 的「載入中…」不是同一個字，不能共用。
+     * 藥丸寬度固定、前面還有轉圈圈，其他語言要跟 home.loading 一樣短，否則會撐出藥丸
+     */
     loading: '載入中...',
     loginEarly: '先用 LINE 登入（送出時才需要，也可以稍後再登）',
     /** 沒勾同意就按 START */
@@ -321,8 +324,9 @@ export default {
 
   /**
    * 操作教學（EditorTutorialModal）。三頁的 key 對應元件裡的示意圖。
-   * 標題兩邊有「＼ ／」，手機上一行只放得下約 8 個全形字或 12 個英文字母，
-   * 再長就會折行、把「／」單獨擠到下一行 —— 翻譯寧可短，動作的說明交給 message
+   * 標題兩邊有「＼ ／」，360px 寬的手機上一行只放得下約 6 個全形字或 10 個英文字母，
+   * 再長就會折行、把「／」單獨擠到下一行 —— 翻譯寧可短（英日韓都用一個詞：移動、旋轉、縮放），
+   * 動作的說明交給 message
    */
   tutorial: {
     drag: {

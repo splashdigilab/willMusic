@@ -21,6 +21,6 @@ export default {
     title: 'WillMusic LINE 친구 추가',
     subtitle: '소식과 혜택을 가장 먼저 알려 드려요',
     cta: '추가',
-    button: '+ WillMusic LINE 친구 추가'
+    button: '+ LINE 친구 추가'
   }
 } satisfies Messages['member']

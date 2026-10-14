@@ -3,7 +3,7 @@
     <div class="p-legal__container">
       <!-- 文案還沒定稿時自己現身。不是靠開關，是掃描內容裡還有沒有【，
            所以不需要記得在上線前關掉什麼——填完就消失。 -->
-      <aside v-if="unfilledCount > 0" class="p-legal__draft" role="alert">
+      <aside v-if="unfilledCount > 0" class="p-legal__draft" role="alert" lang="zh-Hant-TW">
         <p class="p-legal__draft-title">⚠️ 這份政策尚未定稿，請勿對外公開</p>
         <p class="p-legal__draft-body">
           還有 {{ unfilledCount }} 處以【】標示的內容需要填寫或決定。

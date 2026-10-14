@@ -1159,9 +1159,14 @@ body.is-editor-page #app {
 
 .p-editor__submit-identity-name-text {
   min-width: 0;
+  /* 最多兩行，再長才省略。原本一行加刪節號：英日韓的「登出」比中文寬，
+     十個字的暱稱就會被擠成「김민…」，而這一列正是讓人確認用哪個帳號送出 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
   color: #323232;
   /* 跟下一列的「在便利貼上署名」同一級。不用 0.95：360 寬時那一列旁邊有「調整位置」，
      0.95 的七個字會剛好多出一點點、掉一個字到第二行 */

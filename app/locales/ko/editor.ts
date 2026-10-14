@@ -9,7 +9,7 @@ export default {
     agreeBefore: '',
     agreeBetween: ' 및 ',
     agreeAfter: '을 읽고 동의해요',
-    loading: '불러오는 중...',
+    loading: '로딩 중...',
     loginEarly: '먼저 LINE으로 로그인하기 (보낼 때만 필요해서 나중에 해도 돼요)',
     termsRequired: '먼저 참여 규정을 읽고 동의해 주세요.'
   },
@@ -236,11 +236,11 @@ export default {
 
   tutorial: {
     drag: {
-      title: '한 손가락으로 이동',
+      title: '이동',
       message: '텍스트나 스티커를 선택하면 원하는 곳으로 옮길 수 있어요.'
     },
     rotate: {
-      title: '두 손가락으로 회전',
+      title: '회전',
       message: '두 손가락으로 돌려서 각도를 바꿀 수 있어요.'
     },
     scale: {
