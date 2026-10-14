@@ -30,7 +30,7 @@ $editor-panel-gap: min(4.74vw, 28px);
 $editor-panel-pad-top: min(5.25vw, 32px);
 $editor-panel-pad-bottom: min(5.36vw, 32px);
 
-/// 畫面四角的浮動圓鈕（返回／說明／全部重來）。
+/// 畫面上方的浮動圓鈕（返回／說明、語言選單、登入狀態）。
 /// 編輯器的畫布要靠這兩個值替它們讓出上方空間，改尺寸時這裡一起改。
 $editor-float-btn-size: 42px;
 $editor-float-btn-inset: 0.75rem;

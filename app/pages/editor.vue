@@ -16,23 +16,9 @@
         </button>
       </div>
 
-      <!-- 全部重來：分頁列拿掉後失去了原本的位置，改放右上角。
-           左邊兩顆是導覽、用慣用圓圖示就夠；這顆是畫面上唯一不可復原的動作，
-           所以做成帶字的藥丸，而且圖示是「重新開始」的繞圈箭頭，不是返回箭頭 ——
-           返回箭頭會被讀成「退回一步」，跟它實際做的事差太多。 -->
+      <!-- 右上角：語言選單與登入狀態。全部重來原本也在這一排，加了語言選單之後太擠，
+           移到便利貼右下角（見畫布裡的 .p-editor__reset-btn） -->
       <div class="p-editor__float-actions p-editor__float-actions--right">
-        <button
-          type="button"
-          class="p-editor__reset-btn"
-          :disabled="!hasAnyContent"
-          @click="handleClearAll"
-        >
-          <svg class="p-editor__reset-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3.5 12a8.5 8.5 0 1 1 2.8 6.3" />
-            <path d="M3 6.5V12h5.5" />
-          </svg>
-          {{ t.editor.startOver }}
-        </button>
         <!-- 語言選單，跟首頁一樣放在登入狀態左邊 -->
         <LocaleMenu />
         <!-- 登入狀態（已登入是頭貼、沒登入是人像輪廓），放最右邊，與首頁同一個角落。
@@ -585,6 +571,28 @@
           </div>
         </div>
         </div>
+
+        <!-- 全部重來：疊在便利貼右下角。放在縮放層外面、這個容器裡 —— 容器就是便利貼在畫面上的範圍，
+             按鈕大小不跟著便利貼縮放，每支手機都一樣大。
+             它不是便利貼的一部分，下載的圖、分享圖、大螢幕都不會有它。
+             沒東西可清時不出現（原本在上排是停用變灰，疊在便利貼上的灰鈕只是雜訊）。
+             data-canvas-control：畫布的拖曳手勢不攔它（見 useCanvasPinch）；@click.stop 不觸發取消選取。
+             圖示是「重新開始」的繞圈箭頭，不是返回箭頭 —— 返回箭頭會被讀成「退回一步」 -->
+        <Transition name="p-editor-reset-fade">
+          <button
+            v-if="hasAnyContent"
+            type="button"
+            class="p-editor__reset-btn"
+            data-canvas-control
+            @click.stop="handleClearAll"
+          >
+            <svg class="p-editor__reset-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3.5 12a8.5 8.5 0 1 1 2.8 6.3" />
+              <path d="M3 6.5V12h5.5" />
+            </svg>
+            {{ t.editor.startOver }}
+          </button>
+        </Transition>
       </div>
     </div>
 

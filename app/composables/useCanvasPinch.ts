@@ -547,9 +547,10 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     const el = canvasRef.value
     if (!el) return
 
-    // 刪除 / 變形控制點：交給各自元件處理，這裡不攔截，避免阻斷點擊事件（例如刪除文字區塊）
+    // 刪除 / 變形控制點、疊在畫布上的按鈕（data-canvas-control，例如右下角的全部重來）：
+    // 交給各自元件處理，這裡不攔截，避免阻斷點擊事件
     const targetEl = e.target as HTMLElement | null
-    if (targetEl?.closest('.p-editor__edit-frame-delete, .p-editor__edit-frame-transform-handle')) {
+    if (targetEl?.closest('.p-editor__edit-frame-delete, .p-editor__edit-frame-transform-handle, [data-canvas-control]')) {
       return
     }
 
@@ -638,6 +639,8 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
 
   const onCanvasMouseDown = (e: MouseEvent) => {
     if (drawMode.value || !hasSelection()) return
+    // 疊在畫布上的按鈕不當成拖曳的起點（同 onCanvasTouchStart）
+    if ((e.target as HTMLElement | null)?.closest('[data-canvas-control]')) return
     if (!isPointerOnEmptyArea(e.target)) return
     e.preventDefault()
     startCanvasDrag(e.clientX, e.clientY, false)

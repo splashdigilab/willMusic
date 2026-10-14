@@ -29,44 +29,55 @@ body.is-editor-page {
   display: flex;
   gap: 0.6rem;
 
-  /* 全部重來掛在右上角，與左上的返回／說明對稱 */
+  /* 右上角：語言選單與登入狀態，與左上的返回／說明對稱（全部重來移到便利貼右下角了） */
   &--right {
     left: auto;
     right: ed.$editor-float-btn-inset;
   }
 }
 
-/* 全部重來：帶字的藥丸，高度與左邊兩顆圓鈕一致，視覺上仍是同一排 */
+/* 全部重來：疊在便利貼右下角的帶字藥丸（位置的理由見 editor.vue）。
+   比上排的圓鈕小一號、底色半透明：它蓋著便利貼的一角，要看得出是按鈕，又不能搶掉作品本身。
+   深色底加細亮邊，放在淺色（黃、白）與深色（黑）的便利貼上都看得到 */
 .p-editor__reset-btn {
   @include btn.btn-reset;
-  height: ed.$editor-float-btn-size;
-  gap: 0.35rem;
-  padding: 0 0.95rem;
-  /* 與左邊兩顆圓鈕同一套：更深的底加一圈細亮邊，才不會融進同色的頁面底。
-     說明見 _index.scss 的 .p-index__icon-btn。 */
-  border: 1px solid rgba(255, 255, 255, 0.55);
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  /* 疊在 UI 層（編輯框、z-index 10）上面 */
+  z-index: 20;
+  height: 2rem;
+  gap: 0.3rem;
+  padding: 0 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 999px;
-  background: var.$will-dark-deep;
+  background: rgba(30, 30, 30, 0.62);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   color: #fff;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   line-height: 1;
   white-space: nowrap;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
-
-  /* 破壞性動作而且全程可見，沒東西可清時就明確地停用，不要按了沒反應 */
-  &:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 
   &-icon {
-    width: 17px;
-    height: 17px;
+    width: 15px;
+    height: 15px;
     display: block;
     flex-shrink: 0;
   }
+}
+
+.p-editor-reset-fade-enter-active,
+.p-editor-reset-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.p-editor-reset-fade-enter-from,
+.p-editor-reset-fade-leave-to {
+  opacity: 0;
 }
 
 body.is-editor-page #__nuxt,
