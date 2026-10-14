@@ -494,9 +494,12 @@ const getDisplayStart = (from: FlowRect | null, final: DOMRect) => {
       rotation: from.rotation
     }
   }
-  // 新投稿（或借的那張剛好不在畫面上）：從右半邊下方的畫面外飛進來
+  // 新投稿（或借的那張剛好不在畫面上）：從右半邊下方的畫面外飛進來。
+  // 現身後要停 lift 秒才開始飛，起點得整張都在畫面外：這時已放大 1.1 倍，陰影又比便利貼外擴一圈
+  // （_sticky-note.scss 的 $sticky-note-shadow-margin，約 5%），上緣離中心約 0.61 張高，抓 0.75 留餘裕。
+  // 只算到半張的話，底邊會先露出一條（1080 高的畫面約 29px）停在那裡
   const canvasH = canvasRef.value?.clientHeight ?? window.innerHeight
-  return { x: 0, y: canvasH + final.height / 2 - cy, scale: 1, rotation: 0 }
+  return { x: 0, y: canvasH + final.height * 0.75 - cy, scale: 1, rotation: 0 }
 }
 
 /** 改動前的 liveGrid：被擠掉的那張要留著它的資料，才能繼續畫在牆上流出去 */
@@ -737,6 +740,8 @@ const beginCanvasSession = async () => {
     // 盡量挑展示完時還回得去原位的（見 useNoteFlow 的 fitsHome）
     canBorrow: id => flow.isPickable(id, rightScreen(), RETURN_MAX_SEC),
     preferBorrow: id => flow.canReturnHome(id, rightScreen(), displaySec.value + RETURN_MAX_SEC),
+    // 右邊螢幕上的剛好都卡在畫面上下緣時，放寬成中心在右邊螢幕上，不要挑到左邊螢幕的
+    canBorrowFallback: id => flow.isPickable(id, rightScreen(), RETURN_MAX_SEC, true),
     onBeforeStateChange,
     onAfterStateChange
   })

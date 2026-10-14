@@ -316,6 +316,11 @@ export function useNoteFlow(opts: NoteFlowOptions) {
   const fits = (rect: FlowRect, [minX, maxX]: FlowXRange) =>
     rect.x >= minX && rect.x + rect.size <= maxX && rect.y >= 0 && rect.y + rect.size <= height
 
+  /** 超出 range × [0, height] 多少（px，四邊加總），0 就是整張都在裡面 */
+  const overflow = (rect: FlowRect, [minX, maxX]: FlowXRange) =>
+    Math.max(0, minX - rect.x) + Math.max(0, rect.x + rect.size - maxX) +
+    Math.max(0, -rect.y) + Math.max(0, rect.y + rect.size - height)
+
   /** 依畫面大小算道寬、便利貼大小、流速。回傳便利貼邊長（px），給 CSS 用 */
   const layout = (w: number, h: number) => {
     width = w
@@ -549,17 +554,22 @@ export function useNoteFlow(opts: NoteFlowOptions) {
   /**
    * 挑去展示的候選：整張都在 range × 畫面高 裡（canvas 給的是右邊螢幕）。
    * 給了 leadSec 的話，leadSec 秒後也還要整張在範圍內 —— canvas 用來確認「等一下真正拿起時還在」；
-   * 範圍在流動方向上太短、根本不可能滿足時就只看現在的位置
+   * 範圍在流動方向上太短、根本不可能滿足時就只看現在的位置。
+   *
+   * loose：放寬成中心在範圍內就好（同 fitsHome，可以超出畫面外緣、不能跨接縫）。
+   * 直排的格距比「畫面高 − 便利貼」長，每一欄同時最多只有一格整張在畫面上，
+   * 右邊螢幕上的偶爾剛好都卡在上下邊緣；那時用這個挑，不要挑到範圍外的
    */
-  const isPickable = (id: string, range: FlowXRange, leadSec = 0) => {
+  const isPickable = (id: string, range: FlowXRange, leadSec = 0, loose = false) => {
     if (held.has(id) || arriving.has(id) || retiring.has(id)) return false
     const found = findItem(id)
     if (!found || found.item.slide) return false
     const t = now()
-    if (!fits(rectAt(found.l, found.item, t), range)) return false
+    const ok = loose ? fitsHome : fits
+    if (!ok(rectAt(found.l, found.item, t), range)) return false
     const span = vertical ? height : range[1] - range[0]
-    if (found.lane.v * leadSec > span - size) return true
-    return fits(rectAt(found.l, found.item, t + leadSec), range)
+    if (!loose && found.lane.v * leadSec > span - size) return true
+    return ok(rectAt(found.l, found.item, t + leadSec), range)
   }
 
   /**
@@ -618,7 +628,12 @@ export function useNoteFlow(opts: NoteFlowOptions) {
    * 3. 範圍內都滿了 → 便利貼最少的那一道、靠入口的那格，連同它後面的逆著流向退一格讓出位置
    *    （slideSec 秒內退完，見 insertAt）。keep 是等一下要從牆上拿起的那張，不能被推走
    *    （推出範圍就拿不到了），同一道只能插在它後面
-   * 4. 範圍內根本沒有格子（畫面異常窄）→ 插到隊伍最前面，下一個進場的就是它
+   * 4. 範圍內沒有整張放得下的格子 → 放寬成中心在範圍內（同 fitsHome），挑超出最少的那格，
+   *    空位就直接用、有便利貼就照 3 讓位。直排每一欄同時最多只有一格整張在畫面上，
+   *    右邊螢幕那幾欄裡整張在畫面上的又正好是 keep 那格時就會這樣
+   *    （新投稿沒有原位，展示完、下一張從牆上拿的時候，模擬約 9% 會遇到）；
+   *    沒有這一步就會掉到 5，飛到別的螢幕下面的畫面外
+   * 5. 範圍內根本沒有格子（畫面異常窄）→ 插到隊伍最前面，下一個進場的就是它
    */
   const reserveReturn = (id: string, arriveIn: number, range: FlowXRange, keep: string | null, slideSec = arriveIn) => {
     const t = now() + arriveIn
@@ -634,6 +649,8 @@ export function useNoteFlow(opts: NoteFlowOptions) {
     let own: Item | null = null
     let gap: { item: Item; along: number } | null = null
     let occupied: { lane: Lane; k: number; notes: number; along: number } | null = null
+    /** 第 4 步的候選：中心在範圍內、但整張放不下的格子裡，超出最少的 */
+    let near: { lane: Lane; k: number; item: Item; over: number } | null = null
     for (const [l, lane] of lanes.entries()) {
       const notes = notesIn(lane)
       for (const [k, item] of lane.items.entries()) {
@@ -642,16 +659,24 @@ export function useNoteFlow(opts: NoteFlowOptions) {
           if (fitsHome(rect, range)) own = item
           continue
         }
-        if (!fits(rect, range)) continue
+        // 能用的格子：空位（別張展示中的空位除外，留給它自己），或可以讓位的便利貼
+        const usable = item.id === null
+          ? !(item.gapOf && held.has(item.gapOf))
+          : !held.has(item.id) && !arriving.has(item.id) && !frozen.has(item.id) &&
+            !(kept && kept.l === l && k <= kept.k)
+        if (!usable) continue
+        if (!fits(rect, range)) {
+          if (fitsHome(rect, range)) {
+            const over = overflow(rect, range)
+            if (!near || over < near.over) near = { lane, k, item, over }
+          }
+          continue
+        }
         const along = alongOf(item, t)
         if (item.id === null) {
-          // 別張展示中的空位留給它自己
-          if (!(item.gapOf && held.has(item.gapOf)) && (!gap || along < gap.along)) gap = { item, along }
-        } else if (!held.has(item.id) && !arriving.has(item.id) && !frozen.has(item.id)) {
-          if (kept && kept.l === l && k <= kept.k) continue
-          if (!occupied || notes < occupied.notes || (notes === occupied.notes && along > occupied.along)) {
-            occupied = { lane, k, notes, along }
-          }
+          if (!gap || along < gap.along) gap = { item, along }
+        } else if (!occupied || notes < occupied.notes || (notes === occupied.notes && along > occupied.along)) {
+          occupied = { lane, k, notes, along }
         }
       }
     }
@@ -669,6 +694,11 @@ export function useNoteFlow(opts: NoteFlowOptions) {
     }
     if (occupied) {
       insertAt(occupied.lane, occupied.k, id, slideSec)
+      return
+    }
+    if (near) {
+      if (near.item.id === null) near.item.id = id
+      else insertAt(near.lane, near.k, id, slideSec)
       return
     }
     queue.unshift({ id, gapOf: null })

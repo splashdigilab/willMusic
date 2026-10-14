@@ -54,6 +54,11 @@ export interface ConductorOptions {
     canBorrow?: (id: string) => boolean
     /** canBorrow 之中更好的選擇（例如展示完還回得去原位的），有就先挑它（其中再挑最久沒展示的） */
     preferBorrow?: (id: string) => boolean
+    /**
+     * canBorrow 一張都沒有時的退路（例如中心在範圍內就好）。canvas 的範圍只有右邊螢幕，
+     * 偶爾剛好每一張都卡在畫面邊緣；沒有這一層就會落到最後的降級，挑到範圍外的
+     */
+    canBorrowFallback?: (id: string) => boolean
 }
 
 interface ConductorState {
@@ -91,6 +96,7 @@ interface ConductorState {
     onInterstitialStart: (() => void) | null
     canBorrow: ((id: string) => boolean) | null
     preferBorrow: ((id: string) => boolean) | null
+    canBorrowFallback: ((id: string) => boolean) | null
 }
 
 /**
@@ -132,7 +138,8 @@ function getSingleton(): ConductorState {
             getVideoUrl: null,
             onInterstitialStart: null,
             canBorrow: null,
-            preferBorrow: null
+            preferBorrow: null,
+            canBorrowFallback: null
         })
     }
     return g[KEY]
@@ -305,6 +312,7 @@ export function useConductor() {
         s.onInterstitialStart = opts?.onInterstitialStart ?? null
         s.canBorrow = opts?.canBorrow ?? null
         s.preferBorrow = opts?.preferBorrow ?? null
+        s.canBorrowFallback = opts?.canBorrowFallback ?? null
 
         console.log(`[Conductor] start  gridMax=${s.gridMax}  loop=${s.loopMs}ms`)
 
@@ -475,6 +483,7 @@ export function useConductor() {
         s.onInterstitialStart = null
         s.canBorrow = null
         s.preferBorrow = null
+        s.canBorrowFallback = null
     }
 
     /* ── tick：每 N 秒執行一次 ── */
@@ -612,7 +621,12 @@ export function useConductor() {
                     const bagOrder = new Map(s.idleBag.map((id, i) => [id, i]))
                     const lastAt = (id: string) => s.lastPlayedAt.get(id) ?? 0
                     const preferRank = (id: string) => (prefer?.(id) ? 0 : 1)
-                    const inRange = liveIds.filter(id => !excludeIds.has(id) && canBorrow(id))
+                    const inRangeOf = (ok: (id: string) => boolean) =>
+                        liveIds.filter(id => !excludeIds.has(id) && ok(id))
+                    let inRange = inRangeOf(canBorrow)
+                    // 範圍內一張都借不到（右邊螢幕上的剛好都卡在畫面上下緣），放寬再找一次。
+                    // 實測 33 輪有 5 輪會這樣；不放寬就落到下面的降級，挑到範圍外的（從左邊螢幕、畫面頂端外拿起）
+                    if (!inRange.length && s.canBorrowFallback) inRange = inRangeOf(s.canBorrowFallback)
                     const oldest = Math.min(...inRange.map(lastAt))
                     const slackMs = PREFER_SLACK_TURNS * s.loopMs
                     /** 0 = 跟最久沒展示的那張差不多久，回得去原位的可以插到它前面 */
@@ -645,11 +659,15 @@ export function useConductor() {
                     }
                 }
 
-                // 5) 若仍挑不到（資料量太小/全在冷卻內），降級：只避免連播上一張，能借的優先
+                // 5) 若仍挑不到（資料量太小/全在冷卻內），降級：只避免連播上一張，能借的優先。
+                //    只剩上一張時可以連播，但剛推進牆的（live 剛展示完）不行：它還在飛回牆上，
+                //    馬上又借出去的話展示區不會換，牆上卻多出一份（牆上本來沒有便利貼時的第一張投稿）
                 if (!pickedId) {
                     const fallback = liveIds.filter(id => id !== prevPlayingId)
-                    const pool = fallback.length ? fallback : liveIds
-                    pickedId = pool.find(id => s.canBorrow?.(id)) ?? pool[0] ?? null
+                    const pool = fallback.length ? fallback : liveIds.filter(id => id !== justPushedId)
+                    pickedId = pool.find(id => s.canBorrow?.(id)) ??
+                        pool.find(id => s.canBorrowFallback?.(id)) ??
+                        pool[0] ?? null
                 }
 
                 const borrowed = pickedId ? s.liveGrid.find(n => noteId(n) === pickedId) : null
@@ -659,7 +677,7 @@ export function useConductor() {
                     const id = noteId(borrowed)
                     if (id) s.lastPlayedAt.set(id, Date.now())
                 } else {
-                    // 理論上不該到這裡；保底
+                    // 牆上只有剛展示完的那一張（見 5）：這一輪不展示，讓它先回到牆上，下一輪再借
                     s.mode = 'waiting'
                     s.nowPlaying = null
                 }
