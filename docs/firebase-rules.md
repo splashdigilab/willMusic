@@ -64,6 +64,8 @@ tokens         allow read, update, create: if true;
 | `users` | 不能碰 | 讀寫自己那一份（限制欄位） | 讀取、刪除 |
 | `user_quota` | 不能碰 | 讀自己那一份、依冷卻與每日上限預約 | 讀取、刪除 |
 | `banned_users` | 不能碰 | 讀自己那一份（前台用來說明為什麼送不出去） | 全部 |
+| `blocked_notes` | 不能碰 | 不能碰 | 全部 |
+| `user_strikes` | 不能碰 | 讀自己那一份（我的便利貼提醒違規次數） | 全部 |
 | `note_owners` | 不能碰 | 讀自己的（我的便利貼）；只能跟便利貼同一批建立 | 讀取、刪除 |
 | `system/*` | 只能讀（`active_token` 除外） | 只能讀（`active_token` 除外） | 全部 |
 | 其他 | 全部拒絕 | 全部拒絕 | 全部拒絕 |
@@ -236,6 +238,25 @@ Firebase Console 的 Firestore／Storage → 規則 → 「查看歷史記錄」
 Firestore 才做得到，還牽涉測試／正式兩組名單），所以被封鎖的人仍能上傳手繪圖檔。
 圖檔沒有對應的便利貼就不會顯示在任何地方，影響只有儲存空間 —— 這跟任何會員
 不送出、只上傳的情況相同，不是封鎖造成的新缺口。
+
+### 下架與自動停權（2026-10-15）
+
+新增 `blocked_notes` / `blocked_notes_dev`、`user_strikes` / `user_strikes_dev` 四個 match 區塊。
+後台按「下架」時，在一個 transaction 裡把便利貼搬進 `blocked_notes`、刪掉待播與歷史、
+`user_strikes/{uid}.count` 加一，到 3 次就寫入 `banned_users/{uid}`。
+**擋送出的規則（`canCreateNote`）沒有改**，還是只看 `banned_users`。
+
+模擬器要測：
+
+1. member 讀自己的 `user_strikes/{uid}` → 允許；讀別人的、或寫自己的 → **被拒**
+   （能寫自己的話，把次數改回 0 就洗掉了 —— 雖然真正擋人的是停權名單，次數還是只能後台改）
+2. member 讀或寫任何 `blocked_notes` → **被拒**
+3. staff 讀寫兩者 → 允許
+
+**上線順序：規則要先部署。** 程式先上而規則還沒上的話，「下架」的 transaction 寫
+`blocked_notes` 會被 catch-all 拒絕，整筆失敗（便利貼不會被刪掉、次數也不會動），
+後台顯示「下架失敗」；會員面板與「我的便利貼」讀不到次數，當作 0；「已下架」分頁載入失敗。
+其他功能（刪除、手動封鎖、刪個資、投稿）不受影響。
 
 ## 3c. 投稿者移出便利貼（`note_owners`）
 

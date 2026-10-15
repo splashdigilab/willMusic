@@ -175,6 +175,15 @@ $ink-red: #D6335A;
   color: $ink-red;
 }
 
+/* 被下架過的提醒，在額度格子下面 */
+.p-my-notes__strikes {
+  margin: 0.9rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.6;
+  color: $ink-red;
+}
+
 .p-my-notes__quota-note {
   margin: 0.35rem 0 0;
   font-size: 0.9rem;

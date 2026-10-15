@@ -15,7 +15,7 @@ rules_version = '2';
 // ── 兩組資料集合 ────────────────────────────────────────────
 // 前端由 NUXT_PUBLIC_FIRESTORE_SUFFIX 決定連到哪一組（見 app/utils/collections.ts）：
 //   空值 = queue_pending / queue_history / tokens / stats_daily / users / user_quota /
-//          banned_users / note_owners
+//          banned_users / note_owners / blocked_notes / user_strikes
 //   _dev = 以上每一個都加 _dev
 // 規則語言沒有迴圈或巨集，所以 match 區塊只能一組組寫。判斷條件全部抽成下面的
 // function 共用，兩組 match 的差別只有「對應的 tokens 集合路徑」由呼叫端傳入。
@@ -543,6 +543,22 @@ service cloud.firestore {
       allow create, update, delete: if isStaff();
     }
 
+    // 被下架的便利貼（違規）。後台把便利貼原樣搬過來、刪掉待播與歷史那兩份 ——
+    // 那兩個集合公開可讀，只在便利貼上加「隱藏」標記的話，內容還是誰都讀得到。
+    // 只有後台讀寫；投稿者看得到的只有 user_strikes 的次數。
+    match /blocked_notes/{noteId} {
+      allow read, write: if isStaff();
+    }
+
+    // 違規次數。後台下架時在同一個 transaction 裡加一，到門檻就同時寫入 banned_users。
+    // 擋送出的仍然只有 banned_users，這份**不進** canCreateNote：規則數不了文件，
+    // 送出那條規則的讀取次數也已經用了不少。
+    // 本人讀得到自己的（「我的便利貼」提醒違規幾次）。刪除個人資料時不刪，理由同停權名單。
+    match /user_strikes/{uid} {
+      allow read: if isStaff() || (isMember() && request.auth.uid == uid);
+      allow create, update, delete: if isStaff();
+    }
+
     // 便利貼的投稿者。doc ID 與便利貼相同（queue_pending 搬到 queue_history 時
     // ID 不變，所以這一份不用跟著搬）。本人讀得到自己的（「我的便利貼」用
     // where('uid', '==', 自己) 查），後台全部讀得到。
@@ -610,6 +626,15 @@ service cloud.firestore {
     }
 
     match /banned_users_dev/{uid} {
+      allow read: if isStaff() || (isMember() && request.auth.uid == uid);
+      allow create, update, delete: if isStaff();
+    }
+
+    match /blocked_notes_dev/{noteId} {
+      allow read, write: if isStaff();
+    }
+
+    match /user_strikes_dev/{uid} {
       allow read: if isStaff() || (isMember() && request.auth.uid == uid);
       allow create, update, delete: if isStaff();
     }

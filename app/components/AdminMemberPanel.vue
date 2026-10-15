@@ -24,6 +24,7 @@
                 <p id="admin-member-panel-name" class="p-admin__member-name">
                   {{ displayName }}
                   <span v-if="ban" class="p-admin__tag p-admin__tag--banned">已封鎖</span>
+                  <span v-if="strikes > 0" class="p-admin__tag p-admin__tag--strike">違規 {{ strikes }}/{{ STRIKE_LIMIT }}</span>
                 </p>
                 <p class="p-admin__member-uid">
                   {{ uid }}
@@ -72,17 +73,45 @@
                   <span class="p-admin__note-time">
                     {{ note.isPending ? '待播' : '已播' }} · {{ formatDateTime(note.timestamp) }}
                   </span>
-                  <button
-                    type="button"
-                    class="p-admin__btn-delete"
-                    :disabled="busy"
-                    @click="noteToDelete = note"
-                  >
-                    刪除
-                  </button>
+                  <div class="p-admin__note-actions">
+                    <button
+                      type="button"
+                      class="p-admin__btn-delete"
+                      :disabled="busy"
+                      @click="blockNoteId = note.id"
+                    >
+                      下架
+                    </button>
+                    <button
+                      type="button"
+                      class="p-admin__btn-note-secondary"
+                      :disabled="busy"
+                      @click="noteToDelete = note"
+                    >
+                      刪除
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
+
+            <template v-if="blockedNotes.length > 0">
+              <h3 class="p-admin__panel-section-title">已下架（{{ blockedNotes.length }}）</h3>
+              <p class="p-admin__video-hint p-admin__video-hint--compact">
+                誤判要恢復、或要刪除紀錄，請到「已下架」分頁。
+              </p>
+              <div class="p-admin__note-grid">
+                <div v-for="record in blockedNotes" :key="record.id" class="p-admin__note-card">
+                  <div class="p-admin__note-visual">
+                    <StickyNote :note="record.note" />
+                  </div>
+                  <div class="p-admin__note-meta">
+                    <span class="p-admin__note-time">{{ formatDateTime(record.blockedAt) }} 下架</span>
+                    <span v-if="record.reason" class="p-admin__note-reason">{{ record.reason }}</span>
+                  </div>
+                </div>
+              </div>
+            </template>
 
             <h3 class="p-admin__panel-section-title">處置</h3>
             <div class="p-admin__btn-row">
@@ -107,11 +136,13 @@
             </div>
             <p class="p-admin__video-hint p-admin__video-hint--compact">
               封鎖只擋「送出」：這個 LINE 帳號仍然可以瀏覽與製作便利貼，但送不上牆。可以隨時解除。
+              違規累計 {{ STRIKE_LIMIT }} 次會自動封鎖。解除封鎖不會把違規次數歸零，之後再被下架一次就會再次封鎖；
+              誤判的便利貼請到「已下架」分頁恢復，次數會減一。
             </p>
 
             <h3 class="p-admin__panel-section-title">個人資料</h3>
             <p class="p-admin__video-hint p-admin__video-hint--compact">
-              處理個資刪除請求用。「刪除個人資料」只清掉暱稱、頭貼與投稿額度紀錄，便利貼會留著（但就此無法追溯投稿者）。停權紀錄不會刪除。
+              處理個資刪除請求用。「刪除個人資料」只清掉暱稱、頭貼與投稿額度紀錄，便利貼會留著（但就此無法追溯投稿者）。停權紀錄、違規次數與已下架的便利貼不會刪除。
             </p>
             <div class="p-admin__btn-row">
               <button
@@ -171,10 +202,16 @@
     </template>
   </AppModal>
 
+  <AdminBlockNoteModal
+    v-model:note-id="blockNoteId"
+    @changed="onNoteBlocked"
+    @notify="(type, message) => emit('notify', type, message)"
+  />
+
   <AppModal
     :model-value="!!noteToDelete"
     title="確認刪除"
-    message="確定要刪除這張便利貼嗎？刪除後無法復原。"
+    message="確定要刪除這張便利貼嗎？刪除後無法復原，也不計違規次數。違規的內容請改用「下架」。"
     confirm-text="確定刪除"
     cancel-text="取消"
     confirm-button-class="c-button--danger"
@@ -198,9 +235,11 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import type { BannedUser, UserProfile } from '~/types'
+import { STRIKE_LIMIT, type BannedUser, type UserProfile } from '~/types'
 import type { MemberNote } from '~/composables/useMemberAdmin'
+import type { BlockedNoteRow } from '~/composables/useNoteModeration'
 import AppModal from '~/components/AppModal.vue'
+import AdminBlockNoteModal from '~/components/AdminBlockNoteModal.vue'
 import StickyNote from '~/components/StickyNote.vue'
 import { isInlineAvatar } from '~/utils/name-tag'
 
@@ -225,12 +264,16 @@ const emit = defineEmits<{
 
 const { getProfile, findMemberNotes, deleteNote, deleteProfile } = useMemberAdmin()
 const { getBan, ban: banMember, unban } = useBannedUsers()
+const { getStrikes, findBlockedNotesOf } = useNoteModeration()
 
 const loading = ref(false)
 const busy = ref(false)
 const profile = ref<UserProfile | null>(null)
 const ban = ref<BannedUser | null>(null)
 const notes = ref<MemberNote[]>([])
+/** 違規次數（被下架過幾張，恢復的不算） */
+const strikes = ref(0)
+const blockedNotes = ref<BlockedNoteRow[]>([])
 
 const pendingCount = computed(() => notes.value.filter(n => n.isPending).length)
 const historyCount = computed(() => notes.value.length - pendingCount.value)
@@ -255,11 +298,27 @@ const load = async () => {
   const request = ++loadRequest
   loading.value = true
   try {
-    const [p, b, n] = await Promise.all([getProfile(uid), getBan(uid), findMemberNotes(uid)])
+    // 違規次數與下架紀錄讀不到時當作沒有，不拖垮整個面板：
+    // 封鎖、刪便利貼、刪個資都用不到它們（例如程式先上、新集合的規則還沒部署）
+    const [p, b, n, s, blocked] = await Promise.all([
+      getProfile(uid),
+      getBan(uid),
+      findMemberNotes(uid),
+      getStrikes(uid).catch((err) => {
+        console.warn('[admin] 讀取違規次數失敗', err)
+        return 0
+      }),
+      findBlockedNotesOf(uid).catch((err) => {
+        console.warn('[admin] 讀取下架紀錄失敗', err)
+        return []
+      })
+    ])
     if (request !== loadRequest) return
     profile.value = p
     ban.value = b
     notes.value = n
+    strikes.value = s
+    blockedNotes.value = blocked
   } catch (err) {
     console.error('[admin] 載入會員資料失敗', err)
     if (request === loadRequest) emit('notify', 'error', '載入會員資料失敗，請確認編號是否正確')
@@ -272,6 +331,8 @@ watch(() => props.uid, (uid) => {
   profile.value = null
   ban.value = null
   notes.value = []
+  strikes.value = 0
+  blockedNotes.value = []
   if (uid) void load()
 }, { immediate: true })
 
@@ -282,7 +343,7 @@ const close = () => {
 
 const onKeydown = (e: KeyboardEvent) => {
   // 確認視窗開著時 Esc 不要連面板一起關掉
-  if (e.key !== 'Escape' || banModalOpen.value || noteToDelete.value || profileDeleteOpen.value) return
+  if (e.key !== 'Escape' || banModalOpen.value || noteToDelete.value || blockNoteId.value || profileDeleteOpen.value) return
   close()
 }
 watch(() => !!props.uid, (open) => {
@@ -382,7 +443,16 @@ const handleUnban = async () => {
   }
 }
 
-// ── 刪除單張便利貼 ────────────────────────────────────
+// ── 下架單張便利貼（違規，計次）─────────────────────────
+// 確認視窗與計次在 AdminBlockNoteModal；下架完重讀這個人的資料（次數、可能剛被自動停權）
+const blockNoteId = ref<string | null>(null)
+
+const onNoteBlocked = async () => {
+  const uid = props.uid
+  if (uid) await afterChange(uid)
+}
+
+// ── 刪除單張便利貼（不是違規，不計次）──────────────────
 const noteToDelete = ref<MemberNote | null>(null)
 
 const confirmDeleteNote = async () => {
@@ -411,7 +481,10 @@ const profileDeleteMessage = computed(() => {
   const base = profileDeleteIncludesNotes.value
     ? `將刪除這位會員的暱稱、頭貼、投稿額度紀錄，以及這個帳號送出的 ${notes.value.length} 張便利貼。此操作無法復原。`
     : '將刪除這位會員的暱稱、頭貼與投稿額度紀錄，並拿掉便利貼上的署名。便利貼會保留，但之後無法再追溯投稿者。此操作無法復原。'
-  return ban.value ? `${base}停權紀錄會保留。` : base
+  // 這三樣都是違規紀錄，刪個資不刪（否則申請刪除個資就等於洗掉違規）
+  return ban.value || strikes.value > 0 || blockedNotes.value.length > 0
+    ? `${base}停權紀錄、違規次數與已下架的便利貼會保留。`
+    : base
 })
 
 const openProfileDelete = (includeNotes: boolean) => {

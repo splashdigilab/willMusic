@@ -23,6 +23,8 @@ export default {
     makeNote: '＼ 포스트잇 만들기 ／'
   },
 
+  strikes: (n: number, limit: number) => `이벤트 규칙에 맞지 않아 삭제된 포스트잇이 ${n}장 있어요. 삭제된 포스트잇이 ${limit}장이 되면 더 이상 보낼 수 없어요.`,
+
   empty: {
     none: '아직 보낸 포스트잇이 없어요',
     hidden: '지금 표시할 포스트잇이 없어요',

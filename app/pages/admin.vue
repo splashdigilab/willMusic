@@ -514,6 +514,10 @@
         <!-- 所有便利貼 -->
         <section v-show="activeAdminTab === 'notes'" class="p-admin__card">
           <h2 class="p-admin__card-title">所有便利貼管理</h2>
+          <p class="p-admin__video-hint">
+            違規的便利貼請按「下架」：移到「已下架」分頁，投稿者違規次數加一，累計 {{ STRIKE_LIMIT }} 次自動停止投稿資格。
+            「刪除」不計次，用在本人要求撤下、測試資料等不是違規的情況。
+          </p>
           <div class="p-admin__notes-container">
             
             <div class="p-admin__notes-section">
@@ -538,12 +542,14 @@
                       {{ submitterLabel(note) }}
                     </button>
                     <span v-else class="p-admin__note-submitter">{{ submitterLabel(note) }}</span>
-                    <button
-                      @click="openDeleteModal(note.id, true)"
-                      class="p-admin__btn-delete"
-                    >
-                      刪除
-                    </button>
+                    <div class="p-admin__note-actions">
+                      <button type="button" class="p-admin__btn-delete" @click="blockNoteId = note.id">
+                        下架
+                      </button>
+                      <button type="button" class="p-admin__btn-note-secondary" @click="openDeleteModal(note.id, true)">
+                        刪除
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -607,12 +613,14 @@
                       {{ submitterLabel(note) }}
                     </button>
                     <span v-else class="p-admin__note-submitter">{{ submitterLabel(note) }}</span>
-                    <button
-                      @click="openDeleteModal(note.id, false)"
-                      class="p-admin__btn-delete"
-                    >
-                      刪除
-                    </button>
+                    <div class="p-admin__note-actions">
+                      <button type="button" class="p-admin__btn-delete" @click="blockNoteId = note.id">
+                        下架
+                      </button>
+                      <button type="button" class="p-admin__btn-note-secondary" @click="openDeleteModal(note.id, false)">
+                        刪除
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -655,6 +663,52 @@
             </div>
 
           </div>
+        </section>
+
+        <!-- 已下架：違規的便利貼。恢復（誤判）與活動結束後清資料都在這裡 -->
+        <section v-show="activeAdminTab === 'blocked'" class="p-admin__card">
+          <h2 class="p-admin__card-title">已下架的便利貼</h2>
+          <p class="p-admin__video-hint">
+            按「下架」的便利貼會移到這裡，不再出現在 LED 牆與首頁。每下架一張，投稿者違規次數加一，累計 {{ STRIKE_LIMIT }} 次自動停止投稿資格。
+            誤判請按「恢復」：便利貼回到首頁牆（不會在 LED 上重播），違規次數減一，但已停權的帳號不會自動解除。
+          </p>
+          <div v-if="blockedLoading && blockedNotes.length === 0" class="p-admin__empty-state">載入中...</div>
+          <div v-else-if="blockedNotes.length === 0" class="p-admin__empty-state">目前沒有下架的便利貼</div>
+          <div v-else class="p-admin__note-grid">
+            <div v-for="record in blockedNotes" :key="record.id" class="p-admin__note-card">
+              <div class="p-admin__note-visual">
+                <StickyNote :note="record.note" />
+              </div>
+              <div class="p-admin__note-meta">
+                <span class="p-admin__note-time">
+                  {{ formatTime(record.blockedAt) }} 下架{{ record.from === 'pending' ? '（播出前）' : '' }}
+                </span>
+                <span v-if="record.reason" class="p-admin__note-reason">{{ record.reason }}</span>
+                <button
+                  v-if="record.uid"
+                  type="button"
+                  class="p-admin__note-submitter p-admin__note-submitter--link"
+                  :title="record.uid"
+                  @click="memberPanelUid = record.uid"
+                >
+                  <span v-if="bans.has(record.uid)" class="p-admin__tag p-admin__tag--banned">已封鎖</span>
+                  {{ memberLabel(record.uid) }}
+                </button>
+                <span v-else class="p-admin__note-submitter">舊資料（不計次）</span>
+                <div class="p-admin__note-actions">
+                  <button type="button" class="p-admin__btn-note-secondary" @click="restoreTarget = record">
+                    恢復
+                  </button>
+                  <button type="button" class="p-admin__btn-delete" @click="purgeTarget = record">
+                    刪除紀錄
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p v-if="blockedNotes.length >= BLOCKED_LIST_LIMIT" class="p-admin__video-hint p-admin__video-hint--compact">
+            只顯示最近下架的 {{ BLOCKED_LIST_LIMIT }} 張。
+          </p>
         </section>
 
         <!-- 會員：清單＋編號查詢。點任何一位都打開 AdminMemberPanel，
@@ -782,13 +836,42 @@
     <AppModal
       v-model="deleteModalOpen"
       title="確認刪除"
-      message="確定要刪除這張便利貼嗎？刪除後無法復原。"
+      message="確定要刪除這張便利貼嗎？刪除後無法復原，也不計違規次數。違規的內容請改用「下架」。"
       confirmText="確定刪除"
       cancelText="取消"
       confirmButtonClass="c-button--danger"
       :loading="isDeleting"
       @confirm="confirmDelete"
       @cancel="deleteModalOpen = false"
+    />
+
+    <AdminBlockNoteModal
+      v-model:note-id="blockNoteId"
+      @changed="onNoteBlocked"
+      @notify="showAdminToast"
+    />
+
+    <AppModal
+      :model-value="!!restoreTarget"
+      title="恢復這張便利貼？"
+      message="便利貼會回到首頁牆（不會在 LED 上重播），投稿者的違規次數減一。帳號如果已經停權，不會自動解除。"
+      confirm-text="確定恢復"
+      cancel-text="取消"
+      :loading="isRestoring"
+      @confirm="confirmRestore"
+      @cancel="restoreTarget = null"
+    />
+
+    <AppModal
+      :model-value="!!purgeTarget"
+      title="刪除下架紀錄？"
+      message="便利貼與手繪圖檔會永久刪除，之後無法恢復。違規次數不會減少（誤判請改用「恢復」）。用於活動結束後清除資料。"
+      confirm-text="確定刪除"
+      cancel-text="取消"
+      confirm-button-class="c-button--danger"
+      :loading="isPurging"
+      @confirm="confirmPurge"
+      @cancel="purgeTarget = null"
     />
   </div>
 </template>
@@ -809,8 +892,9 @@ import {
   Timestamp,
   type QueryDocumentSnapshot
 } from 'firebase/firestore'
-import { DEFAULT_RATE_LIMIT, type BannedUser, type RateLimitConfig } from '~/types'
+import { DEFAULT_RATE_LIMIT, STRIKE_LIMIT, type BannedUser, type RateLimitConfig } from '~/types'
 import type { MemberRow } from '~/composables/useMemberAdmin'
+import { BLOCKED_LIST_LIMIT, NoteGoneError, type BlockedNoteRow } from '~/composables/useNoteModeration'
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import QRCode from 'qrcode'
 import { use } from 'echarts/core'
@@ -820,6 +904,7 @@ import { GridComponent, TooltipComponent, VisualMapComponent } from 'echarts/com
 import VChart from 'vue-echarts'
 import AppModal from '~/components/AppModal.vue'
 import AdminMemberPanel from '~/components/AdminMemberPanel.vue'
+import AdminBlockNoteModal from '~/components/AdminBlockNoteModal.vue'
 import {
   clampInterstitialIntervalMinutes,
   CANVAS_INTERSTITIAL_DIVISORS_OF_60,
@@ -842,6 +927,7 @@ const { createToken } = useFirestore()
 const { logout } = useAdminAuth()
 const { listMembers, listMarketingOptIns, loadOwners, deleteNote } = useMemberAdmin()
 const { listBans } = useBannedUsers()
+const { listBlockedNotes, restoreNote, purgeBlockedNote } = useNoteModeration()
 const router = useRouter()
 
 /** 登出前收回 QR 廣播最多等多久。離線時寫入會一直等到連上線，不能讓登出鈕跟著卡住 */
@@ -901,13 +987,14 @@ const showAdminToast = (type: 'success' | 'error', message: string) => {
   }, 4200)
 }
 
-type AdminTabKey = 'overview' | 'uploadGate' | 'display' | 'notes' | 'members'
+type AdminTabKey = 'overview' | 'uploadGate' | 'display' | 'notes' | 'blocked' | 'members'
 
 const adminTabs: Array<{ key: AdminTabKey; label: string }> = [
   { key: 'overview', label: '營運總覽' },
   { key: 'uploadGate', label: '上傳控管' },
   { key: 'display', label: '播放設定' },
   { key: 'notes', label: '便利貼管理' },
+  { key: 'blocked', label: '已下架' },
   { key: 'members', label: '會員' }
 ]
 const activeAdminTab = ref<AdminTabKey>('overview')
@@ -1114,10 +1201,13 @@ const loadSubmitters = async (notes: Array<{ id?: string }>) => {
     }
   }
 
+  await loadSubmitterNames(notes.map(note => (note.id ? noteOwnerUids.value[note.id] : '')))
+}
+
+/** 一批 uid 的暱稱，查過的不再查。「已下架」的紀錄上直接存著 uid，從這裡進來 */
+const loadSubmitterNames = async (uids: Array<string | null | undefined>) => {
   const missingUids = [...new Set(
-    notes
-      .map(note => (note.id ? noteOwnerUids.value[note.id] : ''))
-      .filter((uid): uid is string => !!uid && submitterNames.value[uid] === undefined)
+    uids.filter((uid): uid is string => !!uid && submitterNames.value[uid] === undefined)
   )]
   await Promise.all(missingUids.map(async (uid) => {
     try {
@@ -1142,6 +1232,11 @@ const submitterLabel = (note: { id?: string }): string => {
   const uid = ownerOf(note)
   if (uid === undefined) return '載入中…'
   if (!uid) return '舊資料'
+  return memberLabel(uid)
+}
+
+/** 「暱稱（…末四碼）」。暱稱還沒查完是「載入中…」 */
+const memberLabel = (uid: string): string => {
   const name = submitterNames.value[uid]
   if (name === undefined) return '載入中…'
   // 同名的人不少，末四碼讓店員分得出來；完整 uid 放在 title 供複製
@@ -1393,6 +1488,98 @@ const confirmDelete = async () => {
     showAdminToast('error', '刪除失敗，請稍後再試')
   } finally {
     isDeleting.value = false
+  }
+}
+
+// ── 下架（違規）──────────────────────────────────────────
+// 確認視窗與計次在 AdminBlockNoteModal，這裡只管下架之後要重新整理哪些地方。
+
+/** 開著的下架確認視窗。null = 關著 */
+const blockNoteId = ref<string | null>(null)
+
+const onNoteBlocked = async ({ autoBanned }: { autoBanned: boolean }) => {
+  await Promise.all([
+    loadPendingNotesPage(),
+    loadHistoryNotesPage(),
+    // 這一下觸發了自動停權，卡片與會員清單上的「已封鎖」要跟著出現
+    autoBanned ? loadBans() : Promise.resolve(),
+    blockedLoaded ? loadBlockedNotes() : Promise.resolve()
+  ])
+}
+
+// ── 已下架分頁 ────────────────────────────────────────────
+const blockedNotes = ref<BlockedNoteRow[]>([])
+const blockedLoading = ref(false)
+/** 第一次切到「已下架」分頁才讀，沒打開過就不花這筆讀取 */
+let blockedLoaded = false
+
+const loadBlockedNotes = async () => {
+  blockedLoading.value = true
+  try {
+    blockedNotes.value = await listBlockedNotes()
+    blockedLoaded = true
+    void loadSubmitterNames(blockedNotes.value.map(record => record.uid))
+  } catch (err) {
+    console.error('[admin] 載入已下架的便利貼失敗', err)
+    showAdminToast('error', '載入已下架的便利貼失敗，請稍後再試')
+  } finally {
+    blockedLoading.value = false
+  }
+}
+
+watch(activeAdminTab, (tab) => {
+  if (tab === 'blocked' && !blockedLoaded) void loadBlockedNotes()
+})
+
+const restoreTarget = ref<BlockedNoteRow | null>(null)
+const isRestoring = ref(false)
+
+const confirmRestore = async () => {
+  const record = restoreTarget.value
+  if (!record) return
+  isRestoring.value = true
+  try {
+    const result = await restoreNote(record.id)
+    restoreTarget.value = null
+    if (!result.uid || result.strikes === null) {
+      showAdminToast('success', '已恢復，便利貼回到首頁牆')
+    } else if (result.stillBanned) {
+      showAdminToast('success', `已恢復，此帳號違規剩 ${result.strikes} 次，但仍在停權中；要解除請到會員面板`)
+    } else {
+      showAdminToast('success', `已恢復，此帳號違規剩 ${result.strikes} 次`)
+    }
+    await Promise.all([loadBlockedNotes(), loadHistoryNotesPage()])
+  } catch (err) {
+    if (err instanceof NoteGoneError) {
+      restoreTarget.value = null
+      showAdminToast('error', '這張已經不在下架清單裡了')
+      await loadBlockedNotes()
+      return
+    }
+    console.error('[admin] 恢復便利貼失敗', err)
+    showAdminToast('error', '恢復失敗，請稍後再試')
+  } finally {
+    isRestoring.value = false
+  }
+}
+
+const purgeTarget = ref<BlockedNoteRow | null>(null)
+const isPurging = ref(false)
+
+const confirmPurge = async () => {
+  const record = purgeTarget.value
+  if (!record) return
+  isPurging.value = true
+  try {
+    await purgeBlockedNote(record)
+    purgeTarget.value = null
+    showAdminToast('success', '已刪除下架紀錄')
+    await loadBlockedNotes()
+  } catch (err) {
+    console.error('[admin] 刪除下架紀錄失敗', err)
+    showAdminToast('error', '刪除失敗，請稍後再試')
+  } finally {
+    isPurging.value = false
   }
 }
 
@@ -1904,6 +2091,8 @@ const onMemberChanged = async (uid: string) => {
     loadBans(),
     loadPendingNotesPage(),
     loadHistoryNotesPage(),
+    // 面板裡也能下架
+    blockedLoaded ? loadBlockedNotes() : Promise.resolve(),
     memberListLoaded ? loadMembers(true) : Promise.resolve(),
     // 刪了個資的人要從行銷名單上消失
     marketingRows.value ? loadMarketingRows() : Promise.resolve()

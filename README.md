@@ -319,8 +319,10 @@ transaction）：規則在便利貼那邊用 `getAfter` 要求「這一批寫完
 doc ID 同樣是 Firebase uid。**文件存在就代表停權**，解除就是刪掉它：
 
 ```ts
-{ displayName: string, reason: string, bannedAt: Timestamp, bannedBy: string }
+{ displayName: string, reason: string, bannedAt: Timestamp, bannedBy: string, auto?: boolean }
 ```
+
+`auto: true` 是違規累計到門檻、由下架那一下自動寫入的（見下面的 `blocked_notes`）。
 
 `canCreateNote` 檢查 `!exists()`，所以只擋送出——被封鎖的人仍能瀏覽、製作、
 下載自己的圖。LINE userId 在同一個 channel 下不會變，要繞過就得另辦一個 LINE 帳號。
@@ -332,6 +334,39 @@ doc ID 同樣是 Firebase uid。**文件存在就代表停權**，解除就是�
   不逐筆讀。
 
 封鎖時預設一併撤下待播中的便利貼（不撤的話照樣會上 LED 牆）；已播放的由店員勾選。
+
+### `blocked_notes` / `user_strikes` — 下架與違規次數
+
+後台對便利貼有兩個動作，差別在算不算違規：
+
+- **下架**（違規）：便利貼原樣搬進 `blocked_notes/{noteId}`（只有後台讀寫），待播與歷史那兩份刪掉；
+  投稿者的 `user_strikes/{uid}.count` 加一，加到 `STRIKE_LIMIT`（3，寫死在 `app/types/index.ts`）
+  而且還沒停權，就同時寫入 `banned_users/{uid}`（`auto: true`）。全部在一個 transaction 裡
+  （`useNoteModeration.blockNote`），跟大螢幕的 `moveToHistory` 撞在一起也不會錯。
+- **刪除**（不是違規：本人要求撤下、測試資料、刪個資）：原本的 `deleteNote`，不計次。
+
+```ts
+// blocked_notes/{noteId}
+{ note: 便利貼原樣, from: 'pending' | 'history', uid: string | null,
+  reason: string, blockedAt: Timestamp, blockedBy: string }
+// user_strikes/{uid}
+{ count: number, updatedAt: Timestamp }
+```
+
+為什麼不是在便利貼上加 `hidden: true`：待播與歷史是公開可讀的，加標記的話內容還是誰都讀得到；
+讀便利貼的五個地方（首頁、大螢幕、排隊頁、我的便利貼、後台）都得各自過濾；
+舊便利貼沒有這個欄位，`where('hidden', '==', false)` 會把它們全部濾掉。
+搬走的話前台一行都不用改，大螢幕看到的就跟刪除一樣。
+
+- `note_owners` 不刪：「我的便利貼」靠它知道有一張被撤下，也擋住同一個 ID 再送一次。
+  手繪圖也留著，`blocked_notes` 裡還指著它。
+- **恢復**（誤判）：放回 `queue_history`（規則不讓後台建立 `queue_pending`，所以不會在 LED 上重播），
+  次數減一，**不會**自動解除停權。解除停權後次數不歸零，再被下架一次就會再次停權。
+- 匿名時期的便利貼沒有投稿者，只能下架、不計次。
+- 擋送出的仍然只有 `banned_users`，`user_strikes` 不進 `canCreateNote`。
+- 本人讀得到自己的 `user_strikes`，「我的便利貼」會提醒被撤下幾張、累計幾張停權。
+- 刪除個人資料不刪這兩份（同停權名單）；活動結束後在「已下架」分頁「刪除紀錄」清掉，
+  次數不會因此減少。
 
 ### `user_quota` — 投稿配額
 

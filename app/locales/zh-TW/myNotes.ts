@@ -30,6 +30,12 @@ export default {
     makeNote: '＼ 製作便利貼 ／'
   },
 
+  /**
+   * 被後台下架過、還沒到停權門檻時，額度卡裡的提醒。
+   * n 是被下架的張數，limit 是停權門檻（STRIKE_LIMIT）
+   */
+  strikes: (n: number, limit: number) => `已有 ${n} 張便利貼因不符合活動規範被撤下，累計 ${limit} 張將停止投稿資格。`,
+
   /** 一張都沒有的時候 */
   empty: {
     /** 從來沒送過 */

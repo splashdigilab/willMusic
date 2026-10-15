@@ -416,6 +416,12 @@
       color: #047857;
       border: 1px solid #a7f3d0;
     }
+
+    &--strike {
+      background: #fffbeb;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
   }
 
   /* 行銷名單的說明＋匯出鈕，在清單上面 */
@@ -673,6 +679,51 @@
     padding: 0.5rem;
     font-size: 0.875rem;
     border-radius: 6px;
+  }
+
+  /* 便利貼卡片底下的「下架／刪除」（已下架分頁是「恢復／刪除紀錄」）。
+     主要動作用 btn-delete 的描邊樣式，次要的用灰底，兩顆等寬並排 */
+  &__btn-note-secondary {
+    @extend .p-admin__btn;
+    @extend .p-admin__btn--secondary;
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 6px;
+  }
+
+  &__note-actions {
+    display: flex;
+    gap: 0.5rem;
+
+    > * {
+      flex: 1;
+      min-width: 0;
+      margin-top: 0;
+    }
+  }
+
+  /* 下架時店員填的備註 */
+  &__note-reason {
+    font-size: 0.8rem;
+    color: #444;
+    overflow-wrap: anywhere;
+  }
+
+  /* 下架確認視窗裡「這是第幾次違規」。會觸發自動停權的那一次標紅 */
+  &__strike-hint {
+    margin: 0;
+    padding: 0.6rem 0.75rem;
+    border-radius: 6px;
+    background: #f3f4f6;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #333;
+
+    &.is-final {
+      background: #fef2f2;
+      color: #b91c1c;
+      font-weight: 700;
+    }
   }
 
   &__note-pagination {

@@ -23,6 +23,8 @@ export default {
     makeNote: '＼ 付箋を作る ／'
   },
 
+  strikes: (n: number, limit: number) => `イベントのルールに沿わないため、${n}枚の付箋が削除されました。削除が${limit}枚になると投稿できなくなります。`,
+
   empty: {
     none: 'まだ付箋を送信していません',
     hidden: '表示できる付箋はありません',

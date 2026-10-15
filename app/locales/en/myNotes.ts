@@ -23,6 +23,9 @@ export default {
     makeNote: '＼ Make a note ／'
   },
 
+  strikes: (n: number, limit: number) =>
+    `${n} of your notes ${n === 1 ? 'was' : 'were'} taken down for breaking the event rules. Once ${limit} are taken down, this account can no longer send notes.`,
+
   empty: {
     none: 'You haven\'t sent any notes yet',
     hidden: 'No notes to show right now',

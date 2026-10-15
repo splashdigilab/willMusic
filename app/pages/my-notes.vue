@@ -60,6 +60,10 @@
             </ol>
           </template>
 
+          <!-- 被下架過、還沒到停權門檻的：提醒還剩幾次。停權的人上面已經寫了。
+               到了門檻卻沒停權（店員解除了）的也不寫：「累計 3 張將停權」對他已經說不通 -->
+          <p v-if="showStrikes" class="p-my-notes__strikes">{{ t.myNotes.strikes(strikes, STRIKE_LIMIT) }}</p>
+
           <NuxtLink v-if="canMakeMore" to="/editor" class="p-my-notes__btn">{{ t.myNotes.quota.makeNote }}</NuxtLink>
           <LineFriendPrompt />
         </section>
@@ -172,7 +176,7 @@ import {
   query,
   where
 } from 'firebase/firestore'
-import type { QueueHistoryItem, QueuePendingItem } from '~/types'
+import { STRIKE_LIMIT, type QueueHistoryItem, type QueuePendingItem } from '~/types'
 import { chunkForInQuery, getDocsByIds } from '~/utils/firestore-batch'
 import { HTML_LANG } from '~/utils/i18n'
 import StickyNote from '~/components/StickyNote.vue'
@@ -239,6 +243,26 @@ const quotaPips = computed(() => {
 
 // 冷卻中還是可以先開始畫（畫完差不多就能送了）；停權或今天用完就不必
 const canMakeMore = computed(() => quotaKind.value !== 'banned' && quotaKind.value !== 'exhausted')
+
+// ── 違規次數 ──────────────────────────────────────────
+const { getSelfStrikes } = useNoteModeration()
+/** 被後台下架過幾張（恢復的不算）。讀不到當 0，見 getSelfStrikes */
+const strikes = ref(0)
+
+const loadStrikes = async (uid: string) => {
+  const count = await getSelfStrikes()
+  // 讀取途中換了帳號（或登出）：這份是上一個人的
+  if (!isMember.value || user.value?.uid !== uid) return
+  strikes.value = count
+}
+
+// 額度還在讀的時候不出現：停權的人讀完會換成停權的說明，先冒出來再消失很怪
+const showStrikes = computed(() =>
+  strikes.value > 0
+  && strikes.value < STRIKE_LIMIT
+  && quotaKind.value !== 'banned'
+  && quotaKind.value !== 'loading'
+)
 
 // ── 便利貼 ────────────────────────────────────────────
 type MyNote = (QueuePendingItem | QueueHistoryItem) & { id: string }
@@ -578,10 +602,12 @@ watch(() => (isMember.value ? user.value?.uid : null), (uid) => {
   resetQuota()
   storedEmail.value = null
   marketingOptIn.value = false
+  strikes.value = 0
   if (!uid) return
   void loadNotes(uid)
   void loadQuota()
   void loadMarketing(uid)
+  void loadStrikes(uid)
 }, { immediate: true })
 
 // ── 從這一頁登入 ──────────────────────────────────────

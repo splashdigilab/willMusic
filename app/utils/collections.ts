@@ -29,6 +29,8 @@ export interface FirestoreCollections {
   userQuota: string
   bannedUsers: string
   noteOwners: string
+  blockedNotes: string
+  userStrikes: string
   /** system 底下投稿頻率設定的文件 ID（不是集合名稱） */
   rateLimitConfig: string
   /** system 底下節慶主題設定的文件 ID（不是集合名稱），後台「播放設定」可改 */
@@ -57,6 +59,9 @@ export const useCollections = (): FirestoreCollections => {
     bannedUsers: `banned_users${suffix}`,
     // 便利貼的投稿者。跟著便利貼分組，因為 doc ID 就是便利貼的 ID
     noteOwners: `note_owners${suffix}`,
+    // 被下架的便利貼與違規次數，跟著便利貼與停權名單分組
+    blockedNotes: `blocked_notes${suffix}`,
+    userStrikes: `user_strikes${suffix}`,
     // 頻率設定兩站分開：測試站關掉限流不會連正式站一起關。
     // 規則裡 user_quota_dev 讀的也是 _dev 這一份，兩邊要對得上
     rateLimitConfig: `editor_rate_limit${suffix}`,

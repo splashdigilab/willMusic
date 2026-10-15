@@ -209,8 +209,54 @@ export interface BannedUser {
   /** 給後台自己看的備註，不會顯示給被封鎖的人 */
   reason: string
   bannedAt: Timestamp
-  /** 執行封鎖的後台帳號 email */
+  /** 執行封鎖的後台帳號 email（自動停權的是按下第 STRIKE_LIMIT 次下架的那位） */
   bannedBy: string
+  /** 違規累計到 STRIKE_LIMIT 次、由下架那一下自動寫入的。店員手動封鎖的沒有這個欄位 */
+  auto?: boolean
+}
+
+/**
+ * 違規幾次就自動停權。
+ *
+ * 寫死，不做成後台設定：活動規範（data/terms.ts 與三份 locales/{en,ja,ko}/legal.ts）
+ * 寫的是同一個數字，後台改了設定、規範卻不會跟著動。**改這裡要一起改那四份**。
+ */
+export const STRIKE_LIMIT = 3
+
+/**
+ * 被後台下架的便利貼（blocked_notes/{noteId}），doc ID 與便利貼相同。只有後台讀寫。
+ *
+ * 下架不是在便利貼上加「隱藏」標記：待播與歷史兩個集合公開可讀，加標記的話
+ * 內容還是誰都讀得到，五個讀取的地方也都得各自過濾。所以整份搬過來、原本那份刪掉。
+ *
+ * note_owners 那一份不刪：「我的便利貼」靠它知道這張被撤下了，
+ * 也擋住同一個 ID 再送一次（規則要求投稿者紀錄是這一批才建立的）。
+ * Storage 上的手繪圖也留著，這裡的 note.style.drawing 還指著它（違規的證據）。
+ */
+export interface BlockedNote {
+  /** 下架前的便利貼原樣（待播或歷史那一份的全部欄位）。恢復時從這裡挑欄位寫回歷史 */
+  note: QueuePendingItem | QueueHistoryItem
+  /** 下架時它在哪一邊 */
+  from: 'pending' | 'history'
+  /** 投稿者。匿名時期的便利貼沒有投稿者紀錄，是 null，不計違規次數 */
+  uid: string | null
+  /** 給後台自己看的備註 */
+  reason: string
+  blockedAt: Timestamp
+  /** 執行下架的後台帳號 email */
+  blockedBy: string
+}
+
+/**
+ * 違規次數（user_strikes/{uid}）。後台下架時在同一個 transaction 裡加一，
+ * 到 STRIKE_LIMIT 就順便寫入 banned_users；恢復下架的便利貼時減一，但不會自動解除停權。
+ *
+ * 本人讀得到自己的（「我的便利貼」顯示違規幾次），只有後台能寫。
+ * 刪除個人資料時不刪，理由同停權名單。
+ */
+export interface UserStrikes {
+  count: number
+  updatedAt: Timestamp
 }
 
 /**
