@@ -25,6 +25,11 @@ export const downloadCsv = (filename: string, rows: string[][]) => {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  // 舊版 Firefox 的連結不在頁面上時，click() 不會觸發下載
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  // 下載是 click() 之後才非同步開始的：馬上收回網址，舊版 Safari／Firefox 會下載失敗
+  // 或拿到空檔。晚一點再收，一份名單的 Blob 多留幾十秒不礙事
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }

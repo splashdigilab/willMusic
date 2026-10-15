@@ -128,9 +128,10 @@
             </span>
           </div>
           <p v-if="statsPermissionDenied" class="p-admin__stats-empty">
-            讀取 <code>stats_daily</code> 被 Firestore 規則拒絕。請在 Firebase Console 的
-            Firestore Rules 加上這個集合：後台需要 read（已登入），上傳端需要 create／update
-            （未登入，因為送出便利貼時不會登入）。規則生效後重新整理即可。
+            讀取 <code>{{ cols.statsDaily }}</code> 被 Firestore 規則拒絕。統計只有後台帳號讀得到：
+            請確認目前登入的帳號是規則認可的後台帳號（firestore.rules 的 isStaff()），
+            以及 Firebase 上部署的是 repo 裡最新版的規則。計數是會員（LINE 登入）送出便利貼時寫入的，
+            不需要另外開放。規則生效後重新整理即可。
           </p>
           <template v-else>
             <div v-show="statsLoading" class="p-admin__stats-loading">載入中…</div>
@@ -827,6 +828,7 @@ import {
 import { STATS_MAX_RANGE_DAYS } from '~/composables/useUploadStats'
 import { useAdminStats } from '~/composables/useAdminStats'
 import { downloadCsv } from '~/utils/csv'
+import { isInlineAvatar } from '~/utils/name-tag'
 import { THEMES, parseThemeId, resolveThemeId, type ThemeId } from '~/data/themes'
 import { THEME_PREVIEW_COOKIE } from '~/composables/useTheme'
 
@@ -842,13 +844,23 @@ const { listMembers, listMarketingOptIns, loadOwners, deleteNote } = useMemberAd
 const { listBans } = useBannedUsers()
 const router = useRouter()
 
+/** 登出前收回 QR 廣播最多等多久。離線時寫入會一直等到連上線，不能讓登出鈕跟著卡住 */
+const LOGOUT_CLEAR_QR_TIMEOUT_MS = 3000
+
 /**
  * 登出後主動導回 /login。
  *
  * 不倚賴 middleware 把人踢走：它只在「切換路由」時跑，登出後留在原地是不會觸發的，
  * 畫面會停在後台版面上（資料讀不到，但看起來像壞掉）。
+ *
+ * 這一頁發過 QR 廣播的話要在登出**之前**收回：登出之後已經沒有寫入權限，
+ * 等到頁面卸載才清只會被規則拒絕，廣播留在掃碼頁上直到過期。
  */
 const handleLogout = async () => {
+  await Promise.race([
+    clearQrCode(),
+    new Promise(resolve => setTimeout(resolve, LOGOUT_CLEAR_QR_TIMEOUT_MS))
+  ])
   await logout()
   await router.replace('/login')
 }
@@ -913,23 +925,34 @@ const tokenRequiredForSubmit = ref(true)
 const isSavingTokenRequirement = ref(false)
 let unsubTokenRequirement: (() => void) | null = null
 
-const clearQrCode = () => {
+/**
+ * 這一頁有沒有發出、還沒收回的 QR 廣播（system/active_token）。
+ *
+ * 只收回自己發的：這份文件測試站與正式站共用，沒發過也去清的話，每次有人離開後台
+ * 都會把另一個後台（或另一站）正在顯示的 QR 一起清掉。登出之後才清還會因為
+ * 沒有寫入權限被規則拒絕（onUnmounted 在登出、導頁之後才跑）。
+ */
+let qrBroadcasting = false
+
+const clearQrCode = (): Promise<void> => {
   if (qrTimer) {
     clearInterval(qrTimer)
     qrTimer = null
   }
   currentToken.value = null
   qrTimeLeft.value = 60
-  
+
+  if (!qrBroadcasting) return Promise.resolve()
+  qrBroadcasting = false
   // 廣播清除 Token
-  void setDoc(doc(db, 'system', 'active_token'), { token: null, expiresAt: null }).catch((e) => {
+  return setDoc(doc(db, 'system', 'active_token'), { token: null, expiresAt: null }).catch((e) => {
     console.error('Error clearing active_token:', e)
     showAdminToast('error', '清除 QR 廣播失敗，請稍後再試')
   })
 }
 
 const generateToken = async () => {
-  clearQrCode()
+  void clearQrCode()
   isGenerating.value = true
 
   try {
@@ -946,8 +969,10 @@ const generateToken = async () => {
       })
     }
 
-    // 廣播給 /qrcode 頁面
+    // 廣播給 /qrcode 頁面。寫入前就記下來：離線時寫入會排隊、連上線才送出，
+    // 那段期間離開頁面也要收得回來
     let broadcastFailed = false
+    qrBroadcasting = true
     try {
       await setDoc(doc(db, 'system', 'active_token'), {
         token: tokenId,
@@ -955,6 +980,8 @@ const generateToken = async () => {
       })
     } catch (e) {
       console.error('Error broadcasting active_token:', e)
+      // 被拒絕的寫入沒有改到文件，沒有東西要收
+      qrBroadcasting = false
       broadcastFailed = true
       showAdminToast('error', 'Token 已建立，但寫入 QR 廣播失敗，請檢查網路或 Firestore 權限')
     }
@@ -963,7 +990,7 @@ const generateToken = async () => {
     qrTimer = setInterval(() => {
       qrTimeLeft.value--
       if (qrTimeLeft.value <= 0) {
-        clearQrCode()
+        void clearQrCode()
       }
     }, 1000)
     if (!broadcastFailed) {
@@ -1013,7 +1040,7 @@ const onTokenRequirementToggle = async () => {
       { merge: true }
     )
     if (!tokenRequiredForSubmit.value) {
-      clearQrCode()
+      void clearQrCode()
     }
     loadStats()
     showAdminToast(
@@ -1355,12 +1382,10 @@ const confirmDelete = async () => {
     // 連同 Storage 上的手繪圖一起刪（順序與理由見 useMemberAdmin.deleteNote）。
     // 圖片網址從記憶體裡的清單拿，不必重新查詢
     const style = list.find(note => note.id === id)?.style
-    await deleteNote({ id, isPending, style })
-    if (isPending) {
-      await loadPendingNotesPage()
-    } else {
-      await loadHistoryNotesPage()
-    }
+    await deleteNote({ id, style })
+    // 兩邊都重讀：清單上是待播的那張，可能在刪之前剛被大螢幕搬進歷史，
+    // 刪的是歷史那份（deleteNote 兩邊一起刪），歷史分頁也要跟著少一張
+    await Promise.all([loadPendingNotesPage(), loadHistoryNotesPage()])
     deleteModalOpen.value = false
     showAdminToast('success', '已刪除便利貼')
   } catch (error) {
@@ -1816,6 +1841,13 @@ const exportMarketingCsv = async () => {
 
 const formatShortUid = (uid: string) => `…${uid.replace(/^line:/, '').slice(-4)}`
 
+/**
+ * 頭貼只顯示 base64 的圖片（跟名牌同一個判斷），其他的一律當沒有、顯示預設人像。
+ * users/{uid}.avatar 是會員自己寫的，規則只限大小、不限格式：填成外部網址的話，
+ * 後台一打開清單就會去連別人的主機（對方記得到後台的 IP 與開啟時間，圖也能事後換掉）。
+ */
+const inlineAvatar = (value: unknown): string | undefined => (isInlineAvatar(value) ? value : undefined)
+
 interface MemberListRow {
   uid: string
   name: string
@@ -1833,7 +1865,7 @@ const visibleMemberRows = computed<MemberListRow[]>(() => {
     return [...bans.value].map(([uid, ban]) => ({
       uid,
       name: ban.displayName,
-      avatar: avatars.get(uid),
+      avatar: inlineAvatar(avatars.get(uid)),
       subtitle: `封鎖於 ${formatTime(ban.bannedAt)}${ban.reason ? ` · ${ban.reason}` : ''}`
     }))
   }
@@ -1841,7 +1873,7 @@ const visibleMemberRows = computed<MemberListRow[]>(() => {
     return (marketingRows.value ?? []).map(m => ({
       uid: m.uid,
       name: m.displayName,
-      avatar: m.avatar,
+      avatar: inlineAvatar(m.avatar),
       email: m.email,
       subtitle: `同意於 ${formatTime(m.marketingUpdatedAt)} · ${formatShortUid(m.uid)}`
     }))
@@ -1849,7 +1881,7 @@ const visibleMemberRows = computed<MemberListRow[]>(() => {
   return memberRows.value.map(m => ({
     uid: m.uid,
     name: m.displayName,
-    avatar: m.avatar,
+    avatar: inlineAvatar(m.avatar),
     email: m.email,
     marketingOptIn: m.marketingOptIn,
     subtitle: `最近登入 ${formatTime(m.updatedAt)} · ${formatShortUid(m.uid)}`
@@ -2070,7 +2102,8 @@ onUnmounted(() => {
   unsubRateLimit = null
   unsubSiteTheme?.()
   unsubSiteTheme = null
-  clearQrCode()
+  // 只有這一頁發過、還沒收回的才會真的寫入（見 qrBroadcasting）；登出時已經先收過了
+  void clearQrCode()
 })
 </script>
 

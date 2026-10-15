@@ -17,6 +17,7 @@ import {
   startAfter,
   updateDoc,
   where,
+  writeBatch,
   type QueryDocumentSnapshot
 } from 'firebase/firestore'
 import { deleteObject, ref as storageRef } from 'firebase/storage'
@@ -29,10 +30,12 @@ export interface MemberRow extends UserProfile {
   uid: string
 }
 
-/** 刪一張便利貼需要知道的事：在哪個集合、有沒有手繪圖檔要一起清 */
+/**
+ * 刪一張便利貼需要知道的事：ID，以及有沒有手繪圖檔要一起清。
+ * 不需要知道它在待播還是歷史 —— 兩邊一起刪，理由見 deleteNote
+ */
 export interface NoteRef {
   id: string
-  isPending: boolean
   style?: { drawing?: unknown }
 }
 
@@ -119,21 +122,27 @@ export const useMemberAdmin = () => {
   }
 
   /**
-   * 刪一張便利貼，連同 Storage 上的手繪圖（否則圖片會無限累積）。
+   * 刪一張便利貼，連同投稿者紀錄與 Storage 上的手繪圖（否則圖片會無限累積）。
+   *
+   * 待播與歷史兩份用同一個 writeBatch 一起刪，不看清單上標的是哪一邊：
+   * 後台清單不是即時的，畫面上還是「待播」的那張，大螢幕可能剛好播完、
+   * 用同一個 doc ID 搬進了 queue_history（moveToHistory）。只刪待播那份的話，
+   * 刪除顯示成功，便利貼卻原封不動地出現在牆上。刪不存在的文件不會出錯；
+   * 跟 moveToHistory 的 transaction 撞在一起時，那邊會重試、看到待播那份沒了就不搬。
+   *
+   * 投稿者紀錄（note_owners）也放在同一批：便利貼都沒了，留著只是一筆多餘的個資。
+   * 三份的刪除規則都只要 isStaff()、不看文件內容，不會只有其中一份被擋下而拖垮整批。
    *
    * 先刪文件再清圖：反過來的話，文件刪除一旦失敗，便利貼會繼續留在牆上
    * 但圖片已經不存在，變成破圖。舊便利貼的 drawing 是內嵌的 data URL，
    * 沒有檔案要刪；清圖失敗也不影響刪除本身。
    */
   const deleteNote = async (note: NoteRef): Promise<void> => {
-    await deleteDoc(doc($firestore, note.isPending ? cols.queuePending : cols.queueHistory, note.id))
-    // 投稿者紀錄跟著刪：便利貼都沒了，留著只是一筆多餘的個資。
-    // 失敗不影響刪除本身（「我的便利貼」與會員面板都會略過找不到便利貼的紀錄）
-    try {
-      await deleteDoc(doc($firestore, cols.noteOwners, note.id))
-    } catch (err) {
-      console.warn('[admin] 便利貼已刪除，但投稿者紀錄清除失敗', err)
-    }
+    const batch = writeBatch($firestore)
+    batch.delete(doc($firestore, cols.queuePending, note.id))
+    batch.delete(doc($firestore, cols.queueHistory, note.id))
+    batch.delete(doc($firestore, cols.noteOwners, note.id))
+    await batch.commit()
 
     const drawing = note.style?.drawing
     if (typeof drawing !== 'string' || !drawing.startsWith('http')) return
@@ -142,6 +151,28 @@ export const useMemberAdmin = () => {
     } catch (err: any) {
       if (err?.code !== 'storage/object-not-found') {
         console.warn('[admin] 便利貼已刪除，但手繪圖檔案清除失敗', err)
+      }
+    }
+  }
+
+  /**
+   * 拿掉一張便利貼上的署名。待播的那張可能在剛才查到之後被大螢幕播完、
+   * 用同一個 ID 搬進歷史（搬的時候署名跟著複製過去），那就改拿掉歷史那份的。
+   * 兩邊都改不了才算失敗，丟出第一個錯誤。
+   */
+  const removeNameTag = async (note: MemberNote): Promise<void> => {
+    const patch = { 'style.nameTag': deleteField() }
+    if (!note.isPending) {
+      await updateDoc(doc($firestore, cols.queueHistory, note.id), patch)
+      return
+    }
+    try {
+      await updateDoc(doc($firestore, cols.queuePending, note.id), patch)
+    } catch (err) {
+      try {
+        await updateDoc(doc($firestore, cols.queueHistory, note.id), patch)
+      } catch {
+        throw err
       }
     }
   }
@@ -163,14 +194,7 @@ export const useMemberAdmin = () => {
    */
   const deleteProfile = async (uid: string): Promise<void> => {
     const notes = await findMemberNotes(uid)
-    await Promise.all(
-      notes
-        .filter(note => note.style?.nameTag)
-        .map(note => updateDoc(
-          doc($firestore, note.isPending ? cols.queuePending : cols.queueHistory, note.id),
-          { 'style.nameTag': deleteField() }
-        ))
-    )
+    await Promise.all(notes.filter(note => note.style?.nameTag).map(removeNameTag))
 
     const ownedIds = await findOwnedNoteIds(uid)
     await Promise.all([

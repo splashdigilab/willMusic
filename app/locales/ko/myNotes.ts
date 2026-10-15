@@ -29,6 +29,12 @@ export default {
     text: ['보낸 포스트잇이 여기에 나타나요', '대기 순서와 표시 시간도 볼 수 있어요']
   },
 
+  loadError: {
+    title: '불러오지 못했어요',
+    text: ['네트워크 연결을 확인한 뒤', '다시 시도해 주세요'],
+    retry: '다시 시도'
+  },
+
   pending: '대기 중',
   played: '표시 완료',
   yourTurn: '차례가 왔어요!',

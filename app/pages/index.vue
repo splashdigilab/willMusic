@@ -413,6 +413,28 @@ watch(
 let loadingTimer: ReturnType<typeof setTimeout> | null = null
 const waitForNextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 
+/** 第一次讀不到時隔多久再試：多半是網路剛接上，或 Firestore 一時沒回應 */
+const HISTORY_RETRY_DELAY_MS = 2000
+let historyRetryTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * 讀牆上的便利貼，失敗就隔一下再試一次；再失敗就丟出去，由呼叫端讓牆空著。
+ * 牆是空的頁面一樣能用（開場照常按得下去、照樣能去製作便利貼），只是看不到別人的。
+ *
+ * 重試算在開場的載入時間裡（START 晚一點才能按），牆才會跟平常一樣在開場後面排好；
+ * 放到背景重試的話，要處理「牆已經露出來了才一口氣進來一百張」的進場動畫。
+ */
+const fetchWallItems = async (): Promise<QueueHistoryItem[]> => {
+  try {
+    return (await getHistory(HISTORY_FETCH_LIMIT)).items
+  } catch {
+    await new Promise<void>((resolve) => {
+      historyRetryTimer = setTimeout(resolve, HISTORY_RETRY_DELAY_MS)
+    })
+    return (await getHistory(HISTORY_FETCH_LIMIT)).items
+  }
+}
+
 const appendItemsInBatches = async (
   items: QueueHistoryItem[],
   batchSize = 12
@@ -456,11 +478,9 @@ onMounted(async () => {
 
   // 等待字體、圖片載入與最小延遲
   try {
-    const historyPromise = getHistory(HISTORY_FETCH_LIMIT)
-      .then(async ({ items }) => {
-        await appendItemsInBatches(items)
-      })
-      .catch(e => console.error('Error fetching history:', e))
+    const historyPromise = fetchWallItems()
+      .then(items => appendItemsInBatches(items))
+      .catch(e => console.error('Error fetching history (after retry):', e))
 
     await Promise.all([
       historyPromise,
@@ -486,5 +506,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (loadingTimer) clearTimeout(loadingTimer)
+  if (historyRetryTimer) clearTimeout(historyRetryTimer)
 })
 </script>

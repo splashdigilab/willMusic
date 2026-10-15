@@ -29,6 +29,12 @@ export default {
     text: ['Notes you send will show up here,', 'with their place in line', 'and when they\'re on the big screen']
   },
 
+  loadError: {
+    title: 'Couldn\'t load your notes',
+    text: ['Please check your connection', 'and try again.'],
+    retry: 'Try again'
+  },
+
   pending: 'In line',
   played: 'Shown on screen',
   yourTurn: 'It\'s your turn!',

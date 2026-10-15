@@ -14,8 +14,8 @@
           <header class="p-admin__panel-header">
             <div class="p-admin__member-identity">
               <img
-                v-if="profile?.avatar"
-                :src="profile.avatar"
+                v-if="avatarSrc"
+                :src="avatarSrc"
                 alt=""
                 class="p-admin__member-avatar"
               />
@@ -202,6 +202,7 @@ import type { BannedUser, UserProfile } from '~/types'
 import type { MemberNote } from '~/composables/useMemberAdmin'
 import AppModal from '~/components/AppModal.vue'
 import StickyNote from '~/components/StickyNote.vue'
+import { isInlineAvatar } from '~/utils/name-tag'
 
 /**
  * 後台的會員面板：這個人是誰、送過哪些便利貼、要不要封鎖、刪個資。
@@ -236,6 +237,8 @@ const historyCount = computed(() => notes.value.length - pendingCount.value)
 const displayName = computed(() =>
   profile.value?.displayName || ban.value?.displayName || '（沒有暱稱）'
 )
+/** 只顯示 base64 的頭貼，外部網址當沒有（理由見 admin.vue 的 inlineAvatar） */
+const avatarSrc = computed(() => (isInlineAvatar(profile.value?.avatar) ? profile.value!.avatar : null))
 
 const formatDateTime = (ts: any): string => {
   const date = ts?.toDate?.()
@@ -342,6 +345,8 @@ const confirmBan = async () => {
       return
     }
 
+    // 分組依的是面板打開時讀到的狀態。勾了撤下待播的那幾張，就算剛好已經播完
+    // 搬進歷史也一樣會被刪掉（deleteNote 待播、歷史兩邊一起刪）
     const targets = notes.value.filter(n =>
       n.isPending ? banRemovePending.value : banRemoveHistory.value
     )

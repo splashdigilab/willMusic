@@ -66,6 +66,15 @@
 
         <div v-if="notesLoading" class="p-my-notes__hint">{{ t.common.loading }}</div>
 
+        <!-- 讀取失敗要跟「一張都沒有」分開：顯示成還沒送過，使用者會以為自己送的不見了 -->
+        <div v-else-if="notesError" class="p-my-notes__empty" role="alert">
+          <p class="p-my-notes__empty-title">{{ t.myNotes.loadError.title }}</p>
+          <p class="p-my-notes__empty-text"><template v-for="(line, i) in t.myNotes.loadError.text" :key="i"><br v-if="i > 0">{{ line }}</template></p>
+          <button type="button" class="p-my-notes__btn p-my-notes__btn--retry" @click="retryNotes">
+            {{ t.myNotes.loadError.retry }}
+          </button>
+        </div>
+
         <div v-else-if="notes.length === 0" class="p-my-notes__empty">
           <div class="p-my-notes__empty-art" aria-hidden="true"><i /><i /><i /></div>
           <p class="p-my-notes__empty-title">{{ myIds.length ? t.myNotes.empty.hidden : t.myNotes.empty.none }}</p>
@@ -78,23 +87,24 @@
             <h2 class="p-my-notes__section-title">{{ t.myNotes.pending }}<span>{{ pendingNotes.length }}</span></h2>
             <ul class="p-my-notes__queue">
               <li
-                v-for="note in pendingNotes"
+                v-for="{ note, ahead } in pendingNotes"
                 :key="note.id"
                 class="p-my-notes__ticket"
-                :class="{ 'is-now': queueAhead(note) === 0 }"
+                :class="{ 'is-now': ahead === 0 }"
               >
                 <div class="p-my-notes__thumb">
                   <StickyNote :note="note" />
                 </div>
                 <div class="p-my-notes__ticket-meta">
                   <!-- 位置 0 可能是正在播、也可能是下一張：兩種都是「現在去看牆」 -->
-                  <template v-if="queueAhead(note) === 0">
+                  <template v-if="ahead === 0">
                     <p class="p-my-notes__ticket-main">{{ t.myNotes.yourTurn }}</p>
                     <p class="p-my-notes__ticket-sub">{{ t.myNotes.watchScreen }}</p>
                   </template>
-                  <template v-else>
+                  <!-- 位置還沒算出來（查詢失敗，下一輪會再算）就先不寫，不猜一個數字 -->
+                  <template v-else-if="ahead !== undefined">
                     <!-- 張數要放大加粗，字拆成前後兩段（前後的空白在翻譯檔裡） -->
-                    <p class="p-my-notes__ticket-main">{{ t.myNotes.aheadBefore }}<strong>{{ queueAhead(note) }}</strong>{{ t.myNotes.aheadAfter(queueAhead(note)) }}</p>
+                    <p class="p-my-notes__ticket-main">{{ t.myNotes.aheadBefore }}<strong>{{ ahead }}</strong>{{ t.myNotes.aheadAfter(ahead) }}</p>
                   </template>
                   <p class="p-my-notes__time">{{ t.myNotes.sentAt(formatTime(note.timestamp)) }}</p>
                 </div>
@@ -155,9 +165,10 @@
 import { computed, onUnmounted, ref, watch, onMounted } from 'vue'
 import {
   collection,
+  documentId,
+  getCountFromServer,
   getDocs,
   onSnapshot,
-  orderBy,
   query,
   where
 } from 'firebase/firestore'
@@ -175,9 +186,16 @@ import StickyNote from '~/components/StickyNote.vue'
  *
  * 資料來源：
  *   note_owners（where uid == 自己）→ 我的便利貼 ID
- *   queue_pending 即時監聽 → 排隊位置（大螢幕依 timestamp 由舊到新播放，見 useConductor）
  *   queue_history 依 ID 讀 → 已上牆的那幾張
+ *   queue_pending 只監聽自己還沒上牆的那幾張 → 播完、被撤下時馬上知道
+ *   排隊位置 → 數 queue_pending 裡比我早送出的有幾張（大螢幕依 timestamp 由舊到新播放，
+ *     見 useConductor）。自己那張有變化時、以及每隔一段時間重算一次；
+ *     快輪到時改成即時監聽前面那幾張（watchFront）
  * 兩邊都找不到的是被後台撤下的，直接不顯示（頁尾有一行說明）。
+ *
+ * 不監聽整條佇列：每份文件帶著頭貼最多約 30KB，每個開著這頁的人都讀一整條、
+ * 之後每次有人送出或播完再讀一次，排隊的人一多就是一大筆讀取與流量。
+ * count 查詢每 1000 筆才算一次讀取，也不傳文件內容。
  */
 definePageMeta({ layout: false, ssr: false })
 
@@ -225,73 +243,253 @@ const canMakeMore = computed(() => quotaKind.value !== 'banned' && quotaKind.val
 // ── 便利貼 ────────────────────────────────────────────
 type MyNote = (QueuePendingItem | QueueHistoryItem) & { id: string }
 
+const toMillis = (ts: any): number => ts?.toMillis?.() ?? 0
+
 const notesLoading = ref(false)
+/** 讀取失敗。要跟「一張都沒有」分開顯示 */
+const notesError = ref(false)
 const myIds = ref<string[]>([])
-/** 整條待播佇列的 ID，依播放順序。算「前面還有幾張」用 */
-const pendingOrder = ref<string[]>([])
 const myPending = ref<Record<string, QueuePendingItem>>({})
 const myHistory = ref<Record<string, QueueHistoryItem>>({})
+/** 每張排隊中的便利貼前面還有幾張。還沒算出來的不在裡面 */
+const aheadCounts = ref<Record<string, number>>({})
 
-let unsubPending: (() => void) | null = null
+/** 排隊位置多久重算一次。自己那張播完會馬上重算，這個負責的是「前面的人播完了」 */
+const AHEAD_REFRESH_MS = 25_000
+/** 最前面那張的前面剩這麼多張以內，就改成即時監聽（見 watchFront） */
+const NEAR_FRONT = 3
+/** Firestore 的 in 條件一次最多 30 個值（同 utils/firestore-batch） */
+const IN_QUERY_LIMIT = 30
 
-const fetchHistory = async (ids: string[]) => {
+/**
+ * 載入的世代。換帳號、按重試、離開頁面都會往前推一號；每個 await 回來先對一次，
+ * 對不上就是過期的那一輪，不寫畫面也不掛監聽。
+ * 少了這個，在讀取途中離開頁面的話，onUnmounted 早就跑完了，之後才掛上的監聽
+ * 永遠不會被取消；讀取途中換帳號，也會把上一個人的便利貼寫進來。
+ */
+let loadGen = 0
+let unsubPending: Array<() => void> = []
+let aheadTimer: ReturnType<typeof setInterval> | null = null
+/** 位置查詢的序號：快照與定時器可能同時在算，只收最後發出的那一次 */
+let aheadRequest = 0
+/** watchFront 正在即時盯著的那張與它的監聽 */
+let frontId: string | null = null
+let unsubFront: (() => void) | null = null
+
+const stopFront = () => {
+  unsubFront?.()
+  unsubFront = null
+  frontId = null
+}
+
+/** 停掉這一輪的監聽與定時重算 */
+const stopWatching = () => {
+  unsubPending.forEach(unsub => unsub())
+  unsubPending = []
+  stopFront()
+  if (aheadTimer) {
+    clearInterval(aheadTimer)
+    aheadTimer = null
+  }
+}
+
+const fetchHistory = async (ids: string[], gen: number) => {
   const docs = await getDocsByIds($firestore, cols.queueHistory, ids)
+  if (gen !== loadGen) return
   docs.forEach((d) => { myHistory.value[d.id] = d.data() as QueueHistoryItem })
 }
 
-const loadNotes = async (uid: string) => {
-  notesLoading.value = true
+/**
+ * 重算每張排隊中的便利貼前面還有幾張：queue_pending 裡比它早送出的張數。
+ * 正在播的那張要等播完才搬走，所以也算在內 —— 位置 0 就是正在播或下一張。
+ * 失敗就留著上一次的數字，下一輪再算。
+ */
+const refreshAhead = async (gen: number) => {
+  const request = ++aheadRequest
+  // watchFront 即時盯著的那張，數字由它的監聽更新，不必另外查
+  const targets = Object.entries(myPending.value).filter(([id]) => id !== frontId)
   try {
-    const ownerSnap = await getDocs(query(collection($firestore, cols.noteOwners), where('uid', '==', uid)))
-    myIds.value = ownerSnap.docs.map(d => d.id)
-    const mine = new Set(myIds.value)
+    const counts = await Promise.all(targets.map(async ([id, note]) => {
+      // 沒有送出時間的排不進順序（正常送出的都有），當作排在最前面
+      if (!note.timestamp) return [id, 0] as const
+      const snap = await getCountFromServer(
+        query(collection($firestore, cols.queuePending), where('timestamp', '<', note.timestamp))
+      )
+      return [id, snap.data().count] as const
+    }))
+    if (gen !== loadGen || request !== aheadRequest) return
+    const next: Record<string, number> = Object.fromEntries(counts)
+    const frontAhead = frontId === null ? undefined : aheadCounts.value[frontId]
+    if (frontId !== null && frontAhead !== undefined) next[frontId] = frontAhead
+    aheadCounts.value = next
+    watchFront(gen)
+  } catch (err) {
+    console.warn('[my-notes] 計算排隊位置失敗', err)
+  }
+}
 
-    // 一張都沒送過：不必監聽整條佇列
-    if (mine.size === 0) {
-      notesLoading.value = false
-      return
+/**
+ * 自己最前面那張快輪到時（前面剩 NEAR_FRONT 張以內），改成即時監聽比它早送出的那幾張。
+ * 一張只在大螢幕上播 15 秒左右，等定時重算的話，「輪到你了」可能在那張播完之後才出現。
+ * 這個查詢的結果只會越來越少（之後送出的都比它晚），讀取就是那幾張、加上每播完一張一次。
+ * 那張上牆或被撤下之後，換下一張重新判斷。
+ */
+const watchFront = (gen: number) => {
+  const head = Object.entries(myPending.value)
+    .sort(([, a], [, b]) => toMillis(a.timestamp) - toMillis(b.timestamp))[0]
+  if (frontId !== null && frontId !== head?.[0]) stopFront()
+  if (!head || frontId !== null) return
+
+  const [id, note] = head
+  const ahead = aheadCounts.value[id]
+  if (!note.timestamp || ahead === undefined || ahead > NEAR_FRONT) return
+
+  frontId = id
+  let first = true
+  unsubFront = onSnapshot(
+    query(collection($firestore, cols.queuePending), where('timestamp', '<', note.timestamp)),
+    (snap) => {
+      // 快取來的可能只有其中幾張，張數會偏少、提早顯示「輪到你了」：只信伺服器回來的
+      if (gen !== loadGen || frontId !== id || snap.metadata.fromCache) return
+      aheadCounts.value = { ...aheadCounts.value, [id]: snap.size }
+      if (first) {
+        first = false
+        return
+      }
+      // 前面少了一張，自己排在後面的其他幾張也跟著往前
+      if (Object.keys(myPending.value).length > 1) void refreshAhead(gen)
+    },
+    (err) => {
+      console.warn('[my-notes] 即時監聽前面的便利貼失敗，改回定時重算', err)
+      if (frontId === id) {
+        unsubFront = null
+        frontId = null
+      }
     }
+  )
+}
 
-    await fetchHistory(myIds.value)
+/**
+ * 監聽自己還沒上牆的那幾張（documentId in，每 30 個一組）。
+ * 回傳的 promise 在每一組都收到第一份快照時完成；第一份就失敗的話 reject。
+ * 監聽一律登記在 unsubPending，由 stopWatching 收。
+ */
+const watchPending = (ids: string[], gen: number): Promise<void> => {
+  // 去歷史查過的不再查：被撤下的兩邊都找不到，之後每份快照都會再出現一次
+  const lookedUp = new Set<string>()
+  // 每一組都到齊之前，myPending 只有一部分：不重算位置，也不判斷「全部播完了」
+  let allReady = false
 
-    // 待播佇列即時監聽：位置會隨大螢幕播放往前推，播完的那張要換成歷史紀錄
-    unsubPending?.()
-    unsubPending = onSnapshot(
-      query(collection($firestore, cols.queuePending), orderBy('timestamp', 'asc')),
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += IN_QUERY_LIMIT) chunks.push(ids.slice(i, i + IN_QUERY_LIMIT))
+
+  const firstSnapshots = chunks.map(chunk => new Promise<void>((resolve, reject) => {
+    let first = true
+    unsubPending.push(onSnapshot(
+      query(collection($firestore, cols.queuePending), where(documentId(), 'in', chunk)),
       (snap) => {
-        const leftQueue = Object.keys(myPending.value).filter(id => !snap.docs.some(d => d.id === id))
-        pendingOrder.value = snap.docs.map(d => d.id)
-        myPending.value = Object.fromEntries(
-          snap.docs.filter(d => mine.has(d.id)).map(d => [d.id, d.data() as QueuePendingItem])
-        )
-        // 離開佇列 = 播完搬進歷史（或被撤下）。搬移是同一個 transaction，
-        // 所以這時候歷史紀錄已經在了
-        if (leftQueue.length > 0) void fetchHistory(leftQueue)
-        // 第一份快照回來才算載完：之前只有歷史紀錄，還在排隊的那幾張會先被當成沒有，
-        // 畫面閃一下「還沒有送出過便利貼」
-        notesLoading.value = false
+        if (gen !== loadGen) return
+        const next = { ...myPending.value }
+        chunk.forEach((id) => { delete next[id] })
+        snap.docs.forEach((d) => { next[d.id] = d.data() as QueuePendingItem })
+        myPending.value = next
+
+        // 不在佇列、也還沒有歷史紀錄的：播完搬進歷史（搬移是同一個 transaction，
+        // 這時候歷史紀錄已經在了），或被撤下。第一份快照也要查 ——
+        // 讀完歷史到掛上監聽之間剛好播完的那張，不查的話兩邊都會漏掉。
+        // 快取來的快照不查：它可能只是還沒拿到那張，記成查過的話，真的播完時就不會再查
+        const left = snap.metadata.fromCache
+          ? []
+          : chunk.filter(id => !next[id] && !myHistory.value[id] && !lookedUp.has(id))
+        if (left.length > 0) {
+          left.forEach(id => lookedUp.add(id))
+          fetchHistory(left, gen).catch(err => console.error('[my-notes] 讀取已上牆的便利貼失敗', err))
+        }
+
+        if (first) {
+          first = false
+          resolve()
+          return
+        }
+        if (!allReady) return
+        // 自己那張播完或被撤下：排在後面的那幾張位置都變了
+        void refreshAhead(gen)
+        // 全部都離開佇列就收工，上牆的不會再回來。
+        // 快取來的快照不算數：離線時它可能只是「還不知道」
+        if (!snap.metadata.fromCache && Object.keys(next).length === 0) stopWatching()
       },
       (err) => {
-        console.error('[my-notes] 監聽待播佇列失敗', err)
-        notesLoading.value = false
+        if (first) reject(err)
+        else console.error('[my-notes] 監聽排隊中的便利貼失敗', err)
       }
-    )
+    ))
+  }))
+
+  return Promise.all(firstSnapshots).then(() => { allReady = true })
+}
+
+const loadNotes = async (uid: string) => {
+  const gen = ++loadGen
+  notesLoading.value = true
+  notesError.value = false
+  try {
+    const ownerSnap = await getDocs(query(collection($firestore, cols.noteOwners), where('uid', '==', uid)))
+    if (gen !== loadGen) return
+    myIds.value = ownerSnap.docs.map(d => d.id)
+
+    await fetchHistory(myIds.value, gen)
+    if (gen !== loadGen) return
+
+    // 已經上牆的不會再回到佇列，只需要盯著剩下的。一張都不剩就不掛監聽、不算位置
+    const waiting = myIds.value.filter(id => !myHistory.value[id])
+    if (waiting.length > 0) {
+      await watchPending(waiting, gen)
+      if (gen !== loadGen) return
+      // 位置算出來才算載完：先顯示的話，每張都會少一行「前面還有幾張」、過一下才冒出來
+      await refreshAhead(gen)
+      if (gen !== loadGen) return
+      if (Object.keys(myPending.value).length > 0) {
+        // 分頁在背景時不查，回到分頁再馬上補一次（onVisibilityChange）
+        aheadTimer = setInterval(() => {
+          if (!document.hidden) void refreshAhead(gen)
+        }, AHEAD_REFRESH_MS)
+      } else {
+        stopWatching()
+      }
+    }
+    notesLoading.value = false
   } catch (err) {
+    if (gen !== loadGen) return
     console.error('[my-notes] 讀取我的便利貼失敗', err)
+    stopWatching()
+    notesError.value = true
     notesLoading.value = false
   }
 }
 
 const clearNotes = () => {
-  unsubPending?.()
-  unsubPending = null
+  loadGen++
+  stopWatching()
+  notesLoading.value = false
+  notesError.value = false
   myIds.value = []
-  pendingOrder.value = []
   myPending.value = {}
   myHistory.value = {}
+  aheadCounts.value = {}
 }
 
-const toMillis = (ts: any): number => ts?.toMillis?.() ?? 0
+/** 讀取失敗後的重試：整輪重來 */
+const retryNotes = () => {
+  const uid = isMember.value ? user.value?.uid : null
+  if (!uid) return
+  clearNotes()
+  void loadNotes(uid)
+}
+
+/** 回到這個分頁時馬上重算一次位置：在背景時定時器不查，回來不必再等下一輪 */
+const onVisibilityChange = () => {
+  if (!document.hidden && aheadTimer) void refreshAhead(loadGen)
+}
 
 /** 兩邊都找不到的（被撤下）不顯示 */
 const notes = computed<MyNote[]>(() => {
@@ -303,14 +501,16 @@ const notes = computed<MyNote[]>(() => {
   return list
 })
 
-/** 前面還有幾張。位置 0 是正在播或下一張 */
-const queueAhead = (note: MyNote): number => Math.max(0, pendingOrder.value.indexOf(note.id))
-
-/** 快輪到的在前 */
+/**
+ * 排隊中的，快輪到的在前（大螢幕依送出時間播放，送出時間的順序就是位置的順序）。
+ * ahead 是前面還有幾張：0 是正在播或下一張，undefined 是還沒算出來。
+ * 便利貼本身不另外複製一份：位置每次重算時，StickyNote 才不會跟著重畫
+ */
 const pendingNotes = computed(() =>
   notes.value
     .filter((n): n is QueuePendingItem & { id: string } => n.status !== 'played')
-    .sort((a, b) => queueAhead(a) - queueAhead(b))
+    .sort((a, b) => toMillis(a.timestamp) - toMillis(b.timestamp))
+    .map(note => ({ note, ahead: aheadCounts.value[note.id] as number | undefined }))
 )
 
 /** 最近上牆的在前 */
@@ -344,8 +544,10 @@ const marketingSaving = ref(false)
 /** 這次登入 LINE 有給就用這次的；沒給（同意畫面上取消了）就用之前存下來的 */
 const marketingEmail = computed(() => profile.value?.lineEmail ?? storedEmail.value)
 
-const loadMarketing = async () => {
+const loadMarketing = async (uid: string) => {
   const stored = await getProfile()
+  // 讀取途中換了帳號（或登出）：這份是上一個人的
+  if (!isMember.value || user.value?.uid !== uid) return
   storedEmail.value = stored?.email ?? null
   // 正在存的時候不要被讀回來的舊值蓋掉
   if (!marketingSaving.value) marketingOptIn.value = stored?.marketingOptIn === true
@@ -371,7 +573,7 @@ watch(() => (isMember.value ? user.value?.uid : null), (uid) => {
   if (!uid) return
   void loadNotes(uid)
   void loadQuota()
-  void loadMarketing()
+  void loadMarketing(uid)
 }, { immediate: true })
 
 // ── 從這一頁登入 ──────────────────────────────────────
@@ -380,13 +582,16 @@ watch(() => (isMember.value ? user.value?.uid : null), (uid) => {
 const loginFailed = ref(false)
 
 onMounted(async () => {
+  document.addEventListener('visibilitychange', onVisibilityChange)
   if (await completeLoginReturn() === 'error') {
     loginFailed.value = true
   }
 })
 
 onUnmounted(() => {
-  unsubPending?.()
-  unsubPending = null
+  // 世代往前推：還在讀取中的那一輪回來之後不會再掛監聽
+  loadGen++
+  stopWatching()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
