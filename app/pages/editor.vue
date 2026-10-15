@@ -184,17 +184,21 @@
          未登入時主按鈕按下去是整頁導去 LINE，所以按鈕文字與顏色都要先講清楚，
          不能寫「確認」—— 那會讓人以為按了就送出，結果卻被帶離本站。
          登入前後主按鈕都在第一列同一個位置，從 LINE 回來時不必重新找，
-         只是字與顏色換了。 -->
+         只是字與顏色換了。
+
+         產生分享圖的期間主按鈕也鎖住（取消一起鎖，AppModal 沒辦法分開鎖）：
+         這時送出成功會直接換頁，產到一半的圖與開著的分享面板都會被拆掉。
+         按鈕字維持原樣，「處理中」只出現在真正在處理的分享鈕上。 -->
     <AppModal
       v-model="showSubmitModal"
       :title="justSignedIn ? t.editor.submitModal.titleSignedIn : t.editor.submitModal.title"
       :message="toModalMessage(t.editor.submitModal.message)"
-      :confirm-text="isMember ? t.editor.submitModal.confirm : t.editor.submitModal.confirmWithLogin"
+      :confirm-text="submitConfirmText"
       :cancel-text="t.common.cancel"
       :confirm-button-class="isMember ? 'c-button--primary' : 'c-button--line'"
       stacked-actions
-      :loading="isSubmitting"
-      :loading-text="t.editor.submitModal.processing"
+      :loading="isSubmitting || isSharing"
+      :loading-text="isSubmitting ? t.editor.submitModal.processing : submitConfirmText"
       @confirm="confirmSubmit"
       @cancel="showSubmitModal = false"
       @opened="submitModalEntered = true"
@@ -952,6 +956,7 @@ const route = useRoute()
 const router = useRouter()
 const { $firestore } = useNuxtApp()
 const db = $firestore as any
+const cols = useCollections()
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
 const { ready: authReady, user, isMember, profile, startLogin, completeLogin, logout } = useMemberAuth()
 const { syncProfile, getProfile, setMarketingOptIn } = useMemberProfile()
@@ -977,6 +982,12 @@ const ensureSubmissionId = (): string => {
   }
   return submissionId.value
 }
+
+/**
+ * 這一張已經送出成功、正在換到等待頁。草稿已經清掉了，換頁之前的任何存檔都會把它
+ * 寫回去（下次進來又問一次要不要用這份草稿），送出鈕也不能再解鎖（見 confirmSubmit）
+ */
+let submitted = false
 
 /**
  * 把頁面高度鎖成「鍵盤出現前」量到的值，讓鍵盤只是蓋在頁面上，而不是把版面頂上去。
@@ -1008,6 +1019,13 @@ const onTextFieldBlur = () => {
   // 鍵盤收起有動畫，等它跑完再量，否則量到的還是壓縮後的高度
   setTimeout(relockViewportHeight, 350)
 }
+
+/**
+ * 元件已經卸載。onMounted 要等字型與圖片好幾秒，使用者在這段期間就離開的話，
+ * onUnmounted 會先跑完，之後才掛上的監聽（onSnapshot、ResizeObserver）與 Fabric 畫布
+ * 就沒人收了。非同步流程在每個 await 之後看一下，已經卸載就不再往下做。
+ */
+let disposed = false
 
 // Loading state
 const loading = ref(true)
@@ -1439,6 +1457,17 @@ const brushColor = ref('#ffffff')
 const brushWidth = ref(8)
 const eraserMode = ref(false)
 const drawingData = ref<string | null>(null)
+
+/**
+ * 筆刷色在目前的材質上看不到時，換成調色盤裡第一個看得到的。
+ * 預設的白色筆刷在白便利貼上畫了等於沒畫，白色色票那時又是停用的，使用者會以為筆壞了。
+ * 跟文字的 defaultTextColor 一樣只管接下來要畫的顏色，已經畫好的筆畫不動。
+ */
+const ensureUsableBrushColor = () => {
+  if (isSwatchUsable(brushColor.value)) return
+  const usable = BRUSH_COLORS.find(c => isSwatchUsable(c.value))
+  if (usable) brushColor.value = usable.value
+}
 // 資料來源：材質、造型、貼紙依節慶主題列出（見 data/themes.ts）。
 // 第一個材質仍是 BACKGROUND_IMAGES[0]：節慶材質只接在後面，預設值與「有沒有動過」的判斷不受主題影響
 const { theme } = useTheme()
@@ -1470,15 +1499,55 @@ const showStickerEditFrame = computed(() => activeTab.value === 'sticker' && !!s
 const DRAW_EXPORT_IDLE_MS = 1500
 let drawExportTimer: ReturnType<typeof setTimeout> | null = null
 
-/** 立刻把畫布轉成 PNG 寫進 drawingData。有變動才回傳 true（不存檔，交給呼叫端） */
+/**
+ * 草稿還原進畫布的那張圖（沒有就是 null）。
+ * 它在 Fabric 裡是一個圖片物件、不是筆畫：canUndo() 看不到它，undo 也拿不掉它，
+ * 只有「全部重來」會清掉。所以筆畫 undo 到一筆不剩時，畫布上剩下的就是這張。
+ */
+let drawingBase: string | null = null
+
+/**
+ * 全透明的畫布匯出來的 PNG。Fabric 匯出是開一張同尺寸的新 canvas 再 toDataURL，
+ * 同一個瀏覽器編出來的全透明圖每次都一樣，拿來比對就知道畫是不是被橡皮擦整張擦掉了。
+ * 比對不上（瀏覽器編碼有差異）只會退回「還有畫」的判斷，不會誤刪
+ */
+let blankDrawingPng: string | null = null
+const isBlankDrawing = (data: string): boolean => {
+  if (blankDrawingPng === null) {
+    const canvas = document.createElement('canvas')
+    canvas.width = 600
+    canvas.height = 600
+    canvas.getContext('2d')
+    blankDrawingPng = canvas.toDataURL('image/png')
+    // 立刻釋放這塊 backing store，不等 GC（iOS 的 canvas 記憶體上限很緊）
+    canvas.width = 0
+    canvas.height = 0
+  }
+  return data === blankDrawingPng
+}
+
+/**
+ * 立刻把畫布轉成 PNG 寫進 drawingData。有變動才回傳 true（不存檔，交給呼叫端）
+ *
+ * 畫布上空了（undo 到一筆不剩、或整張擦掉）要把 drawingData 清成 null，
+ * 不然預覽與送出用的還是最後一次匯出的舊圖。
+ * 還沒初始化時 canUndo() 一定是 false，看不出上面有什麼，維持原狀；
+ * 縮成 1×1 時 exportToDataURL 會回 null，同樣維持原狀。
+ */
 const exportDrawingNow = (): boolean => {
   if (drawExportTimer) { clearTimeout(drawExportTimer); drawExportTimer = null }
-  // 當前沒有任何筆畫：保留既有的 drawingData（例如使用者先前的繪圖），
-  // 清空動作交給「一鍵清除」等顯式操作，避免誤將完成的畫作設為 null。
-  if (!fabricBrush.canUndo()) return false
-  const data = fabricBrush.exportToDataURL()
-  if (!data || data === drawingData.value) return false
-  drawingData.value = data
+  if (!fabricBrush.isInitialized()) return false
+  let next: string | null
+  if (fabricBrush.canUndo()) {
+    const data = fabricBrush.exportToDataURL()
+    if (!data) return false
+    next = isBlankDrawing(data) ? null : data
+  } else {
+    // 一筆都沒有：畫布上只剩草稿還原的圖，或什麼都沒有
+    next = drawingBase
+  }
+  if (next === drawingData.value) return false
+  drawingData.value = next
   return true
 }
 
@@ -1502,6 +1571,7 @@ const fabricBrush = useFabricBrush()
 watch(activeTab, (tab) => {
   // 繪圖：進入/退出繪圖模式
   if (tab === 'draw') {
+    ensureUsableBrushColor()
     drawMode.value = true
     // 恢復畫布尺寸（從 1×1 最小化還原為 600×600，重新分配 GPU backing store）
     fabricBrush.restoreCanvas()
@@ -1533,6 +1603,9 @@ watch(activeTab, (tab) => {
 watch(brushColor, (c) => {
   fabricBrush.setBrushColor(c)
 }, { immediate: false })
+
+// 換材質（包括還原草稿）時筆刷色可能變成看不到的那一個
+watch(backgroundImage, ensureUsableBrushColor)
 
 watch(brushWidth, (w) => {
   fabricBrush.setBrushWidth(w)
@@ -2059,6 +2132,8 @@ const deselectAll = () => {
 
 // saveDraftData 需在 composable 之前定義（作為 callback）
 const saveDraftData = () => {
+  if (submitted) return
+
   // 手繪是停筆後才匯出的，存檔前先補上，否則會存到少了最後幾筆的舊圖
   flushDrawingExport()
 
@@ -2232,6 +2307,7 @@ const loadDraftData = async (draft: DraftData) => {
   // 署名等身分確定了才放回去，見 pendingDraftNameTag
   pendingDraftNameTag.value = draft.nameTag ?? null
   drawingData.value = draft.drawing ?? null
+  drawingBase = drawingData.value
   // 還原送出用的 ID —— 被導去 LINE 登入再回來時，就是靠這個值讓重送
   // 寫到同一筆，而不是多出一張便利貼
   submissionId.value = draft.submissionId
@@ -2279,7 +2355,11 @@ const resetEditorToInitial = () => {
   selectedStickerId.value = null
   step.value = 0
   drawingData.value = null
+  drawingBase = null
   fabricBrush.clear()
+  // 重來就是另一張便利貼。沿用舊的 ID 的話，上一張其實已經上牆（只是回應沒收到）時，
+  // 這一張送出會被當成「同一張已經建立過」而直接算成功（見 confirmSubmit）
+  submissionId.value = undefined
   syncContentToDom()
 }
 
@@ -2313,6 +2393,10 @@ const handleDraftDecision = async (useDraft: boolean) => {
 }
 
 const isSubmitting = ref(false)
+
+const submitConfirmText = computed(() =>
+  isMember.value ? t.value.editor.submitModal.confirm : t.value.editor.submitModal.confirmWithLogin
+)
 
 /**
  * 送得出去的最低條件：文字、繪圖、貼紙至少有一項。
@@ -2616,8 +2700,62 @@ const loginFromIntro = () => {
     : route.fullPath)
 }
 
+/**
+ * NOTE_CREATE_DENIED 不一定是真的被擋：寫入其實成功了、只是回應在路上掉了，
+ * SDK 自動重送的那一次撞上「只准建立、不准覆寫」才被拒。這時牆上已經有這一張，
+ * 顯示失敗的話使用者會一直重送、一直失敗（同一個 ID 不可能再建立一次）。
+ *
+ * 投稿者紀錄 note_owners/{id} 跟便利貼同一批寫入，它在、而且是自己，就代表建立成功了。
+ * 規則只讓本人讀自己的紀錄，文件不存在時讀取也會被拒，所以讀失敗一律當成沒建立。
+ * （不改 useFirestore：送出流程的其他部分都不需要這一步）
+ */
+const wasCreatedByMe = async (noteId: string): Promise<boolean> => {
+  const uid = memberUid.value
+  if (!uid) return false
+  try {
+    const snap = await getDoc(doc(db, cols.noteOwners, noteId))
+    return snap.exists() && snap.data()?.uid === uid
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 送出成功之後：清掉草稿與 Token，換到等待頁。
+ *
+ * 送出鈕不解鎖、草稿也不再存（submitted）：換頁要等等待頁的程式載完，
+ * 原本這段空檔裡按鈕就恢復了，再按一次會用新的 submissionId 送出第二張。
+ * 確認畫面也留著（按鈕停在「處理中」）直到真的換頁，不讓人在空檔裡回去改。
+ */
+const finishSubmit = async (tokenForSubmit: string | undefined) => {
+  submitted = true
+  // 用量不需要在這裡記——預約在 createNote 裡就已經寫進 user_quota 了。
+  clearDraft()
+  // 草稿清掉了，下一張要用新的 submissionId，否則會被當成「同一張的重試」
+  // 而不吃額度
+  submissionId.value = undefined
+  if (tokenRequiredForSubmit.value && tokenForSubmit) {
+    clearToken() // 將 SessionStorage 中的 Token 刪除
+  }
+
+  // 如果網址上有 Token，把網址也清乾淨，避免重新整理再次讀取
+  const query = { ...route.query }
+  if (tokenRequiredForSubmit.value && query.token) {
+    delete query.token
+    // 使用 replace 避免在歷史紀錄中留存帶有 token 的網址
+    await router.replace({ query })
+  }
+
+  const failure = await router.push('/queue-status').catch((error: unknown) => error)
+  if (failure) {
+    // 換頁失敗（極少見）至少把確認畫面收掉。送出鈕維持停用：這一張已經送出了
+    console.error('送出後換頁失敗:', failure)
+    showSubmitModal.value = false
+  }
+}
+
 const confirmSubmit = async () => {
-  if (isSubmitting.value) return
+  if (isSubmitting.value || isSharing.value || submitted) return
 
   // 送出是整個網站唯一需要身分的動作。瀏覽、編輯、預覽都不必登入，
   // 所以這個檢查刻意放在這裡，而不是頁面層的 middleware。
@@ -2626,53 +2764,64 @@ const confirmSubmit = async () => {
     return
   }
 
-  // 停權放在配額之前：被封鎖的人不該看到「請 3 分鐘後再試」這種會讓人以為還能送的訊息
-  if (await isSelfBanned()) {
-    showSubmitModal.value = false
-    showBannedAlert()
-    return
-  }
-
-  // 配額的體驗性檢查。真正的強制在 firestore.rules，這裡是為了讓使用者
-  // 在按下送出的當下就知道原因，而不是等一輪上傳流程跑完才被拒絕。
-  const quota = await checkQuota(ensureSubmissionId())
-  if (!quota.allowed) {
-    showSubmitModal.value = false
-    if (quota.reason === 'daily') {
-      // reason 是 daily 時一定帶著 dailyLimit，?? 0 只是給型別看的
-      const dailyLimit = quota.dailyLimit ?? 0
-      showAlert(
-        () => {
-          const alert = t.value.editor.alerts.dailyLimit
-          return { title: alert.title, message: alert.message(dailyLimit) }
-        },
-        '📅'
-      )
-    } else {
-      // 等待時間是按下當時算好的，之後不再倒數；切換語言只是換個說法
-      const retryAfterMs = quota.retryAfterMs ?? 0
-      showAlert(
-        () => {
-          const alert = t.value.editor.alerts.cooldown
-          return { title: alert.title, message: alert.message(formatCooldownRemaining(retryAfterMs)) }
-        },
-        '⏱️'
-      )
-    }
-    return
-  }
-
-  const tokenForSubmit = tokenRequiredForSubmit.value ? (loadToken() || undefined) : undefined
-  if (tokenRequiredForSubmit.value && !tokenForSubmit) {
-    // 與上面的冷卻分支一致先收掉 modal，否則提示會疊在確認畫面上
-    showSubmitModal.value = false
-    showAlert(() => t.value.editor.alerts.tokenMissing, TOKEN_ALERT_ICON)
-    return
-  }
-
+  // 一按下去就鎖住：底下每一步都要等網路（停權、額度、定位、審核、上傳）。
+  // 原本要等停權與額度兩次讀取完才鎖，那段空檔連點會跑出第二條流程。
+  // 鎖住之後 AppModal 的取消鈕也跟著停用，流程中途按取消不會發生；
+  // 剩下的「中途不要了」只有離開頁面，見寫入前的檢查。
   isSubmitting.value = true
+  // 已登入直接按上傳的人，ID 也要先寫進草稿（沒登入的那條路在 redirectToLogin 裡存）：
+  // 送到一半斷線或關掉分頁，下次重送才會寫到同一筆，而不是多一張
+  const noteId = ensureSubmissionId()
+  saveDraftData()
+
+  let tokenForSubmit: string | undefined
+  let created = false
 
   try {
+    // 停權放在配額之前：被封鎖的人不該看到「請 3 分鐘後再試」這種會讓人以為還能送的訊息
+    if (await isSelfBanned()) {
+      showSubmitModal.value = false
+      showBannedAlert()
+      return
+    }
+
+    // 配額的體驗性檢查。真正的強制在 firestore.rules，這裡是為了讓使用者
+    // 在按下送出的當下就知道原因，而不是等一輪上傳流程跑完才被拒絕。
+    const quota = await checkQuota(noteId)
+    if (!quota.allowed) {
+      showSubmitModal.value = false
+      if (quota.reason === 'daily') {
+        // reason 是 daily 時一定帶著 dailyLimit，?? 0 只是給型別看的
+        const dailyLimit = quota.dailyLimit ?? 0
+        showAlert(
+          () => {
+            const alert = t.value.editor.alerts.dailyLimit
+            return { title: alert.title, message: alert.message(dailyLimit) }
+          },
+          '📅'
+        )
+      } else {
+        // 等待時間是按下當時算好的，之後不再倒數；切換語言只是換個說法
+        const retryAfterMs = quota.retryAfterMs ?? 0
+        showAlert(
+          () => {
+            const alert = t.value.editor.alerts.cooldown
+            return { title: alert.title, message: alert.message(formatCooldownRemaining(retryAfterMs)) }
+          },
+          '⏱️'
+        )
+      }
+      return
+    }
+
+    tokenForSubmit = tokenRequiredForSubmit.value ? (loadToken() || undefined) : undefined
+    if (tokenRequiredForSubmit.value && !tokenForSubmit) {
+      // 與上面的冷卻分支一致先收掉 modal，否則提示會疊在確認畫面上
+      showSubmitModal.value = false
+      showAlert(() => t.value.editor.alerts.tokenMissing, TOKEN_ALERT_ICON)
+      return
+    }
+
     const { createNote, checkTokenStatus } = useFirestore()
 
     // GPS 合法區域檢查：若後台開啟限制，必須位於指定半徑內才能送出
@@ -2695,14 +2844,12 @@ const confirmSubmit = async () => {
       } else {
         showAlert(() => t.value.editor.alerts.locationFailed, '📍')
       }
-      isSubmitting.value = false
       return
     }
 
     if (!isWithinAllowedArea) {
       showSubmitModal.value = false
       showAlert(() => t.value.editor.alerts.outsideArea, '📍')
-      isSubmitting.value = false
       return
     }
 
@@ -2724,7 +2871,6 @@ const confirmSubmit = async () => {
       } else {
         showAlert(() => t.value.editor.alerts.textFlagged, '🚫')
       }
-      isSubmitting.value = false
       return
     }
 
@@ -2734,101 +2880,97 @@ const confirmSubmit = async () => {
       showSubmitModal.value = false
       removeNameTag()
       showAlert(() => t.value.editor.alerts.nameFlagged, '🚫')
-      isSubmitting.value = false
       return
     }
 
     if (status === 'expired') {
       showSubmitModal.value = false
       showAlert(() => t.value.editor.alerts.tokenExpired, '⏳')
-      isSubmitting.value = false
       return
     }
 
     if (status === 'used') {
       showSubmitModal.value = false
       showAlert(() => t.value.editor.alerts.tokenUsed, '❌')
-      isSubmitting.value = false
       return
     }
 
     if (status === 'invalid') {
       showSubmitModal.value = false
       showAlert(() => t.value.editor.alerts.tokenInvalid, '❓')
-      isSubmitting.value = false
       return
     }
+
+    // 前面的檢查最久要等二十幾秒（定位逾時還會用低精度再試一次）。
+    // 這段期間確認畫面不在了（離開了編輯器）就不送：人已經不在這一頁，
+    // 送出成功後再把他拉去等待頁只會讓人搞不清楚。草稿與 ID 都存著，回來可以再送
+    if (disposed || !showSubmitModal.value) return
 
     // 2. 狀態正確(valid)或無法判別時，嘗試正式送出
     await createNote(
       { content: previewNoteData.value.content, style: previewNoteData.value.style },
       tokenForSubmit,
-      ensureSubmissionId()
+      noteId
     )
-
-    // 上傳成功：清除草稿與快取的 Token。
-    // 用量不需要在這裡記——預約在 createNote 裡就已經寫進 user_quota 了。
-    clearDraft()
-    // 草稿清掉了，下一張要用新的 submissionId，否則會被當成「同一張的重試」
-    // 而不吃額度
-    submissionId.value = undefined
-    if (tokenRequiredForSubmit.value && tokenForSubmit) {
-      clearToken() // 將 SessionStorage 中的 Token 刪除
-    }
-    
-    // 如果網址上有 Token，把網址也清乾淨，避免重新整理再次讀取
-    const query = { ...route.query }
-    if (tokenRequiredForSubmit.value && query.token) {
-      delete query.token
-      // 使用 replace 避免在歷史紀錄中留存帶有 token 的網址
-      await router.replace({ query })
-    }
-
-    showSubmitModal.value = false
-    router.push('/queue-status')
+    created = true
   } catch (e: any) {
-    showSubmitModal.value = false // 關閉「確認上傳」的 Modal，讓錯誤提示能正常顯示在最上層
-    console.error('提交失敗:', e)
-
-    // 送出中途登入狀態失效（token 過期、使用者在別的分頁登出）。
-    // 直接把人再送去登入一次，草稿還在，回來接著送。
-    if (e?.message === 'NOT_LOGGED_IN') {
-      showAlert(
-        () => {
-          const alert = t.value.editor.alerts.sessionExpired
-          return { title: alert.title, message: alert.message, confirmText: alert.confirm }
-        },
-        '🔑',
-        redirectToLogin
-      )
-    } else if (e?.message === 'QUOTA_EXCEEDED') {
-      // 前面的 checkQuota 已經先擋過一次，走到這裡代表兩者判斷不一致：
-      // 多半是在別的分頁／裝置上剛送出一張，或是裝置時鐘與伺服器差太多
-      // （submitDate 對不上）。訊息保持籠統，不要猜原因。
-      showAlert(() => t.value.editor.alerts.quotaExceeded, '⏱️')
-    } else if (e?.message === 'NOTE_CREATE_DENIED') {
-      // 已經登入卻還是被規則擋下：剛好在這幾秒內被封鎖（送出前的檢查已經過了）、
-      // 後台開著 Token 驗證但這次沒帶憑證，或是線上規則跟這一版程式對不上
-      // （程式先上、規則還沒部署）。只有真的開著 Token 驗證才提 QR Code ——
-      // 驗證關著時講 QR Code，使用者會去找店員要一個根本不存在的東西
-      if (await isSelfBanned()) {
-        showBannedAlert()
-      } else if (tokenRequiredForSubmit.value) {
-        showAlert(() => t.value.editor.alerts.tokenRequired, '🚫')
-      } else {
-        showAlert(() => t.value.editor.alerts.createDenied, '🚫')
-      }
-    } else if (
-      tokenRequiredForSubmit.value &&
-      (e?.code === 'permission-denied' || e?.message?.includes('Missing or insufficient permissions'))
-    ) {
-      showAlert(() => t.value.editor.alerts.tokenRevoked, '⏳')
+    if (e?.message === 'NOTE_CREATE_DENIED' && await wasCreatedByMe(noteId)) {
+      console.warn('建立被拒，但這一張已經在牆上了，當作送出成功:', e)
+      created = true
     } else {
-      // 錯誤細節上面已經記在 console，不給使用者看（理由見 locales/zh-TW/editor.ts 的 submitFailed）
-      showAlert(() => ({ message: t.value.editor.alerts.submitFailed }))
+      await showSubmitError(e)
     }
   } finally {
-    isSubmitting.value = false
+    // 成功就不解鎖，見 finishSubmit
+    if (!created) isSubmitting.value = false
+  }
+
+  if (created) await finishSubmit(tokenForSubmit)
+}
+
+/** 送出失敗的提示 */
+const showSubmitError = async (e: any) => {
+  showSubmitModal.value = false // 關閉「確認上傳」的 Modal，讓錯誤提示能正常顯示在最上層
+  console.error('提交失敗:', e)
+
+  // 送出中途登入狀態失效（token 過期、使用者在別的分頁登出）。
+  // 直接把人再送去登入一次，草稿還在，回來接著送。
+  if (e?.message === 'NOT_LOGGED_IN') {
+    showAlert(
+      () => {
+        const alert = t.value.editor.alerts.sessionExpired
+        return { title: alert.title, message: alert.message, confirmText: alert.confirm }
+      },
+      '🔑',
+      redirectToLogin
+    )
+  } else if (e?.message === 'QUOTA_EXCEEDED') {
+    // 前面的 checkQuota 已經先擋過一次，走到這裡代表兩者判斷不一致：
+    // 多半是在別的分頁／裝置上剛送出一張，或是裝置時鐘與伺服器差太多
+    // （submitDate 對不上）。訊息保持籠統，不要猜原因。
+    // （讀不到用量是 QUOTA_READ_FAILED，走最後的一般失敗，不會到這裡）
+    showAlert(() => t.value.editor.alerts.quotaExceeded, '⏱️')
+  } else if (e?.message === 'NOTE_CREATE_DENIED') {
+    // 已經登入卻還是被規則擋下（而且不是「其實已經建立了」，見 wasCreatedByMe）：
+    // 剛好在這幾秒內被封鎖（送出前的檢查已經過了）、
+    // 後台開著 Token 驗證但這次沒帶憑證，或是線上規則跟這一版程式對不上
+    // （程式先上、規則還沒部署）。只有真的開著 Token 驗證才提 QR Code ——
+    // 驗證關著時講 QR Code，使用者會去找店員要一個根本不存在的東西
+    if (await isSelfBanned()) {
+      showBannedAlert()
+    } else if (tokenRequiredForSubmit.value) {
+      showAlert(() => t.value.editor.alerts.tokenRequired, '🚫')
+    } else {
+      showAlert(() => t.value.editor.alerts.createDenied, '🚫')
+    }
+  } else if (
+    tokenRequiredForSubmit.value &&
+    (e?.code === 'permission-denied' || e?.message?.includes('Missing or insufficient permissions'))
+  ) {
+    showAlert(() => t.value.editor.alerts.tokenRevoked, '⏳')
+  } else {
+    // 錯誤細節上面已經記在 console，不給使用者看（理由見 locales/zh-TW/editor.ts 的 submitFailed）
+    showAlert(() => ({ message: t.value.editor.alerts.submitFailed }))
   }
 }
 
@@ -2852,6 +2994,11 @@ const handleExitConfirm = () => {
 const initFabricBrush = async () => {
   if (typeof window === 'undefined' || !canvasRef.value || !drawingCanvasRef.value || !drawingLayerRef.value) return
   await fabricBrush.init(drawingCanvasRef.value, 600, 600)
+  // 下載 Fabric 的期間離開了編輯器：onUnmounted 的 dispose 那時畫布還沒建立，這裡補收
+  if (disposed) {
+    fabricBrush.dispose()
+    return
+  }
   fabricBrush.setOnUndoRedoChange(() => {
     drawCanUndo.value = fabricBrush.canUndo()
     drawCanRedo.value = fabricBrush.canRedo()
@@ -2863,6 +3010,7 @@ const initFabricBrush = async () => {
   fabricBrush.setEraserMode(eraserMode.value)
   fabricBrush.setDrawingMode(drawMode.value)
   if (drawingData.value) {
+    drawingBase = drawingData.value
     await fabricBrush.loadFromDataURL(drawingData.value)
   }
   drawCanUndo.value = fabricBrush.canUndo()
@@ -2870,6 +3018,18 @@ const initFabricBrush = async () => {
   // Fabric 在看活動規範時就預先初始化了，那時通常還沒到繪圖步驟：先縮成 1×1，
   // 進繪圖步驟時再由 watch(activeTab) 還原，STEP 1–3（含鍵盤彈出時）不必一直佔著整塊畫布
   if (!drawMode.value) fabricBrush.minimizeCanvas()
+}
+
+/**
+ * Fabric 是動態載入的，網路不穩時那個 chunk 會載不到。不接的話只是一個 unhandled rejection，
+ * 使用者要到繪圖步驟才發現畫不出來；開場就講，重新整理的代價最小
+ */
+const startFabricBrush = () => {
+  initFabricBrush().catch((error) => {
+    console.error('[editor] 繪圖工具初始化失敗:', error)
+    if (disposed) return
+    showAlert(() => ({ message: t.value.editor.alerts.drawToolFailed }))
+  })
 }
 
 // 縮放直接寫在 scaler 元素的 style 上（見下面的 ResizeObserver），不經過響應式狀態
@@ -2880,6 +3040,7 @@ let resizeObserver: ResizeObserver | null = null
 
 const checkInitialModals = async () => {
   await nextTick()
+  if (disposed) return
   // 檢查草稿（僅顯示 modal，不預先載入內容；等使用者選擇「使用草稿」才載入）
   const existingDraft = loadDraft()
   if (existingDraft) {
@@ -2893,18 +3054,19 @@ const checkInitialModals = async () => {
   }
 
   // 初始化 Fabric 手繪
-  initFabricBrush()
+  startFabricBrush()
 }
 
 /**
  * LINE 登入失敗的原因（網址上的 reason）對應到使用者看得懂的說法，
  * 說法在 t.editor.alerts.loginFailed.reasons；不認得的原因用籠統的那句。
- * 用 hasOwn 判斷，reason 剛好是 toString 這類物件內建的名字時才不會撈到函式。
+ * 只認物件自己的 key，reason 剛好是 toString 這類物件內建的名字時才不會撈到函式。
+ * 不用 Object.hasOwn：iOS 15.4 以前的 Safari 沒有它，會整個丟錯。
  */
 const loginErrorMessage = (reason: string): string => {
   const { loginFailed } = t.value.editor.alerts
   const { reasons } = loginFailed
-  return Object.hasOwn(reasons, reason)
+  return Object.prototype.hasOwnProperty.call(reasons, reason)
     ? reasons[reason as keyof typeof reasons]
     : loginFailed.message
 }
@@ -2949,17 +3111,20 @@ const handleLoginReturn = async (): Promise<void> => {
   delete query[TERMS_AGREED_QUERY]
   delete query[NAME_TAG_QUERY]
   await router.replace({ query })
+  if (disposed) return
 
   if (resumingSubmit || resumingEdit) {
     showIntroOverlay.value = false
     termsAccepted.value = true
     await nextTick()
-    initFabricBrush()
+    if (disposed) return
+    startFabricBrush()
 
     const draft = loadDraft()
     if (draft) {
       await nextTick()
       await new Promise<void>(r => requestAnimationFrame(() => r()))
+      if (disposed) return
       await loadDraftData(draft)
     }
     // 登入失敗或取消也一樣回到原本那一步：使用者只是沒登入成功，不是要重來
@@ -3003,6 +3168,9 @@ const handleLoginReturn = async (): Promise<void> => {
     profile.value?.linePicture ?? null,
     profile.value?.lineEmail ?? null
   ).then(loadNameTagAvatar)
+
+  // 領 token 的期間離開了：登入與會員資料照樣完成（身分是全站共用的），只是不再動這一頁
+  if (disposed) return
 
   // 從 STEP 5 的署名鈕來的：回到的就是 STEP 5，直接貼上並選取
   if (wantsNameTag && resumingEdit) {
@@ -3073,9 +3241,12 @@ onMounted(async () => {
   } catch (e) {
     console.warn('Font loading error', e)
   }
+  // 這段最少 800ms、最久 5 秒，期間離開了就到此為止，後面的監聽都不要掛（見 disposed）
+  if (disposed) return
   loading.value = false
 
   await nextTick()
+  if (disposed) return
 
   // 處理 Token
   const tokenFromQuery = route.query.token as string
@@ -3122,6 +3293,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  disposed = true
   window.removeEventListener('resize', relockViewportHeight)
   window.removeEventListener('orientationchange', relockViewportHeight)
   // 這個變數掛在 <html> 上，離開編輯器要收掉，不要影響其他頁

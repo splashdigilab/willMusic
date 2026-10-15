@@ -58,6 +58,9 @@ export const isInlineAvatar = (value: unknown): value is string =>
 /** 頭貼縮圖的邊長。名牌上顯示得很小，LED 牆放大展示時也還夠用 */
 const AVATAR_SIZE = 128
 
+/** 與 firestore.rules 的 style.nameTag.avatar.size() <= 30000 一致 */
+const MAX_AVATAR_LENGTH = 30000
+
 /**
  * 把頭貼縮成小張 JPEG 再放進便利貼。
  *
@@ -66,6 +69,8 @@ const AVATAR_SIZE = 128
  * 縮到 128px 之後只剩幾 KB，留在文件裡就好。
  * 來源本身是 data URL，畫進 canvas 不會被當成跨網域而無法匯出。
  * 失敗就回 null（名牌改顯示暱稱第一個字），不擋送出。
+ * 縮完還超過規則的上限（雜訊很多的照片 JPEG 壓不小）或格式不對也回 null：
+ * 帶著它送出的話，被規則拒絕的是整張便利貼，不只是頭貼。
  */
 export const downscaleAvatar = (dataUrl: string): Promise<string | null> =>
   new Promise((resolve) => {
@@ -87,7 +92,8 @@ export const downscaleAvatar = (dataUrl: string): Promise<string | null> =>
         const sx = (img.naturalWidth - side) / 2
         const sy = (img.naturalHeight - side) / 2
         ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size)
-        resolve(canvas.toDataURL('image/jpeg', 0.85))
+        const result = canvas.toDataURL('image/jpeg', 0.85)
+        resolve(isInlineAvatar(result) && result.length <= MAX_AVATAR_LENGTH ? result : null)
       } catch {
         resolve(null)
       }

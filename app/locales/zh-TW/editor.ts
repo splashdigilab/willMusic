@@ -294,6 +294,8 @@ export default {
     submitFailed: '送出失敗，請稍後再試。一直失敗的話，請洽現場工作人員。你的便利貼已經幫你留著了。',
     /** 分享圖產生失敗（useNoteExport），標題用 alertTitle */
     exportFailed: '圖片生成失敗，請稍後再試',
+    /** 繪圖工具（Fabric.js，動態載入）載不進來，多半是網路不穩。標題用 alertTitle */
+    drawToolFailed: '繪圖工具載入失敗，請重新整理頁面後再試一次。',
     /** 從確認畫面去 LINE 登入、在 LINE 那邊取消了 */
     loginCancelled: {
       title: '還沒完成登入',

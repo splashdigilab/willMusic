@@ -215,6 +215,7 @@ export default {
     },
     submitFailed: 'Couldn\'t send your note. Please try again later. If it keeps failing, please talk to our staff. Your note has been saved.',
     exportFailed: 'Couldn\'t create the image. Please try again later.',
+    drawToolFailed: 'Couldn\'t load the drawing tools. Please refresh the page and try again.',
     loginCancelled: {
       title: 'Login not finished',
       message: 'You need to log in with LINE to submit. Everything you made is still here, so you can submit once you log in.'

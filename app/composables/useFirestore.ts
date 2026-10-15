@@ -23,11 +23,14 @@ import type {
   TokenDocument,
   CreateNoteForm
 } from '~/types'
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { recordUploadStat } from '~/composables/useUploadStats'
 
 /** 手繪圖在 Storage 上的資料夾 */
 export const NOTE_DRAWING_PATH = 'note_drawings'
+
+/** 手繪圖上傳最多等多久，超過就退回把圖內嵌在文件裡（見 persistDrawing） */
+const DRAWING_UPLOAD_TIMEOUT_MS = 20_000
 
 export const useFirestore = () => {
   const { $firestore, $storage, $auth } = useNuxtApp() as any
@@ -88,7 +91,17 @@ export const useFirestore = () => {
       const blob = await (await fetch(drawing)).blob()
       const path = `${NOTE_DRAWING_PATH}/${noteId}-${randomFileSuffix()}.png`
       const fileRef = storageRef(storage, path)
-      await uploadBytes(fileRef, blob, { contentType: 'image/png' })
+      // 現場網路壅塞時，送出去卻一直沒回應的那一次請求不會自己逾時
+      // （plugins/firebase.client.ts 設的重試上限只管失敗之後的重試），
+      // 使用者會一直盯著「處理中」。時間到就取消，走下面退回 base64 的路；
+      // 用取消而不是不等它，Storage 上才不會多出一個沒有便利貼引用的檔案
+      const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/png' })
+      const timer = setTimeout(() => task.cancel(), DRAWING_UPLOAD_TIMEOUT_MS)
+      try {
+        await task
+      } finally {
+        clearTimeout(timer)
+      }
       return { ...style, drawing: await getDownloadURL(fileRef) }
     } catch (error) {
       console.error('[createNote] 手繪圖上傳 Storage 失敗，暫時沿用內嵌資料', error)

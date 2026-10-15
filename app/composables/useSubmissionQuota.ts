@@ -100,12 +100,17 @@ export const useSubmissionQuota = () => {
     }
   }
 
+  /** 讀失敗會丟錯。要分得出「沒有紀錄」與「讀不到」的用這個，只是顯示用的用 loadQuota */
+  const readQuota = async (ref: NonNullable<ReturnType<typeof quotaRef>>): Promise<UserQuota | null> => {
+    const snap = await getDoc(ref)
+    return snap.exists() ? (snap.data() as UserQuota) : null
+  }
+
   const loadQuota = async (): Promise<UserQuota | null> => {
     const ref = quotaRef()
     if (!ref) return null
     try {
-      const snap = await getDoc(ref)
-      return snap.exists() ? (snap.data() as UserQuota) : null
+      return await readQuota(ref)
     } catch (e) {
       console.warn('[quota] 讀取用量失敗', e)
       return null
@@ -148,12 +153,22 @@ export const useSubmissionQuota = () => {
    *
    * 被規則拒絕時丟出 'QUOTA_EXCEEDED'，讓呼叫端與其他 permission-denied
    * 分得開——同樣是權限錯誤，但要顯示完全不同的訊息。
+   *
+   * 讀不到目前的用量時丟出 'QUOTA_READ_FAILED'（呼叫端當成一般的送出失敗）。
+   * 不能像 check() 那樣當成「沒有紀錄」放行：那樣 submitCount 會算成 1，
+   * 今天已經送過的人會被規則拒絕，畫面上變成「次數已達上限」，其實只是網路不穩。
    */
   const reserve = async (noteId: string): Promise<void> => {
     const ref = quotaRef()
     if (!ref) throw new Error('NOT_LOGGED_IN')
 
-    const quota = await loadQuota()
+    let quota: UserQuota | null
+    try {
+      quota = await readQuota(ref)
+    } catch (e) {
+      console.warn('[quota] 預約前讀取用量失敗', e)
+      throw new Error('QUOTA_READ_FAILED')
+    }
     const today = taipeiDateKey()
 
     // 這幾個值的算法要與 firestore.rules 的 canWriteQuota 對齊，

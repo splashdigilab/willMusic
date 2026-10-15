@@ -228,17 +228,30 @@ export function useNoteExport(
       const blob = await (await fetch(dataUrl)).blob()
       const file = new File([blob], FILE_NAME, { type: 'image/png' })
 
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: t.value.editor.share.title,
-          text: t.value.editor.share.text,
-          files: [file]
-        })
-      } else {
+      const download = () => {
         const link = document.createElement('a')
         link.download = FILE_NAME
         link.href = dataUrl
         link.click()
+      }
+
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            title: t.value.editor.share.title,
+            text: t.value.editor.share.text,
+            files: [file]
+          })
+        } catch (error: any) {
+          // iOS 要求 share() 緊接在使用者的點擊之後；前面產圖花了好幾秒，
+          // 那次點擊的效力已經過了，就會丟 NotAllowedError。圖已經做好了，改成直接下載。
+          // 使用者自己取消（AbortError）照原本的處理，不要變成下載
+          if (error?.name !== 'NotAllowedError') throw error
+          console.warn('系統分享面板無法開啟，改為下載:', error)
+          download()
+        }
+      } else {
+        download()
       }
     } catch (error: any) {
       if (isAbortError(error)) {
