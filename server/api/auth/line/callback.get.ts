@@ -99,7 +99,13 @@ export default defineEventHandler(async (event) => {
     })
     tokenResult = await res.json()
     if (!res.ok || !tokenResult.id_token) {
-      return fail('token_exchange_failed', tokenResult)
+      // 只記錯誤說明：200 卻沒有 id_token 時（scope 少了 openid），回應裡照樣有
+      // access_token 與 refresh_token，整包寫進 log 等於把使用者的 LINE 憑證留在 CloudWatch
+      return fail('token_exchange_failed', {
+        status: res.status,
+        error: tokenResult.error,
+        error_description: tokenResult.error_description
+      })
     }
   } catch (error) {
     return fail('token_exchange_failed', error)

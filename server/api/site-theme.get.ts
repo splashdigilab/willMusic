@@ -2,8 +2,9 @@
  * 後台設定的節慶主題（system/site_theme，測試站 site_theme_dev；見 app/data/themes.ts 的「切換方式」）。
  *
  * 由 app/plugins/site-theme.ts 在伺服器畫頁面前呼叫（同一個行程內直接呼叫，不走網路）。
- * 文件名稱由呼叫端帶 ?doc= 過來：兩站各一份的命名規則只寫在 app/utils/collections.ts 一處，
- * 這裡只檢查名稱長得像 site_theme 或 site_theme_<後綴>，不讓人拿這支 API 讀別的文件。
+ * 文件名稱由呼叫端帶 ?doc= 過來（命名規則在 app/utils/collections.ts 的 siteThemeConfig），
+ * 這裡只收「這個站自己那一份」：只檢查長得像 site_theme_<後綴> 的話，
+ * 每換一個後綴就多一次 Firestore 讀取、快取也多一筆，等於開了一個可以被刷的口。
  *
  * 快取交給 Nitro（maxAge 30 秒＋swr）：
  *   - 過期時先回舊值、背景重讀，打開頁面的人不必等 Firestore
@@ -15,10 +16,14 @@
  * 讀法走 Firestore REST、不帶 API key：system 集合的規則是所有人可讀（firestore.rules），
  * 不需要登入也不需要金鑰。網站的 Firebase 金鑰若在 GCP 限定了網域，伺服器帶它反而會被擋。
  */
-import { createError, getQuery } from 'h3'
+import { createError, getQuery, type H3Event } from 'h3'
+import { normalizeFirestoreSuffix } from '~~/app/utils/firestore-suffix'
 
 const FETCH_TIMEOUT_MS = 2_000
-const DOC_ID_PATTERN = /^site_theme(_[A-Za-z0-9]+)?$/
+
+/** 這個站讀得到的唯一一份；要跟 useCollections().siteThemeConfig 算出來的一樣 */
+const siteThemeDocId = (event: H3Event): string =>
+  `site_theme${normalizeFirestoreSuffix(useRuntimeConfig(event).public.firestoreSuffix)}`
 
 /**
  * Firestore REST 的位址。本機用 Firebase 模擬器測試時，照 Firebase 官方 SDK 的慣例
@@ -33,16 +38,16 @@ interface FirestoreDocument {
   fields?: { themeId?: { stringValue?: string } }
 }
 
-const docIdOf = (query: Record<string, unknown>): string => {
-  const doc = query.doc
-  if (typeof doc !== 'string' || !DOC_ID_PATTERN.test(doc)) {
+const docIdOf = (event: H3Event): string => {
+  const doc = getQuery(event).doc
+  if (doc !== siteThemeDocId(event)) {
     throw createError({ statusCode: 400, statusMessage: 'invalid doc' })
   }
   return doc
 }
 
 export default defineCachedEventHandler(async (event) => {
-  const docId = docIdOf(getQuery(event))
+  const docId = docIdOf(event)
   const { projectId } = useRuntimeConfig(event).public.firebase as { projectId?: string }
   if (!projectId) return { themeId: null as string | null }
 
@@ -64,8 +69,5 @@ export default defineCachedEventHandler(async (event) => {
   name: 'site-theme',
   maxAge: 30,
   swr: true,
-  getKey: (event) => {
-    const doc = getQuery(event).doc
-    return typeof doc === 'string' && DOC_ID_PATTERN.test(doc) ? doc : 'invalid'
-  }
+  getKey: (event) => getQuery(event).doc === siteThemeDocId(event) ? siteThemeDocId(event) : 'invalid'
 })

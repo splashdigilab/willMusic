@@ -1,6 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { normalizeFirestoreSuffix } from './app/utils/firestore-suffix'
 
 // ─── Amplify 的空值限制 ───────────────────────────────────────────
 // Amplify 的環境變數一律不接受空字串，連「所有分支」那一列也不行。
@@ -13,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 const rawGtmId = process.env.NUXT_PUBLIC_GTM_ID || ''
 const gtmId = /^GTM-[A-Z0-9]+$/i.test(rawGtmId) ? rawGtmId : ''
 
-// 便利貼資料集合的後綴在這裡原樣傳遞，'none' 的正規化寫在 app/utils/collections.ts。
+// 便利貼資料集合的後綴在這裡原樣傳遞，'none' 的正規化在執行時由 app/utils/collections.ts 做。
 // 原因：NUXT_PUBLIC_FIRESTORE_SUFFIX 命中 Nuxt 的 runtimeConfig 自動覆寫規則，
 // SSR 時環境變數會蓋掉這裡算好的值，轉換放這裡會被繞過。
 const rawFirestoreSuffix = process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || ''
@@ -26,7 +27,7 @@ const NOINDEX = { 'X-Robots-Tag': 'noindex, nofollow' }
 // 測試站整站不收錄。判斷依據是便利貼集合有沒有後綴：用的不是正式資料，就不是給人搜到的站。
 // 上面說的 runtimeConfig 覆寫在這裡不成問題 —— routeRules 是建置時寫死進 server bundle 的，
 // 讀的就是建置當下的環境變數（Amplify 的 branch-level 覆寫在建置時就生效）。
-const isProductionData = rawFirestoreSuffix === '' || rawFirestoreSuffix === 'none'
+const isProductionData = normalizeFirestoreSuffix(rawFirestoreSuffix) === ''
 
 // 全站預設的標題與摘要，也是首頁的。其他頁面用 usePageSeo 蓋掉
 const SITE_TITLE = '數位應援便利貼 - WillMusic'
@@ -186,6 +187,10 @@ export default defineNuxtConfig({
     lineChannelSecret: process.env.LINE_CHANNEL_SECRET || '',
     firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
     firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY || '',
+    // 選填。LINE 的回呼網址平常從請求推導；前面多一層代理、推導出來的網域不對時才用這個寫死。
+    // 跟上面四個一樣在建置時寫進 server bundle —— 只在執行時讀 process.env 的話，
+    // Amplify 的 SSR 執行環境不一定拿得到 console 設的變數，這個退路會靜靜失效
+    lineLoginRedirectUri: process.env.LINE_LOGIN_REDIRECT_URI || '',
 
     public: {
       gtmId: gtmId,

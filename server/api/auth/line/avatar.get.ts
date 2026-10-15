@@ -24,6 +24,14 @@ const THUMBNAIL_SUFFIX = '/small'
 /** 與 firestore.rules 的 canWriteUserProfile 一致（data URL 的字元數） */
 const MAX_DATA_URL_LENGTH = 30000
 
+/** 原始檔的上限。base64 會膨脹成 4/3 倍，超過這個大小轉出來一定超過上面的上限，不必讀完 */
+const MAX_IMAGE_BYTES = Math.floor(MAX_DATA_URL_LENGTH * 3 / 4)
+
+/** 規則只收這三種（firestore.rules 的 isValidNameTag 與 users 的頭貼） */
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+const FETCH_TIMEOUT_MS = 5_000
+
 export default defineEventHandler(async (event) => {
   const raw = getQuery(event).url
   if (typeof raw !== 'string' || !raw) {
@@ -45,15 +53,26 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const res = await fetch(`${parsed.toString()}${THUMBNAIL_SUFFIX}`)
+    // 不跟著轉址走：白名單只檢查了第一個網址，跟著 3xx 走的話，
+    // CDN 上任何一個開放轉址都能把這支 API 帶去別的主機（包含內網）
+    const res = await fetch(`${parsed.toString()}${THUMBNAIL_SUFFIX}`, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+    })
     if (!res.ok) {
       console.warn('[LINE Avatar] 下載失敗', res.status)
       return { dataUrl: null }
     }
 
-    const contentType = res.headers.get('content-type') || ''
-    if (!contentType.startsWith('image/')) {
-      console.warn('[LINE Avatar] 回應不是圖片:', contentType)
+    const contentType = (res.headers.get('content-type') || '').split(';')[0]!.trim().toLowerCase()
+    if (!ALLOWED_IMAGE_TYPES.includes(contentType)) {
+      console.warn('[LINE Avatar] 回應不是支援的圖片格式:', contentType)
+      return { dataUrl: null }
+    }
+
+    const declaredLength = Number(res.headers.get('content-length'))
+    if (declaredLength > MAX_IMAGE_BYTES) {
+      console.warn('[LINE Avatar] 縮圖超過大小上限:', declaredLength)
       return { dataUrl: null }
     }
 

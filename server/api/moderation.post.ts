@@ -1,12 +1,21 @@
 import { defineEventHandler, readBody, createError, getHeaders } from 'h3'
 import { containsSimplifiedChinese } from '~~/server/utils/simplified'
 
+// 便利貼內文在 firestore.rules 限 1000 字、暱稱 12 字，正常的送審不會超過這個長度。
+// 不設上限的話，任何人都能拿這支 API 送一大段文字去刷 OpenAI 的費用
+const MAX_TEXT_LENGTH = 2000
+
 export default defineEventHandler(async (event) => {
     const body = await readBody(event)
-    const text = body?.text || ''
+    const text = body?.text
 
-    if (!text) {
+    // 一定要先確認是字串：送 {"text":{"length":1e9}} 的話，後面的 Array.from
+    // 會照著 length 配置一個十億格的陣列，一個請求就能把伺服器的記憶體吃光
+    if (typeof text !== 'string' || !text) {
         throw createError({ statusCode: 400, message: 'Missing text content for moderation' })
+    }
+    if (text.length > MAX_TEXT_LENGTH) {
+        throw createError({ statusCode: 400, message: 'Text content too long for moderation' })
     }
 
     // 簡體字查表判斷（server/utils/simplified.ts），放在 AI 之前：沒設金鑰、OpenAI 出錯時也照樣擋。

@@ -104,7 +104,7 @@ export const getLineLoginConfig = (): LineLoginConfig => {
  * 需要固定值時（例如前面還有別的代理）用 LINE_LOGIN_REDIRECT_URI 覆寫。
  */
 export const resolveRedirectUri = (event: H3Event): string => {
-  const override = process.env.LINE_LOGIN_REDIRECT_URI
+  const override = (useRuntimeConfig(event).lineLoginRedirectUri as string) || process.env.LINE_LOGIN_REDIRECT_URI
   if (override) return override
 
   const url = getRequestURL(event, { xForwardedHost: true, xForwardedProto: true })
@@ -117,12 +117,24 @@ const isSecureRequest = (event: H3Event): boolean =>
 /**
  * 只接受站內的相對路徑。少了這個檢查，`/api/auth/line/start?r=https://evil.example`
  * 就成了一個帶著本站網域的開放轉址。
+ *
+ * 只擋 `//` 開頭不夠：瀏覽器把 `/\evil.example` 的反斜線當成斜線，一樣是站外網址；
+ * 控制字元（CR／LF）則會讓設定 Location 標頭時丟例外。所以除了開頭，整串都不收
+ * 反斜線與控制字元，最後再用 URL 解析確認沒有跑出本站。
  */
 export const sanitizeReturnTo = (raw: unknown): string => {
-  if (typeof raw !== 'string' || !raw.startsWith('/')) return '/editor'
-  // `//evil.example` 會被瀏覽器當成協定相對的絕對網址
-  if (raw.startsWith('//')) return '/editor'
-  return raw
+  const fallback = '/editor'
+  if (typeof raw !== 'string' || !raw.startsWith('/')) return fallback
+  if (raw.startsWith('//') || /[\\\u0000-\u001f\u007f]/.test(raw)) return fallback
+
+  const base = 'https://return-to.invalid'
+  try {
+    const url = new URL(raw, base)
+    if (url.origin !== base) return fallback
+    return url.pathname + url.search + url.hash
+  } catch {
+    return fallback
+  }
 }
 
 // ── state：自己帶著回程資訊、用簽章防偽造 ─────────────────────────
