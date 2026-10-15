@@ -24,9 +24,11 @@ const rawFirestoreSuffix = process.env.NUXT_PUBLIC_FIRESTORE_SUFFIX || ''
 // 別的地方有連結時網址照樣會進搜尋結果（只是沒有內容）；爬蟲要抓得到這個標頭才會真的拿掉。
 const NOINDEX = { 'X-Robots-Tag': 'noindex, nofollow' }
 
-// 測試站整站不收錄。判斷依據是便利貼集合有沒有後綴：用的不是正式資料，就不是給人搜到的站。
+// 用測試資料（集合有後綴）的建置整站不收錄：用的不是正式資料，就不是給人搜到的站。
 // 上面說的 runtimeConfig 覆寫在這裡不成問題 —— routeRules 是建置時寫死進 server bundle 的，
 // 讀的就是建置當下的環境變數（Amplify 的 branch-level 覆寫在建置時就生效）。
+// Amplify 的測試站從 2026-10-15 起改用正式資料，它的不收錄改由網域判斷
+// （server/middleware/noindex-amplify-host.ts：*.amplifyapp.com 一律不收錄）。
 const isProductionData = normalizeFirestoreSuffix(rawFirestoreSuffix) === ''
 
 // 全站預設的標題與摘要，也是首頁的。其他頁面用 usePageSeo 蓋掉

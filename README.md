@@ -40,8 +40,11 @@
   目前是 `/admin`、`/canvas`、`/qrcode`、`/login`、`/my-notes`、`/queue-status`。
 - **`/admin` 只在瀏覽器端畫**（`ssr: false`）。登入檢查只在瀏覽器端做，伺服器照畫的話，
   沒登入的人也拿得到整個後台的版面與設定說明。
-- **測試站整站不給收錄**，判斷依據是 `NUXT_PUBLIC_FIRESTORE_SUFFIX`：不是正式資料的站就加標頭，
-  不用另外設環境變數。
+- **測試站整站不給收錄**，判斷依據是網域：`*.amplifyapp.com` 一律加標頭
+  （`server/middleware/noindex-amplify-host.ts`），測試站與正式站的 Amplify 預設網址都算，
+  只有自訂網域 `postboard.willmusic.com.tw` 會被收錄。不用另外設環境變數。
+  （原本看 `NUXT_PUBLIC_FIRESTORE_SUFFIX`，2026-10-15 測試站改用正式資料後就不成立了；
+  用 `_dev` 資料的建置仍然整站不收錄，見 `nuxt.config`。）
 - **標題、描述、預覽文字**：全站預設（也是首頁的）在 `nuxt.config` 的 `app.head`，
   其他頁面呼叫 `usePageSeo(標題, 描述)`，分頁標題、搜尋摘要、og:title／og:description 一次設好。
 - **分享圖** `public/og-image.jpg`（1200×630）是照開場卡片做的暫代版，原稿與產生方式在 `scripts/og/`。
@@ -507,10 +510,15 @@ LINE Developers 後台的 **Callback URL 要把正式站與測試站兩個網域
 
 | 變數 | 所有分支 | staging 覆寫 |
 |---|---|---|
-| `NUXT_PUBLIC_FIRESTORE_SUFFIX` | `none`（正式資料） | `_dev` |
+| `NUXT_PUBLIC_FIRESTORE_SUFFIX` | `none`（正式資料） | 不覆寫（2026-10-15 前是 `_dev`） |
 | `NUXT_PUBLIC_GTM_ID` | 正式容器編號 | `none` |
 
-其餘變數兩站共用（同一個 Firebase 專案）。
+其餘變數兩站共用（同一個 Firebase 專案、同一個 LINE Login channel）。
+
+> **測試站從 2026-10-15 起讀寫的是正式資料**（使用者決定）。在測試站送出的便利貼會出現在
+> 正式站的首頁與店內 LED 牆，測試站後台改的設定（頻率限制、節慶主題、封鎖）也是正式站的。
+> 測完要到後台刪掉測試便利貼；實驗性的寫入格式不要先推到 staging，規則沒跟上的話擋到的是正式資料。
+> `_dev` 那一組集合與規則還留著，要切回去只要把 staging 的覆寫設回 `_dev` 再重新部署。
 
 > **LINE 登入的四個變數（`LINE_CHANNEL_ID`、`LINE_CHANNEL_SECRET`、`FIREBASE_CLIENT_EMAIL`、
 > `FIREBASE_PRIVATE_KEY`）兩站都要有**。正式站在 LINE 登入版上線之前是匿名投稿的舊版，
@@ -528,7 +536,7 @@ LINE Developers 後台的 **Callback URL 要把正式站與測試站兩個網域
 > 空字串（連「所有分支」那一列也不行），所以本來用「留空」表達的「不加後綴」
 > 與「不載入 GTM」，都改成填 `none`。本機 `.env` 留空即可，兩種寫法等價。
 
-要注意兩站**不是**完全隔離：`system` 集合（啟用中 token、GPS 圍籬、大螢幕影片）
+staging 改回 `_dev` 時要注意兩站**不是**完全隔離：`system` 集合（啟用中 token、GPS 圍籬、大螢幕影片）
 刻意不分組，Storage 的 `note_drawings/` 也沒有後綴。細節見
 `app/utils/collections.ts` 與 `docs/firebase-rules.md`。
 
