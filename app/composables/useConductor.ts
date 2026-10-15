@@ -659,12 +659,17 @@ export function useConductor() {
                     }
                 }
 
-                // 5) 若仍挑不到（資料量太小/全在冷卻內），降級：只避免連播上一張，能借的優先。
+                // 5) 若仍挑不到（資料量太小/全在冷卻內），降級：只避免連播上一張，能借的優先，
+                //    同一層裡挑最久沒展示的（沒展示過的最優先）。
+                //    照 liveGrid 的順序挑的話一律是最新那張：張數少時右邊螢幕常常一張都借不到
+                //    （3 張時約一半的輪次），模擬半小時是 50／46／24 次，最舊那張只輪到一半。
                 //    只剩上一張時可以連播，但剛推進牆的（live 剛展示完）不行：它還在飛回牆上，
                 //    馬上又借出去的話展示區不會換，牆上卻多出一份（牆上本來沒有便利貼時的第一張投稿）
                 if (!pickedId) {
+                    const lastAt = (id: string) => s.lastPlayedAt.get(id) ?? 0
                     const fallback = liveIds.filter(id => id !== prevPlayingId)
-                    const pool = fallback.length ? fallback : liveIds.filter(id => id !== justPushedId)
+                    const pool = (fallback.length ? fallback : liveIds.filter(id => id !== justPushedId))
+                        .sort((a, b) => lastAt(a) - lastAt(b))
                     pickedId = pool.find(id => s.canBorrow?.(id)) ??
                         pool.find(id => s.canBorrowFallback?.(id)) ??
                         pool[0] ?? null
