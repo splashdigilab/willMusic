@@ -87,8 +87,12 @@ const isHalloween = computed(() => themeId.value === 'halloween')
  * 背面 QR 的網址，換網址只要改這裡（QR 是照這個網址即時產生的）。
  * public/qrcode.svg 是舊版大螢幕下方那顆 QR 的圖檔，現在已經沒有任何地方引用，換網址時不用管它。
  * 影片裡那顆（lihi1.me/XyaUH）是設計稿的示意，不用。
+ *
+ * 直接放正式網域，不經過短網址：原本的 lihi1.me/IMO1J 轉去的是 Amplify 的預設網址
+ * （main.….amplifyapp.com），掃進來的人會停在那個網域上，LINE 登入的回呼網址也跟著用它推導。
+ * 網址變長讓 QR 從 25 格變 29 格（設計稿畫的示意碼也是 29 格），方框大小不變。
  */
-const PROMO_QR_URL = 'https://lihi1.me/IMO1J'
+const PROMO_QR_URL = 'https://postboard.willmusic.com.tw/'
 
 /* ─── 時間軸（秒）：照影片逐格量的 ──────────────────────────────
    正面停約 1 秒 → 花約 2.2 秒翻到背面 → 背面停約 2.8 秒 → 原路翻回正面 → 再停約 1 秒，
