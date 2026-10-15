@@ -8,7 +8,7 @@
  *  4. 暴露 onBeforeStateChange / onAfterStateChange 回呼，
  *     供 canvas.vue 嵌入 GSAP FLIP 動畫
  */
-import { computed, reactive } from 'vue'
+import { computed, markRaw, reactive } from 'vue'
 import {
     collection, onSnapshot,
     query, limit, orderBy
@@ -21,6 +21,19 @@ import type { QueuePendingItem, QueueHistoryItem } from '~/types'
 
 export interface StateChangeInfo {
     source: 'tick' | 'remote'
+    /** 'remote' 時：這次被刪掉的便利貼 id（canvas 用來判斷要不要打斷正在跑的動畫） */
+    removed?: string[]
+}
+
+type NoteItem = QueueHistoryItem | QueuePendingItem
+
+/** moveToHistory 失敗時排進重試清單：下一輪 tick 或恢復連線時重送 */
+interface HistoryRetry {
+    item: QueuePendingItem
+    /** 已經送過幾次 */
+    attempts: number
+    /** 最早什麼時候重送（Date.now()） */
+    nextAt: number
 }
 
 export interface ConductorOptions {
@@ -28,8 +41,8 @@ export interface ConductorOptions {
     loopIntervalMs?: number
     /** 左邊網格最大容量（預設 20） */
     historyLimit?: number
-    /** FLIP 動畫：在 tick 修改 reactive 資料 **之前** 呼叫 */
-    onBeforeStateChange?: () => void
+    /** FLIP 動畫：在 tick 修改 reactive 資料 **之前** 呼叫（info 同 onAfterStateChange） */
+    onBeforeStateChange?: (info: StateChangeInfo) => void
     /** FLIP 動畫：在 tick 修改 reactive 資料 **之後** 呼叫 */
     /**
      * source 是這次改動的來源：
@@ -37,6 +50,16 @@ export interface ConductorOptions {
      * - 'remote'：Firestore 監聽到刪除（後台下架），消失的就是被刪掉的
      */
     onAfterStateChange?: (info: StateChangeInfo) => void
+    /**
+     * 便利貼的內容被改了（例如後台「刪除個人資料」拿掉署名）。liveGrid 與 nowPlaying 這邊已經就地換好，
+     * conductor 管不到的那幾份（展示區正在飛回牆上的、被擠掉還在流出去的）由 canvas 自己換
+     */
+    onNoteUpdated?: (id: string, note: Record<string, any>) => void
+    /**
+     * 這張是不是被擠出 liveGrid、還在牆上流出去的途中。後台刪除後補位時不能把它補回來：
+     * 它會同時在 liveGrid 與流出去的名單裡，之後再被擠掉一次就重複了
+     */
+    isRetiring?: (id: string) => boolean
     /** 插播影片 URL（無則略過插播佇列） */
     getInterstitialVideoUrl?: () => string | null
     /** FLIP 結束後開始播放插播影片（canvas 內顯示 video） */
@@ -64,13 +87,21 @@ export interface ConductorOptions {
 interface ConductorState {
     isConductor: boolean
     queuePending: QueuePendingItem[]
-    liveGrid: (QueueHistoryItem | QueuePendingItem)[]
-    nowPlaying: QueueHistoryItem | QueuePendingItem | null
+    liveGrid: NoteItem[]
+    nowPlaying: NoteItem | null
     mode: 'live' | 'idle' | 'waiting'
     borrowedId: string | null
     // internals
     unsubPending: (() => void) | null
     unsubHistory: (() => void) | null
+    /** 待播監聽出錯後，隔一段時間重掛的計時器與已連續失敗幾次 */
+    pendingResubTimer: ReturnType<typeof setTimeout> | null
+    pendingErrorCount: number
+    /** 歷史監聽最新一次看到的那幾張（依 playedAt 由新到舊），補位用 */
+    latestHistory: QueueHistoryItem[]
+    /** 搬到 history 失敗、等著重送的 */
+    historyRetries: HistoryRetry[]
+    onlineHandler: (() => void) | null
     timer: ReturnType<typeof setTimeout> | null
     animTimer: ReturnType<typeof setTimeout> | null
     isAnimating: boolean
@@ -81,8 +112,10 @@ interface ConductorState {
     /** 最近播放時間（用於冷卻避免短時間重複） */
     lastPlayedAt: Map<string, number>
     // callbacks (stored so tick() can call them)
-    onBefore: (() => void) | null
+    onBefore: ((info: StateChangeInfo) => void) | null
     onAfter: ((info: StateChangeInfo) => void) | null
+    onNoteUpdated: ((id: string, note: Record<string, any>) => void) | null
+    isRetiring: ((id: string) => boolean) | null
     // config
     loopMs: number
     gridMax: number
@@ -105,6 +138,25 @@ interface ConductorState {
  */
 const PREFER_SLACK_TURNS = 4
 
+/**
+ * moveToHistory 失敗的重送：最多送幾次、每次間隔多久（10 秒起跳每次加倍，最多 5 分鐘）。
+ * 加起來約 25 分鐘，斷線更久就放棄（待播文件還在，重新整理大螢幕後會當成新投稿再播一次）
+ */
+const HISTORY_RETRY_MAX_ATTEMPTS = 10
+const historyRetryDelay = (attempts: number) => Math.min(5 * 60_000, 10_000 * 2 ** (attempts - 1))
+
+/** 監聽出錯後重掛的間隔：5 秒起跳每次加倍，最多 1 分鐘 */
+const resubscribeDelay = (errors: number) => Math.min(60_000, 5_000 * 2 ** (errors - 1))
+
+/**
+ * 用新資料就地換掉一張便利貼的內容，物件本身不換：canvas 展示區那份與 nowPlaying 是同一個物件，
+ * 延後執行的移除也是認物件本身（見 canvas 的 removeDisplayItem），換成新物件就對不上了
+ */
+export function assignNoteData(target: Record<string, any>, fresh: Record<string, any>) {
+    for (const k of Object.keys(target)) if (!(k in fresh)) delete target[k]
+    Object.assign(target, fresh)
+}
+
 /* ─── Singleton（跨 HMR 保持同一份狀態） ─── */
 
 const KEY = '__willmusic_conductor__'
@@ -121,6 +173,11 @@ function getSingleton(): ConductorState {
             borrowedId: null,
             unsubPending: null,
             unsubHistory: null,
+            pendingResubTimer: null,
+            pendingErrorCount: 0,
+            latestHistory: markRaw([]),
+            historyRetries: [],
+            onlineHandler: null,
             timer: null,
             animTimer: null,
             isAnimating: false,
@@ -130,6 +187,8 @@ function getSingleton(): ConductorState {
             lastPlayedAt: new Map(),
             onBefore: null,
             onAfter: null,
+            onNoteUpdated: null,
+            isRetiring: null,
             loopMs: 15_000,
             gridMax: 20,
             animationMs: 2_250,
@@ -308,6 +367,8 @@ export function useConductor() {
         if (opts?.animationMs) s.animationMs = opts.animationMs
         s.onBefore = opts?.onBeforeStateChange ?? null
         s.onAfter = opts?.onAfterStateChange ?? null
+        s.onNoteUpdated = opts?.onNoteUpdated ?? null
+        s.isRetiring = opts?.isRetiring ?? null
         s.getVideoUrl = opts?.getInterstitialVideoUrl ?? null
         s.onInterstitialStart = opts?.onInterstitialStart ?? null
         s.canBorrow = opts?.canBorrow ?? null
@@ -328,12 +389,13 @@ export function useConductor() {
             s.unsubHistory = onSnapshot(
                 q,
                 (snapshot) => {
+                    s.latestHistory = markRaw(snapshot.docs.map(
+                        d => ({ id: d.id, ...d.data() } as QueueHistoryItem)
+                    ))
                     if (isFirst) {
                         isFirst = false
                         // 初次載入
-                        s.liveGrid = snapshot.docs.map(
-                            d => ({ id: d.id, ...d.data() } as QueueHistoryItem)
-                        )
+                        s.liveGrid = s.latestHistory.map(n => ({ ...n }))
                         // 初次載入後同步 idle bag（避免第一次 idle 隨機重複）
                         const liveIds = s.liveGrid.map(n => noteId(n)).filter(Boolean)
                         const cooldownTurns = clampInt(3, Math.floor(s.gridMax * 0.5), 8)
@@ -350,63 +412,26 @@ export function useConductor() {
 
                     // 後續更新：只處理被遠端刪除或擠出的項目，避免打斷本地已 unshift() 正在執行的 FLIP 動畫
                     const changes = snapshot.docChanges()
+
+                    // 內容被改了（後台「刪除個人資料」會拿掉署名）：只換資料，不動牆、不重播動畫
+                    for (const change of changes) {
+                        if (change.type === 'modified') refreshNote(change.doc.id, change.doc.data())
+                    }
+
                     // 只看「本地真的還有」的那些。新投稿展示完時，tick 已經先在本地把它放進牆、
                     // 擠掉最舊那張，接著 moveToHistory 寫入；寫入完成後這裡會收到最舊那張的 removed。
                     // 那張本地早就不在了，若照樣呼叫 onBefore，會把剛開始的換張動畫直接跳到終點
                     // （歷史筆數超過牆面張數後，每次新投稿換張都會這樣）
                     const liveIds = new Set(s.liveGrid.map(n => noteId(n)))
                     const playingId = s.nowPlaying ? noteId(s.nowPlaying) : null
-                    const hasRemovals = changes.some(change =>
-                        change.type === 'removed' &&
-                        (liveIds.has(change.doc.id) || change.doc.id === playingId)
-                    )
+                    const removed = changes
+                        .filter(change =>
+                            change.type === 'removed' &&
+                            (liveIds.has(change.doc.id) || change.doc.id === playingId)
+                        )
+                        .map(change => change.doc.id)
 
-                    if (hasRemovals) {
-                        // 如果有刪除，觸發動畫 hook (擷取當前狀態)
-                        s.onBefore?.()
-
-                        let removedCount = 0
-                        let nowPlayingRemoved = false
-                        changes.forEach((change) => {
-                            if (change.type === 'removed') {
-                                const deletedId = change.doc.id
-                                if (s.nowPlaying && noteId(s.nowPlaying) === deletedId) {
-                                    nowPlayingRemoved = true
-                                }
-                                const beforeLen = s.liveGrid.length
-                                s.liveGrid = s.liveGrid.filter(n => noteId(n) !== deletedId)
-                                if (s.liveGrid.length < beforeLen) removedCount++
-                            }
-                        })
-
-                        // 補上新拉到的歷史資料
-                        if (removedCount > 0 && s.liveGrid.length < s.gridMax) {
-                            const existingIds = new Set(s.liveGrid.map(n => noteId(n)))
-                            for (const d of snapshot.docs) {
-                                if (!existingIds.has(d.id) && s.liveGrid.length < s.gridMax) {
-                                    s.liveGrid.push({ id: d.id, ...d.data() } as QueueHistoryItem)
-                                }
-                            }
-                        }
-
-                        // 若被刪除的剛好是正在展示的歷史便利貼，強制換首
-                        if (nowPlayingRemoved) {
-                            s.nowPlaying = null
-                            s.borrowedId = null
-                            if (s.timer) clearTimeout(s.timer)
-                            // 先把 bag 同步到目前 liveGrid，避免抽到已被移除的 id
-                            const liveIdSet = new Set(s.liveGrid.map(n => noteId(n)))
-                            s.idleBag = reconcileBagWithLiveGrid(s.idleBag, liveIdSet)
-                            tick(true, true)
-                        }
-
-                        // 每次 history 有移除/補齊後都同步 bag（但不強制重洗，避免打斷節奏）
-                        const liveIdSet = new Set(s.liveGrid.map(n => noteId(n)))
-                        s.idleBag = reconcileBagWithLiveGrid(s.idleBag, liveIdSet)
-
-                        // 觸發動畫 hook (執行 Flip 動畫)
-                        s.onAfter?.({ source: 'remote' })
-                    }
+                    if (removed.length) removeNotes(removed)
                 },
                 (error) => {
                     console.error('[Conductor] history listener error', error)
@@ -416,37 +441,52 @@ export function useConductor() {
         })
 
         // 2) 即時監聽 queue_pending
+        subscribePending()
+
+        // 3) 恢復連線時馬上重送搬移失敗的（不等退避時間）
+        if (typeof window !== 'undefined') {
+            s.onlineHandler = () => flushHistoryRetries(true)
+            window.addEventListener('online', s.onlineHandler)
+        }
+
+        // 4) 啟動第一次 tick
+        tick()
+    }
+
+    const subscribePending = () => {
         const pq = query(
             collection(db, cols.queuePending),
             orderBy('timestamp', 'asc')
         )
         s.unsubPending = onSnapshot(pq, snap => {
+            s.pendingErrorCount = 0
             const changes = snap.docChanges()
-            let nowPlayingRemoved = false
-
-            changes.forEach(change => {
-                if (change.type === 'removed') {
-                    const deletedId = change.doc.id
-                    if (s.nowPlaying && noteId(s.nowPlaying) === deletedId) {
-                        nowPlayingRemoved = true
-                    }
-                }
-            })
+            const playingId = s.nowPlaying ? noteId(s.nowPlaying) : null
+            const nowPlayingRemoved = !!playingId &&
+                changes.some(change => change.type === 'removed' && change.doc.id === playingId)
+            const info: StateChangeInfo = { source: 'remote', removed: playingId ? [playingId] : [] }
 
             if (nowPlayingRemoved) {
-                s.onBefore?.()
+                s.onBefore?.(info)
             }
 
             s.queuePending = snap.docs
                 .map(d => ({ id: d.id, ...d.data() } as QueuePendingItem))
                 .filter(q => !s.completedIds.has(noteId(q)))
 
-            if (nowPlayingRemoved) {
+            // 內容被改了（後台「刪除個人資料」會拿掉署名）：展示中的、剛展示完還在搬去 history 的都要換
+            for (const change of changes) {
+                if (change.type === 'modified') refreshNote(change.doc.id, change.doc.data())
+            }
+
+            if (nowPlayingRemoved && playingId) {
                 s.nowPlaying = null
                 s.mode = 'waiting'
+                s.lastPlayedAt.delete(playingId)
+                s.completedIds.delete(playingId)
                 if (s.timer) clearTimeout(s.timer)
                 tick(true, true)
-                s.onAfter?.({ source: 'remote' })
+                s.onAfter?.(info)
                 return
             }
 
@@ -457,10 +497,121 @@ export function useConductor() {
                 const remaining = Math.max(0, s.loopMs - elapsed)
                 scheduleTick(remaining)
             }
+        }, (error) => {
+            // 監聽出錯（例如規則改了）之後就不會再收到任何東西，新投稿從此上不了大螢幕：隔一段時間重掛。
+            // 重掛的第一筆是全部的待播，跟一開始掛上時一樣處理
+            console.error('[Conductor] pending listener error', error)
+            s.unsubPending = null
+            if (!s.isConductor) return
+            if (s.pendingResubTimer) clearTimeout(s.pendingResubTimer)
+            s.pendingResubTimer = setTimeout(() => {
+                s.pendingResubTimer = null
+                if (s.isConductor && !s.unsubPending) subscribePending()
+            }, resubscribeDelay(++s.pendingErrorCount))
         })
+    }
 
-        // 3) 啟動第一次 tick
-        tick()
+    /**
+     * 遠端刪除（後台下架，或新投稿展示完、搬去 history 之前就被刪了）：從 liveGrid 拿掉，
+     * 展示中的那張被刪就馬上換下一張。空出來的位置用歷史監聽最新看到的補上
+     */
+    const removeNotes = (ids: string[]) => {
+        const gone = new Set(ids)
+        const playingId = s.nowPlaying ? noteId(s.nowPlaying) : null
+        const nowPlayingRemoved = !!playingId && gone.has(playingId)
+        const info: StateChangeInfo = { source: 'remote', removed: ids }
+
+        // 觸發動畫 hook (擷取當前狀態)
+        s.onBefore?.(info)
+
+        const beforeLen = s.liveGrid.length
+        s.liveGrid = s.liveGrid.filter(n => !gone.has(noteId(n)))
+        // 刪掉的不會再回來，順手清掉它的紀錄
+        for (const id of ids) {
+            s.lastPlayedAt.delete(id)
+            s.completedIds.delete(id)
+        }
+
+        // 補上新拉到的歷史資料。還在牆上流出去的（剛被擠掉、history 那邊還沒跟上）不補回來，
+        // 不然它會同時在 liveGrid 與流出去的名單裡（見 isRetiring）
+        if (s.liveGrid.length < beforeLen && s.liveGrid.length < s.gridMax) {
+            const existingIds = new Set(s.liveGrid.map(n => noteId(n)))
+            for (const n of s.latestHistory) {
+                if (s.liveGrid.length >= s.gridMax) break
+                const id = noteId(n)
+                if (!id || existingIds.has(id) || gone.has(id) || s.isRetiring?.(id)) continue
+                existingIds.add(id)
+                s.liveGrid.push({ ...n })
+            }
+        }
+
+        // 若被刪除的剛好是正在展示的歷史便利貼，強制換首
+        if (nowPlayingRemoved) {
+            s.nowPlaying = null
+            s.borrowedId = null
+            if (s.timer) clearTimeout(s.timer)
+            // 先把 bag 同步到目前 liveGrid，避免抽到已被移除的 id
+            const liveIdSet = new Set(s.liveGrid.map(n => noteId(n)))
+            s.idleBag = reconcileBagWithLiveGrid(s.idleBag, liveIdSet)
+            tick(true, true)
+        }
+
+        // 每次 history 有移除/補齊後都同步 bag（但不強制重洗，避免打斷節奏）
+        const liveIdSet = new Set(s.liveGrid.map(n => noteId(n)))
+        s.idleBag = reconcileBagWithLiveGrid(s.idleBag, liveIdSet)
+
+        // 觸發動畫 hook (執行 Flip 動畫)
+        s.onAfter?.(info)
+    }
+
+    /** 便利貼的內容被改了：liveGrid、nowPlaying 裡的那份就地換掉，其他的交給 canvas（onNoteUpdated） */
+    const refreshNote = (id: string, data: Record<string, any>) => {
+        const fresh = { id, ...data }
+        for (const n of s.liveGrid) if (noteId(n) === id) assignNoteData(n, fresh)
+        if (s.nowPlaying && noteId(s.nowPlaying) === id) assignNoteData(s.nowPlaying, fresh)
+        s.onNoteUpdated?.(id, fresh)
+    }
+
+    /**
+     * 剛展示完的新投稿搬去 history。失敗就排進重試清單；搬的時候發現待播文件已經不在了
+     * （換張那一刻被後台刪掉），本地已經把它放進牆裡，比照遠端刪除拿掉
+     */
+    const sendToHistory = (item: QueuePendingItem, attempts = 0) => {
+        const id = noteId(item)
+        moveToHistory(item)
+            .then((result) => {
+                if (result !== 'pending-missing' || !s.isConductor) return
+                const local = s.liveGrid.some(n => noteId(n) === id) ||
+                    (!!s.nowPlaying && noteId(s.nowPlaying) === id)
+                if (!local) return
+                console.warn('[Conductor] 展示完要搬去 history 時已被刪除，從牆上拿掉', id)
+                removeNotes([id])
+            })
+            .catch((e) => {
+                const tries = attempts + 1
+                // 權限錯誤重送也沒用（只會一直失敗），只留紀錄。不在大螢幕上顯示任何字：顧客看得到
+                if ((e as { code?: string } | null)?.code === 'permission-denied') {
+                    console.error('[Conductor] moveToHistory 權限不足，不重送', id, e)
+                    return
+                }
+                if (tries >= HISTORY_RETRY_MAX_ATTEMPTS) {
+                    console.error(`[Conductor] moveToHistory 失敗 ${tries} 次，放棄`, id, e)
+                    return
+                }
+                if (s.historyRetries.some(r => noteId(r.item) === id)) return
+                console.warn(`[Conductor] moveToHistory 失敗（第 ${tries} 次），稍後重送`, id, e)
+                s.historyRetries.push({ item, attempts: tries, nextAt: Date.now() + historyRetryDelay(tries) })
+            })
+    }
+
+    /** 重送到時間的搬移；force（恢復連線時）不管退避時間全部重送 */
+    const flushHistoryRetries = (force = false) => {
+        if (!s.historyRetries.length) return
+        const now = Date.now()
+        const due = s.historyRetries.filter(r => force || r.nextAt <= now)
+        if (!due.length) return
+        s.historyRetries = s.historyRetries.filter(r => !due.includes(r))
+        for (const r of due) sendToHistory(r.item, r.attempts)
     }
 
     /* ── stopConductor ── */
@@ -470,11 +621,17 @@ export function useConductor() {
         s.unsubPending = null
         s.unsubHistory?.()
         s.unsubHistory = null
+        if (s.pendingResubTimer) { clearTimeout(s.pendingResubTimer); s.pendingResubTimer = null }
+        s.pendingErrorCount = 0
+        if (s.onlineHandler && typeof window !== 'undefined') window.removeEventListener('online', s.onlineHandler)
+        s.onlineHandler = null
         if (s.timer) { clearTimeout(s.timer); s.timer = null }
         if (s.animTimer) { clearTimeout(s.animTimer); s.animTimer = null }
         s.isAnimating = false
         s.onBefore = null
         s.onAfter = null
+        s.onNoteUpdated = null
+        s.isRetiring = null
         s.idleBag = []
         s.lastPlayedAt.clear()
         s.interstitialQueue = []
@@ -498,8 +655,11 @@ export function useConductor() {
 
         s.lastTickTime = Date.now()
 
+        // 上次搬去 history 失敗、到了重送時間的
+        flushHistoryRetries()
+
         // ▸ Phase 1: 呼叫 BEFORE hook（canvas 在此擷取 FLIP state）
-        if (!skipHooks) s.onBefore?.()
+        if (!skipHooks) s.onBefore?.({ source: 'tick' })
 
         // 記住上一回合，準備收尾
         const prevMode = s.mode
@@ -529,10 +689,9 @@ export function useConductor() {
                         prevPlayingId
                     })
                 }
-                // 寫入 Firestore
+                // 寫入 Firestore（失敗會排進重試清單）
                 try {
-                    moveToHistory(prevPlaying as QueuePendingItem)
-                        .catch(e => console.error('[Conductor] moveToHistory', e))
+                    sendToHistory(prevPlaying as QueuePendingItem)
                 } catch (e) { console.error(e) }
             }
             // idle 收尾：borrowedId 已清空，note 本來就在 grid 裡，不需搬動
@@ -699,7 +858,10 @@ export function useConductor() {
             if (s.animTimer) clearTimeout(s.animTimer)
             s.animTimer = setTimeout(() => {
                 s.isAnimating = false
-                if (interstitialThisRound) s.onInterstitialStart?.()
+                if (!interstitialThisRound) return
+                // 沒有人接手播放的話，插播的封鎖永遠不會解除，輪播就停在這裡
+                if (s.onInterstitialStart) s.onInterstitialStart()
+                else finishInterstitial()
             }, s.animationMs) // 整輪動畫跑完才解除守衛（拿起 + 移動 + 放下）
         }
 
@@ -727,9 +889,12 @@ export function useConductor() {
 
     const armInterstitialSlot = (slotKey: string) => {
         if (!slotKey) return
-        if (s.interstitialQueue.includes(slotKey)) return
-        while (s.interstitialQueue.length >= 12) s.interstitialQueue.shift()
-        s.interstitialQueue.push(slotKey)
+        // 沒有影片就不排：排著的時段會一直累積，等後台補上影片時就一次接一次連播
+        if (!s.getVideoUrl?.()) return
+        // 上一次插播還沒播完又到了下一個時段（影片比間隔長）：不排，不然一播完馬上又播一次
+        if (s.interstitialBlocking) return
+        // 最多只留一筆（新的取代舊的）：還沒輪到播就又到了下一個時段，播一次就好
+        s.interstitialQueue.splice(0, s.interstitialQueue.length, slotKey)
     }
 
     /** 關閉依時間插播時清空佇列，避免關閉後仍播放已排的插播 */
@@ -738,6 +903,8 @@ export function useConductor() {
     }
 
     const finishInterstitial = () => {
+        // 只收一次：影片的 ended、error、逾時保護可能先後都來，多收一次就會多跑一輪 tick（換張跳一下）
+        if (!s.interstitialBlocking) return
         s.interstitialBlocking = false
         tick()
     }

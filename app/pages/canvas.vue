@@ -59,7 +59,8 @@
           :src="interstitialSrc || undefined"
           preload="auto"
           playsinline
-          @ended="onInterstitialVideoEnded"
+          @ended="endInterstitial"
+          @error="onInterstitialVideoError"
         />
       </div>
     </div>
@@ -99,6 +100,7 @@ import StickyNote from '~/components/StickyNote.vue'
 import CanvasPromo from '~/components/CanvasPromo.vue'
 import {
   useConductor,
+  assignNoteData,
   getInterstitialSlotKey,
   clampInterstitialIntervalMinutes,
   parseInterstitialScheduleEnabled
@@ -149,12 +151,21 @@ const ANIM_TOTAL_MS = (RETURN_MAX_SEC + ANIM.scaleDuration * 2 + ANIM.maxMoveDur
 /* ─── URL 參數 ─── */
 const route = useRoute()
 /**
+ * 數值的網址參數：沒填、不是數字、不是正數就用預設值；有填就夾在 [min, max]。
+ * 一定要擋掉負數、0 與 Infinity：流速 ≤ 0 時牆的進場時間不會往後推，
+ * useNoteFlow 每幀的進場迴圈就停不下來，整頁卡死；道數是 Infinity 也一樣
+ */
+const numParam = (key: string, fallback: number, min: number, max: number) => {
+  const n = Number(route.query[key])
+  return Number.isFinite(n) && n > 0 ? Math.min(max, Math.max(min, n)) : fallback
+}
+/**
  * 輪播的張數（載入最新的幾張）。沒填時依畫面大小算：排滿牆面再多每道一張在畫面外排隊，
  * 換道才換得起來、每張輪到右邊螢幕的機會才平均（見 useNoteFlow 的 recommendedCount）
  */
-const maxNotesParam = computed(() => Number(route.query.count) || 0)
-const displaySec = computed(() => Number(route.query.duration) || 15)
-const displayNoteScale = computed(() => Number(route.query.displayScale) || 0.9)
+const maxNotesParam = computed(() => Math.floor(numParam('count', 0, 1, 200)))
+const displaySec = computed(() => numParam('duration', 15, 1, 3600))
+const displayNoteScale = computed(() => numParam('displayScale', 0.9, 0.1, 1.5))
 /**
  * 流動牆：
  * - 方向：預設一欄一欄由下往上；?flow=left 改成一排一排由右往左
@@ -170,14 +181,11 @@ const displayNoteScale = computed(() => Number(route.query.displayScale) || 0.9)
  * mess、tilt、flowScale 的預設值跟首頁的便利貼牆共用（WALL_LOOK），兩邊才是同一種凌亂感
  */
 const flowDirection = computed<FlowDirection>(() => (route.query.flow === 'left' ? 'left' : 'up'))
-const flowLanes = computed(() => {
-  const n = flowDirection.value === 'up' ? Number(route.query.cols) || 6 : Number(route.query.rows) || 3
-  return Math.max(1, Math.floor(n))
-})
-const flowScale = computed(() => Number(route.query.flowScale) || WALL_LOOK.scale)
-const flowSpeed = computed(() =>
-  Number(route.query.flowSpeed) || (flowDirection.value === 'up' ? 30 : 45)
-)
+const flowLanes = computed(() => Math.floor(
+  flowDirection.value === 'up' ? numParam('cols', 6, 1, 24) : numParam('rows', 3, 1, 24)
+))
+const flowScale = computed(() => numParam('flowScale', WALL_LOOK.scale, 0.1, 0.95))
+const flowSpeed = computed(() => numParam('flowSpeed', flowDirection.value === 'up' ? 30 : 45, 1, 600))
 /** 0 是有意義的值（整齊），不能寫成 `||`，會被當成沒填而變回預設 */
 const flowMess = computed(() => {
   const n = Number(route.query.mess)
@@ -275,29 +283,68 @@ const applyCanvasVideoConfig = (data?: {
   interstitialIntervalMinutes?: number
   interstitialScheduleEnabled?: boolean
 }) => {
+  const prevSrc = interstitialSrc.value
   if (!data) {
     interstitialSrc.value = null
     interstitialIntervalMinutes.value = clampInterstitialIntervalMinutes(undefined)
     interstitialScheduleEnabled.value = false
-    clearInterstitialArmQueue()
-    return
+  } else {
+    const u = data.videoUrl
+    interstitialSrc.value = typeof u === 'string' && u.length > 0 ? u : null
+    interstitialIntervalMinutes.value = clampInterstitialIntervalMinutes(
+      data.interstitialIntervalMinutes
+    )
+    interstitialScheduleEnabled.value = parseInterstitialScheduleEnabled(
+      data.interstitialScheduleEnabled
+    )
   }
-
-  const u = data.videoUrl
-  interstitialSrc.value = typeof u === 'string' && u.length > 0 ? u : null
-  interstitialIntervalMinutes.value = clampInterstitialIntervalMinutes(
-    data.interstitialIntervalMinutes
-  )
-  interstitialScheduleEnabled.value = parseInterstitialScheduleEnabled(
-    data.interstitialScheduleEnabled
-  )
-  if (!interstitialScheduleEnabled.value) clearInterstitialArmQueue()
+  // 沒有影片時排著的插播也不會播，留著的話等後台補上影片才一口氣播
+  if (!interstitialScheduleEnabled.value || !interstitialSrc.value) clearInterstitialArmQueue()
+  // 插播中換了影片（或拿掉了）：<video> 會改載新的網址，這一次的 ended 不會來了，直接結束
+  if (interstitialActive && interstitialSrc.value !== prevSrc) endInterstitial()
 }
 
 const isAutoplayNotAllowedError = (e: unknown): boolean =>
   e instanceof DOMException && e.name === 'NotAllowedError'
 
-const startInterstitialPlayback = async () => {
+/*
+ * 插播的結束：只靠 <video> 的 ended 的話，影片載入失敗、播到一半卡住、插播中換了影片，
+ * ended 都不會來，conductor 的封鎖不會解除，輪播就永遠停在插播。
+ * 所以 ended、error、逾時保護、換影片都走 endInterstitial，用 interstitialActive 確保只結束一次
+ */
+let interstitialActive = false
+/** 第幾次插播：上一次的 startInterstitialPlayback 還卡在 await 時這次已經結束，回來時才認得出自己過期了 */
+let interstitialSession = 0
+let interstitialGuard: number | null = null
+/** 逾時保護：影片長度再多等這麼久還沒結束就當作卡住 */
+const INTERSTITIAL_GRACE_MS = 15_000
+/** 還不知道影片多長（預載、開始播放之前）時最多等多久 */
+const INTERSTITIAL_UNKNOWN_MAX_MS = 3 * 60_000
+
+const armInterstitialGuard = (ms: number) => {
+  if (interstitialGuard !== null) window.clearTimeout(interstitialGuard)
+  interstitialGuard = window.setTimeout(() => {
+    interstitialGuard = null
+    console.warn('[canvas] 插播影片逾時沒有結束，跳過')
+    endInterstitial()
+  }, ms)
+}
+
+const clearInterstitialGuard = () => {
+  if (interstitialGuard !== null) window.clearTimeout(interstitialGuard)
+  interstitialGuard = null
+}
+
+const onInterstitialStart = () => {
+  interstitialActive = true
+  const session = ++interstitialSession
+  showInterstitial.value = true
+  armInterstitialGuard(INTERSTITIAL_UNKNOWN_MAX_MS)
+  void startInterstitialPlayback(session)
+}
+
+const startInterstitialPlayback = async (session: number) => {
+  const stale = () => session !== interstitialSession || !interstitialActive
   if (interstitialSrc.value) {
     try {
       await preloadVideo(interstitialSrc.value)
@@ -306,39 +353,68 @@ const startInterstitialPlayback = async () => {
     }
   }
   await nextTick()
+  if (stale()) return
   const left = videoLeftRef.value
-  if (!left || !interstitialSrc.value) return
+  if (!left || !interstitialSrc.value) {
+    endInterstitial()
+    return
+  }
   left.pause()
   left.currentTime = 0
   left.muted = false
+  /** 開始播了：逾時改成照影片長度算 */
+  const onPlaying = () => {
+    // 等 play() 的途中這次插播已經結束（逾時、換影片）：已經開始的聲音要停掉
+    if (stale()) {
+      if (!interstitialActive) left.pause()
+      return
+    }
+    videoMirror.start()
+    const sec = left.duration
+    armInterstitialGuard(Number.isFinite(sec) && sec > 0
+      ? sec * 1000 + INTERSTITIAL_GRACE_MS
+      : INTERSTITIAL_UNKNOWN_MAX_MS)
+  }
   try {
     await left.play()
-    videoMirror.start()
+    onPlaying()
   } catch (e) {
+    if (stale()) return
     if (!isAutoplayNotAllowedError(e)) {
       console.error('[canvas] 插播影片播放失敗', e)
-      onInterstitialVideoEnded()
+      endInterstitial()
       return
     }
     try {
       left.muted = true
       await left.play()
-      videoMirror.start()
+      onPlaying()
       console.warn(
         '[canvas] 插播改為靜音播放（瀏覽器自動播放政策：需使用者互動後才能自動有聲播放）'
       )
     } catch (e2) {
+      if (stale()) return
       console.error('[canvas] 插播影片播放失敗（靜音重試後仍失敗）', e2)
-      onInterstitialVideoEnded()
+      endInterstitial()
     }
   }
 }
 
-const onInterstitialVideoEnded = () => {
+const endInterstitial = () => {
+  if (!interstitialActive) return
+  interstitialActive = false
+  clearInterstitialGuard()
   videoLeftRef.value?.pause()
   videoMirror.stop()
   showInterstitial.value = false
   finishInterstitial()
+}
+
+/** 載入或解碼失敗。預載階段（還沒輪到插播）也會觸發，那時不用理 */
+const onInterstitialVideoError = () => {
+  if (!interstitialActive) return
+  console.error('[canvas] 插播影片錯誤，跳過這次插播', videoLeftRef.value?.error)
+  endInterstitial()
 }
 
 const canvasRef = ref<HTMLElement | null>(null)
@@ -396,13 +472,24 @@ const onRetired = (id: string) => {
 const watchRetiring = (id: string) => {
   if (retiringWatchers.has(id)) return
   retiringWatchers.set(id, onSnapshot(doc(db, cols.queueHistory, id), (snap) => {
-    if (snap.exists()) return
+    const fromCache = snap.metadata.fromCache
+    if (snap.exists()) {
+      // 內容被改了（後台「刪除個人資料」拿掉署名）：流出去途中的也要換
+      const fresh = { id, ...snap.data() }
+      for (const n of retiringNotes.value) if (getId(n) === id) assignNoteData(n, fresh)
+      return
+    }
+    // 斷線時第一筆是本機快取：快取裡沒有這份文件不代表被刪了，等伺服器的回覆
+    if (fromCache) return
     const el = flow.removeRetiring(id)
     if (el) {
       const copy = placeFadingCopy(el)
       gsap.to(copy, { opacity: 0, duration: ANIM.fadeDuration, ease: 'power1.out', onComplete: () => copy.remove() })
     }
     onRetired(id)
+  }, (error) => {
+    // 監聽斷了頂多是流出去途中被下架的那張晚一點才消失（流出畫面就離開了），不重掛
+    console.error('[canvas] 流出去途中的便利貼監聽中斷', id, error)
   }))
 }
 
@@ -462,13 +549,57 @@ const displayItems = ref<any[]>([])
 const removeDisplay = (id: string) => {
   displayItems.value = displayItems.value.filter(n => getId(n) !== id)
 }
+/**
+ * 拿掉展示區的某一份，認物件本身、不認 id。延後執行的移除（落地後下一幀、淡出完）都用這個：
+ * 分頁在背景時 requestAnimationFrame 不跑、conductor 的 setTimeout 照跑，同一張可能在這段期間
+ * 又被挑中、展示區放了新的一份；切回來才執行的移除若照 id 刪，會連新的那份一起刪掉，
+ * 下一輪找不到它就不會飛回牆上，那張便利貼從此從牆上消失。
+ * 內容被改時（onNoteUpdated）是就地換資料，物件不變，這裡照樣認得出來
+ */
+const removeDisplayItem = (item: unknown) => {
+  displayItems.value = displayItems.value.filter(n => n !== item)
+}
 const findDisplayEl = (id: string) =>
   canvasRef.value?.querySelector<HTMLElement>(
     `.p-canvas__display-zone > [data-note-id="${CSS.escape(id)}"]`
   ) ?? null
 
+/** 展示區裡的一份：id、DOM、資料物件本身（延後移除時認它） */
+interface DisplayEntry { id: string; el: HTMLElement; item: unknown }
+
 /** 換張之前右邊那一張 */
-let outgoing: { id: string; el: HTMLElement } | null = null
+let outgoing: DisplayEntry | null = null
+/** 正在飛回牆上的那一份：飛行途中被後台刪掉時要原地淡出，不然落地那一刻才直接消失 */
+let flyingBack: DisplayEntry | null = null
+/** 正在淡出的展示區那幾份：落地時不要搶先拿掉，等淡出完自己拿 */
+const fadingDisplay = new Set<unknown>()
+/**
+ * 這次改動不打斷正在跑的這一輪動畫（後台刪的不是展示中那張）：右邊不會換，
+ * 打斷的話飛行中的會直接跳到終點。onBefore 決定、onAfter 照著做
+ */
+let keepTimeline = false
+
+const fadeOutDisplay = (entry: DisplayEntry) => {
+  fadingDisplay.add(entry.item)
+  gsap.to(entry.el, {
+    opacity: 0,
+    duration: ANIM.fadeDuration,
+    ease: 'power1.out',
+    onComplete: () => {
+      fadingDisplay.delete(entry.item)
+      removeDisplayItem(entry.item)
+    }
+  })
+}
+
+/**
+ * 便利貼的內容被改了（後台「刪除個人資料」拿掉署名）：liveGrid 與 nowPlaying 已由 conductor 換好，
+ * 這裡換 conductor 管不到的 —— 展示區正在飛回牆上的那份、被擠掉還在流出去的。就地換資料，不重播任何動畫
+ */
+const onNoteUpdated = (id: string, note: Record<string, any>) => {
+  for (const n of displayItems.value) if (getId(n) === id) assignNoteData(n, note)
+  for (const n of retiringNotes.value) if (getId(n) === id) assignNoteData(n, note)
+}
 
 /**
  * 牆上被拿掉（下架、超過張數被擠掉）的便利貼：複製一份蓋在原位淡出。
@@ -506,11 +637,16 @@ const getDisplayStart = (from: FlowRect | null, final: DOMRect) => {
 let gridBefore = new Map<string, any>()
 
 /* ── BEFORE：資料改動前，記下右邊那一張與 liveGrid ── */
-const onBeforeStateChange = () => {
+const onBeforeStateChange = (info: StateChangeInfo) => {
+  const current = displayState.value.nowPlaying
+  const id = current ? getId(current) : null
+  // 後台刪掉的不是展示中那張（牆上的、或正在飛回牆上的）：右邊不會換，這一輪動畫照跑，
+  // 被刪的那張各自淡出就好（見 onAfterStateChange）
+  keepTimeline = info.source === 'remote' && !!info.removed && !(id && info.removed.includes(id))
   // 上一輪動畫還沒跑完就進到下一輪時，先讓它瞬間走到結尾再丟掉。
   // 不這樣做，這裡會拍到飛行途中的位置；舊時間軸收尾的 land()／清 transform
   // 也會在新動畫進行中才觸發，畫面上看到的就是一次跳動
-  if (activeTimeline) {
+  if (activeTimeline && !keepTimeline) {
     activeTimeline.progress(1).kill()
     activeTimeline = null
   }
@@ -518,15 +654,16 @@ const onBeforeStateChange = () => {
   // conductor 接下來挑第一張時（canBorrow）才判斷得出誰在畫面上
   if (!flow.isInitialized()) flow.init(liveGridIds())
 
-  const current = displayState.value.nowPlaying
-  const id = current ? getId(current) : null
   const el = id ? findDisplayEl(id) : null
-  outgoing = id && el ? { id, el } : null
+  const item = id ? displayItems.value.find(n => getId(n) === id) : null
+  outgoing = id && el && item ? { id, el, item } : null
   gridBefore = new Map(displayState.value.liveGrid.map(n => [getId(n), n]))
 }
 
 /* ── AFTER：資料已修改，排這一輪的動畫 ── */
 const onAfterStateChange = async (info: StateChangeInfo) => {
+  const keep = keepTimeline
+  keepTimeline = false
   const canvas = canvasRef.value
   if (!canvas) return
   const ids = liveGridIds()
@@ -535,7 +672,7 @@ const onAfterStateChange = async (info: StateChangeInfo) => {
   const out = outgoing
   outgoing = null
   // 右邊那張沒換（例如只是牆上有便利貼被下架）就不重播進場動畫
-  const displayChanged = nextId !== (out?.id ?? null)
+  const displayChanged = !keep && nextId !== (out?.id ?? null)
 
   // 上一張：還在 liveGrid 裡就飛回牆上（idle 借出的，或 live 剛展示完被推進牆的）；
   // 不在了（後台下架）就原地淡出
@@ -549,7 +686,15 @@ const onAfterStateChange = async (info: StateChangeInfo) => {
   const retire = info.source === 'tick'
     ? [...gridBefore.keys()].filter(id => !idSet.has(id))
     : []
-  for (const id of retire) retiringNotes.value.push(gridBefore.get(id))
+  // 流出去途中又回到 liveGrid 的（補位補回來的）不再算流出去的；
+  // 已經在名單上的不重複放：同一個 id 兩份，牆上的 v-for 就有重複的 key
+  if (retiringNotes.value.some(n => idSet.has(getId(n)))) {
+    for (const n of retiringNotes.value) if (idSet.has(getId(n))) stopWatchingRetiring(getId(n))
+    retiringNotes.value = retiringNotes.value.filter(n => !idSet.has(getId(n)))
+  }
+  for (const id of retire) {
+    if (!retiringNotes.value.some(n => getId(n) === id)) retiringNotes.value.push(gridBefore.get(id))
+  }
 
   // 對齊牆的成員。這段在 nextTick 之前，DOM 還沒被 Vue 更新，
   // 當場拿掉的（後台下架）趁現在複製一份在原地淡出
@@ -569,6 +714,19 @@ const onAfterStateChange = async (info: StateChangeInfo) => {
   }
 
   await nextTick()
+
+  // 不打斷正在跑的這一輪（後台刪的不是展示中那張）：被刪的各自淡出，不開新的時間軸。
+  // 正在飛回牆上的那張被刪了：它在牆上保留的位置已經拿掉，原地停住淡出
+  if (keep) {
+    for (const copy of fading) {
+      gsap.to(copy, { opacity: 0, duration: ANIM.fadeDuration, ease: 'power1.out', onComplete: () => copy.remove() })
+    }
+    if (flyingBack && !idSet.has(flyingBack.id)) {
+      fadeOutDisplay(flyingBack)
+      flyingBack = null
+    }
+    return
+  }
 
   // 每個步驟都用絕對時間定位，不用 '<' 之類的相對位置 ——
   // 相對位置會跟著「上一個被加進 timeline 的動畫」跑，改動順序就會錯位
@@ -592,7 +750,7 @@ const onAfterStateChange = async (info: StateChangeInfo) => {
       opacity: 0,
       duration: ANIM.fadeDuration,
       ease: 'power1.out',
-      onComplete: () => removeDisplay(vanishing.id)
+      onComplete: () => removeDisplayItem(vanishing.item)
     }, 0)
   }
 
@@ -642,10 +800,15 @@ const onAfterStateChange = async (info: StateChangeInfo) => {
         })
       }
     }, lift)
+    flyingBack = returning
     tl.call(() => {
       flow.land(id)
-      // 牆上那張這一幀就會現身；展示區這份留到下一幀才拿掉，重疊一幀、中間不會有空檔
-      requestAnimationFrame(() => removeDisplay(id))
+      if (flyingBack === returning) flyingBack = null
+      // 飛行途中被刪、正在淡出的：淡出完自己會拿掉
+      if (fadingDisplay.has(returning.item)) return
+      // 牆上那張這一幀就會現身；展示區這份留到下一幀才拿掉，重疊一幀、中間不會有空檔。
+      // 認物件本身，不認 id（見 removeDisplayItem）
+      requestAnimationFrame(() => removeDisplayItem(returning.item))
     }, [], lift + move)
     returnEnd = lift + move
   }
@@ -723,7 +886,8 @@ const beginCanvasSession = async () => {
     }
     if (key === lastSlotKey) return
     lastSlotKey = key
-    if (!interstitialScheduleEnabled.value) return
+    // 沒有影片就不排（conductor 那邊也會擋）
+    if (!interstitialScheduleEnabled.value || !interstitialSrc.value) return
     armInterstitialSlot(key)
   }, 1000)
 
@@ -732,10 +896,9 @@ const beginCanvasSession = async () => {
     historyLimit:   maxNotesParam.value || flow.recommendedCount(),
     animationMs:    ANIM_TOTAL_MS,
     getInterstitialVideoUrl: () => interstitialSrc.value,
-    onInterstitialStart: () => {
-      showInterstitial.value = true
-      void startInterstitialPlayback()
-    },
+    onInterstitialStart,
+    onNoteUpdated,
+    isRetiring: id => retiringNotes.value.some(n => getId(n) === id),
     // 只借右邊螢幕上的，而且等上一張飛回去、真正拿起時也還在右邊螢幕；
     // 盡量挑展示完時還回得去原位的（見 useNoteFlow 的 fitsHome）
     canBorrow: id => flow.isPickable(id, rightScreen(), RETURN_MAX_SEC),
@@ -770,7 +933,19 @@ onMounted(async () => {
     }
   }
 
+  if (!disposed) subscribeCanvasVideo()
+
+  isCanvasReady.value = true
+})
+
+/** 頁面已卸載：監聽出錯後排好的重掛不要再掛回去 */
+let disposed = false
+let canvasVideoResubTimer: number | null = null
+let canvasVideoErrors = 0
+
+const subscribeCanvasVideo = () => {
   unsubCanvasVideo = onSnapshot(doc(db, 'system', 'canvas_video'), (snap) => {
+    canvasVideoErrors = 0
     const data = snap.exists() ? (snap.data() as {
       videoUrl?: string
       interstitialIntervalMinutes?: number
@@ -783,12 +958,21 @@ onMounted(async () => {
         console.warn('[canvas] 插播影片背景預載失敗', e)
       })
     }
+  }, (error) => {
+    // 監聽出錯之後就不會再收到更新，後台改的插播設定都不會生效：隔一段時間重掛（5 秒起跳加倍，最多 1 分鐘）
+    console.error('[canvas] 插播設定監聽中斷', error)
+    unsubCanvasVideo = null
+    if (disposed) return
+    if (canvasVideoResubTimer !== null) window.clearTimeout(canvasVideoResubTimer)
+    canvasVideoResubTimer = window.setTimeout(() => {
+      canvasVideoResubTimer = null
+      if (!disposed && !unsubCanvasVideo) subscribeCanvasVideo()
+    }, Math.min(60_000, 5_000 * 2 ** canvasVideoErrors++))
   })
-
-  isCanvasReady.value = true
-})
+}
 
 onUnmounted(() => {
+  disposed = true
   // 動畫還在跑就離開頁面時，GSAP 的 ticker 會繼續驅動已經卸載的節點
   activeTimeline?.kill()
   activeTimeline = null
@@ -797,6 +981,10 @@ onUnmounted(() => {
   window.removeEventListener('resize', onResize)
   unsubCanvasVideo?.()
   unsubCanvasVideo = null
+  if (canvasVideoResubTimer !== null) window.clearTimeout(canvasVideoResubTimer)
+  canvasVideoResubTimer = null
+  clearInterstitialGuard()
+  interstitialActive = false
   if (interstitialArmTimer) {
     clearInterval(interstitialArmTimer)
     interstitialArmTimer = null

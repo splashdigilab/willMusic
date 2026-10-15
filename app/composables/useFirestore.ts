@@ -311,8 +311,16 @@ export const useFirestore = () => {
    * 1. 以 token 作為 history doc ID（保證同 token 只寫一筆）
    * 2. 在 transaction 內同時檢查 history 是否已存在（冪等）
    * 3. transaction 完成後立即清理 + 延遲清理同 token 殘留 history
+   *
+   * 回傳搬移的結果（失敗才丟錯）：
+   * - 'moved'：這次搬過去了
+   * - 'duplicate'：history 已經有了（別的分頁搬過、或上一次其實寫成功了），不算被刪
+   * - 'pending-missing'：兩邊都沒有 —— 展示完到搬移之間被後台刪掉了。
+   *   大螢幕已經先把它放進牆裡，要靠這個回報才知道該拿掉（pending 的監聽分不出是被刪還是搬走）
    */
-  const moveToHistory = async (item: QueuePendingItem): Promise<void> => {
+  const moveToHistory = async (
+    item: QueuePendingItem
+  ): Promise<'moved' | 'duplicate' | 'pending-missing'> => {
     try {
       if (!item.id) throw new Error('Item ID is required')
 
@@ -320,7 +328,8 @@ export const useFirestore = () => {
       const pendingRef = doc(db, cols.queuePending, item.id)
       const historyRef = doc(db, cols.queueHistory, token)
 
-      await runTransaction(db, async (transaction) => {
+      // transaction 可能重跑好幾次，以最後一次（真正提交的那次）的結果為準
+      const result = await runTransaction(db, async (transaction) => {
         const pendingSnap = await transaction.get(pendingRef)
         const historySnap = await transaction.get(historyRef)
 
@@ -328,11 +337,11 @@ export const useFirestore = () => {
           if (pendingSnap.exists()) {
             transaction.delete(pendingRef)
           }
-          return
+          return 'duplicate' as const
         }
 
         if (!pendingSnap.exists()) {
-          return
+          return 'pending-missing' as const
         }
 
         const pendingData = pendingSnap.data()
@@ -356,11 +365,13 @@ export const useFirestore = () => {
 
         transaction.set(historyRef, historyData)
         transaction.delete(pendingRef)
+        return 'moved' as const
       })
 
       // 僅在有重複時才清理（cleanupDuplicateHistory 內已判斷 dupSnap.docs.length > 1）
       await cleanupDuplicateHistory(token)
 
+      return result
     } catch (error) {
       console.error('[moveToHistory] Error:', error)
       throw error

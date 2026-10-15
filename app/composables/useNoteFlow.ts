@@ -478,6 +478,16 @@ export function useNoteFlow(opts: NoteFlowOptions) {
   }
 
   /**
+   * 後台下架的不會再回來：每張一份的紀錄跟著清掉，連續跑好幾個小時才不會一直累積。
+   * 被擠掉的舊便利貼不清 —— 歷史那邊還沒跟上時可能又被補回來，樣子、展示紀錄要接得上
+   */
+  const forget = (id: string) => {
+    looks.delete(id)
+    lastShown.delete(id)
+    appliedZ.delete(id)
+  }
+
+  /**
    * 對齊 liveGrid。新成員排進隊伍（hold 裡的由 canvas 自己放回）。
    * 不在名單上的：
    * - 列在 retire 裡、當下在牆上看得到 → 繼續流，流出出口才離開（onRetired 通知）
@@ -498,6 +508,7 @@ export function useNoteFlow(opts: NoteFlowOptions) {
       if (el && shown.has(id)) removedVisible.push(el)
       detach(id)
       if (retire.includes(id)) opts.onRetired?.(id)
+      else forget(id)
     }
     for (const id of ids) {
       if (members.has(id)) continue
@@ -518,6 +529,7 @@ export function useNoteFlow(opts: NoteFlowOptions) {
     if (!retiring.has(id)) return null
     const el = shown.has(id) ? elements.get(id) ?? null : null
     detach(id)
+    forget(id)
     return el
   }
 

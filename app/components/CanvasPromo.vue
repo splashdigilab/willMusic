@@ -84,8 +84,9 @@ const { themeId } = useTheme()
 const isHalloween = computed(() => themeId.value === 'halloween')
 
 /**
- * 背面 QR 的網址。跟大螢幕下方那顆 /qrcode.svg 是同一個 lihi 短網址 ——
- * 換網址時兩個地方要一起換。影片裡那顆（lihi1.me/XyaUH）是設計稿的示意，不用。
+ * 背面 QR 的網址，換網址只要改這裡（QR 是照這個網址即時產生的）。
+ * public/qrcode.svg 是舊版大螢幕下方那顆 QR 的圖檔，現在已經沒有任何地方引用，換網址時不用管它。
+ * 影片裡那顆（lihi1.me/XyaUH）是設計稿的示意，不用。
  */
 const PROMO_QR_URL = 'https://lihi1.me/IMO1J'
 
