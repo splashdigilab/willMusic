@@ -13,8 +13,9 @@
 - **LINE Seed** 字型（見 `scripts/fonts/README.md`）
 - 部署在 **AWS Amplify**
 
-架構上沒有傳統後端，前端直接連 Firestore；server route 只有兩組：
-`/api/moderation`（代理 OpenAI，避免金鑰外洩到前端）與 `/api/auth/*`（LINE 登入）。
+架構上沒有傳統後端，前端直接連 Firestore；server route 只有三組：
+`/api/moderation`（代理 OpenAI，避免金鑰外洩到前端）、`/api/auth/*`（LINE 登入）
+與 `/api/site-theme`（伺服器畫頁面前讀後台設定的節慶主題）。
 
 ## 法律文件（`/privacy`、`/terms`）
 
@@ -92,6 +93,12 @@
 
 > 這一點沒做對的後果很具體：`isStaff()` 若只寫 `request.auth != null`，
 > 顧客一登入就能清空待播佇列、自行發放上傳憑證、改掉 GPS 圍籬與大螢幕影片。
+>
+> **只看 `password` 也不夠**：Firebase Auth 的帳號密碼登入開放自行註冊，任何人拿網頁裡
+> 公開的 API key 就能註冊一個帳密帳號。所以規則的 `isStaff()` 另外比對帳號白名單（uid），
+> **新增後台帳號時要把 uid 加進 `firestore.rules` 與 `storage.rules` 再部署**，
+> 否則那個帳號登得進後台畫面，但讀不到也改不了任何資料。前台的 `admin-auth.global.ts`
+> 只看登入方式，擋不住自行註冊的帳號看到後台的空畫面，資料由規則擋。
 
 前台的登入時機是**送出便利貼那一刻**——瀏覽、編輯、預覽、下載自己的圖都不需要
 登入。活動規範頁另外提供一個選填的「先登入」，讓願意的人不必在畫完之後才被
@@ -372,16 +379,18 @@ doc ID 即 `YYYY-MM-DD`（瀏覽器本地時區）：
 | `editor_rate_limit` | admin | editor + rules | `{ enabled, cooldownMinutes, dailyLimit }` 投稿頻率（正式站） |
 | `editor_rate_limit_dev` | admin | editor + rules | 同上，測試站專用 |
 | `canvas_video` | admin | canvas | `{ videoUrl, interstitialIntervalMinutes, interstitialScheduleEnabled }` |
-| `active_token` | admin | qrcode | `{ token, expiresAt }` 廣播給店內掃碼頁 |
+| `active_token` | admin | qrcode | `{ token, expiresAt }` 廣播給店內掃碼頁。**只有 staff 讀得到**（它就是一張有效憑證） |
+| `site_theme` | admin | server（`/api/site-theme`） | `{ themeId }` 節慶主題（正式站）；不存在時用環境變數 `NUXT_PUBLIC_THEME` |
+| `site_theme_dev` | admin | server | 同上，測試站專用 |
 
 > **`editor_rate_limit` 與其他設定文件相反：不存在時採用預設值（5 分鐘／3 張），
 > 不是放行。** GPS 圍籬設錯會把使用者鎖在門外，所以寧可放行；頻率限制放行
 > 等於完全沒有限制，那才是不該預設的狀態。預設值在規則與
 > `app/types/index.ts` 的 `DEFAULT_RATE_LIMIT` 各寫了一份，改的時候兩邊都要動。
 
-> **`system` 裡只有頻率設定是兩站分開的**（文件 ID 跟著 `NUXT_PUBLIC_FIRESTORE_SUFFIX`
-> 加後綴，見 `useCollections().rateLimitConfig`）。測試站要能關掉限流反覆送，
-> 但正式站不能跟著關。兩站的後台各改各的那一份。
+> **`system` 裡只有頻率設定與節慶主題是兩站分開的**（文件 ID 跟著 `NUXT_PUBLIC_FIRESTORE_SUFFIX`
+> 加後綴，見 `useCollections().rateLimitConfig`／`siteThemeConfig`）。測試站要能關掉限流反覆送、
+> 切主題試看，但正式站不能跟著變。兩站的後台各改各的那一份。
 
 > **`editor_geo_fence` 的開關是真的會生效的**（這點在 2026-09 之前曾經失效，
 > 因為 `editor.vue` 寫死了旗標）。文件不存在、`enabled` 非 `true`、或經緯度與
@@ -432,12 +441,15 @@ NUXT_PUBLIC_FIREBASE_STORAGE_BUCKET
 NUXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 NUXT_PUBLIC_FIREBASE_APP_ID
 NUXT_PUBLIC_GTM_ID       # 選填，只認 GTM- 開頭的編號，其他值一律不載入 GTM
+NUXT_PUBLIC_FIRESTORE_SUFFIX  # 正式站填 none（大小寫、前後空白不影響），測試站 _dev
+NUXT_PUBLIC_THEME        # 選填，節慶主題的預設值（none／halloween）；後台設定優先
 OPENAI_API_KEY           # 沒填的話內容審核會直接放行
 
 LINE_CHANNEL_ID          # LINE Login channel
 LINE_CHANNEL_SECRET
-FIREBASE_CLIENT_EMAIL    # service account，用來簽 custom token
+FIREBASE_CLIENT_EMAIL    # service account，用來簽 custom token（必須是同一個 Firebase 專案的）
 FIREBASE_PRIVATE_KEY     # 整段 PEM 做 base64，或含 \n 的原始內容
+LINE_LOGIN_REDIRECT_URI  # 選填，回呼網址推導錯誤時才用來寫死
 ```
 
 > **下面四個一律不要加 `NUXT_PUBLIC_` 前綴。** 那個前綴會讓 Nuxt 把值打包進
@@ -466,9 +478,10 @@ LINE Developers 後台的 **Callback URL 要把正式站與測試站兩個網域
 其餘變數兩站共用（同一個 Firebase 專案）。
 
 > **LINE 登入的四個變數（`LINE_CHANNEL_ID`、`LINE_CHANNEL_SECRET`、`FIREBASE_CLIENT_EMAIL`、
-> `FIREBASE_PRIVATE_KEY`）要自己加上去，照抄正式站是抄不到的**：正式站還是匿名投稿的
-> 舊版，本來就沒有這四個。漏設的症狀是按了登入就跳「登入服務尚未設定完成」
-> （`/api/auth/line/start` 回 `reason=unconfigured`）。
+> `FIREBASE_PRIVATE_KEY`）兩站都要有**。正式站在 LINE 登入版上線之前是匿名投稿的舊版，
+> 本來沒有這四個；當初若只設成 staging 的分支覆寫，正式站換版時要另外補上。
+> 漏設的症狀是按了登入就跳「登入服務尚未設定完成」（`/api/auth/line/start` 回
+> `reason=unconfigured`），而送出一定要登入，等於整站送不出便利貼。
 >
 > 這些值是**建置時**寫進 server bundle 的（`nuxt.config` 的 `runtimeConfig`），
 > 在 Amplify 改完環境變數之後要重新部署一次才會生效。

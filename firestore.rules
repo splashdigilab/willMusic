@@ -35,11 +35,21 @@ service cloud.firestore {
     // 那是在「只有後台會登入」的前提下成立的；顧客一旦也能登入，那份規則等於
     // 把清空佇列、發放憑證、改 system 設定、換掉大螢幕影片的權限一起送出去。
     //
-    // sign_in_provider 是 Firebase 簽發 ID token 時自己填的，前端偽造不了，
-    // 所以不需要另外用 Admin SDK 補 custom claim，既有的後台帳號也不用動。
+    // sign_in_provider 是 Firebase 簽發 ID token 時自己填的，前端偽造不了。
+    //
+    // **但只看登入方式不夠**：Firebase Auth 的帳號密碼登入預設開放自行註冊，
+    // 任何人拿網頁裡公開的 API key 打一次 signUp，拿到的也是 password。
+    // 所以再比對帳號（2026-10-15 補上）。不改 Auth 的「允許註冊」開關，是因為查不到
+    // 官方說明保證關掉之後 LINE 新會員的 custom token 登入不受影響，而兩站共用專案、沒地方先試。
+    //
+    // **新增後台帳號時**：在 Firebase Console 建好帳號，把 uid 加進這裡與 storage.rules
+    // 的同名 function，兩份一起部署。沒加的帳號登得進後台畫面，但讀不到也改不了任何資料。
+    //   pSlurhRiu3PV861N3DeOf83z6hJ3  splash.digilab@gmail.com（開發）
+    //   nwYytfHca2OH8YkbLG6MHsSq2DR2  willmusictaiwan@gmail.com（店內後台、大螢幕、掃碼頁）
     function isStaff() {
       return request.auth != null
-             && request.auth.token.firebase.sign_in_provider == 'password';
+             && request.auth.token.firebase.sign_in_provider == 'password'
+             && request.auth.uid in ['pSlurhRiu3PV861N3DeOf83z6hJ3', 'nwYytfHca2OH8YkbLG6MHsSq2DR2'];
     }
 
     // 前台會員（LINE 登入）。送出便利貼的最低門檻。
@@ -100,23 +110,71 @@ service cloud.firestore {
     // 只有本人與後台讀得到，而且必須跟便利貼**同一批**寫入（writeBatch／transaction）：
     // 這裡用 getAfter 要求「這一批寫完之後，這張便利貼的投稿者是我」，
     // canCreateNoteOwner 則要求「這一批裡同時建立了這張便利貼」。
-    function canCreateNote(noteId, tokenRef, quotaRef, bannedRef, ownerRef) {
+    //
+    // 投稿者紀錄必須是**這一批才建立的**（!exists），而且這個 ID 不能已經在歷史牆上：
+    // 少了這兩條，播完搬進歷史的便利貼可以用同一個 ID 再建一次——預約同一個 ID 算「重試」、
+    // 不吃額度，舊的投稿者紀錄也還在，等於無限次免費重新上牆。
+    // 前台真正的重試（上一次整批失敗）兩樣都不存在，不受影響；上一次其實已經寫入的話，
+    // 前台會查 note_owners 確認、當作成功（editor.vue 的 NOTE_CREATE_DENIED 分支）。
+    //
+    // timestamp 必須是伺服器時間：大螢幕依它排序，自己填一個很早的時間就能永遠插隊。
+    function canCreateNote(noteId, tokenRef, quotaRef, bannedRef, ownerRef, historyRef) {
       return isMember()
              && !exists(bannedRef)
              && hasFreshReservation(noteId, quotaRef)
+             && !exists(ownerRef)
              && existsAfter(ownerRef)
              && getAfter(ownerRef).data.uid == request.auth.uid
+             && !exists(historyRef)
              && noteId == incoming().token
              && incoming().status == 'waiting'
+             && incoming().timestamp == request.time
              && incoming().content is string
              && incoming().content.size() <= 1000
              && incoming().style is map
              && isValidNameTag(incoming().style)
+             && isValidNoteStyle(incoming().style)
              && incoming().token is string
              && incoming().keys().hasOnly(
                   ['content', 'style', 'token', 'timestamp', 'status']
                 )
              && (!tokenRequired() || hasUsableToken(tokenRef));
+    }
+
+    // ── 便利貼外觀裡會被當成網址載入的欄位 ─────────────────────
+    // 顯示端把 drawing 當 <img src>、backgroundImage 當 CSS 的 url()。不驗的話自己打 API
+    // 就能填外部網址：牆上的圖由別人的主機供應（審核過、甚至下架前後都還能換圖），
+    // 每個看牆的人的 IP 也會被對方記下來。理由跟署名頭貼只收 data URL 相同。
+    //   · drawing：本站 bucket 的 note_drawings/，或上傳 Storage 失敗時退回的 PNG data URL。
+    //     bucket 寫死：只驗 firebasestorage.googleapis.com 的話，別人的 Firebase 專案也是這個網域
+    //   · backgroundImage：色碼，或站內 /svg/bg/ 底下的材質圖（含舊版的 bg-*.svg／webp）
+    //   · textBlocks：牆上顯示的是這裡的文字，不是 content，所以數量與長度另外限
+    // 只放在新版的 canCreateNote：【過渡期】的舊格式本來就什麼都收，要到步驟 ③ 才有意義。
+    function isValidNoteStyle(style) {
+      return (
+               !('drawing' in style)
+               || (style.drawing is string
+                   && (style.drawing.matches('data:image/png;base64,[A-Za-z0-9+/=]+')
+                       || style.drawing.matches('https://firebasestorage[.]googleapis[.]com/v0/b/willmusic-dd6ae[.]firebasestorage[.]app/o/note_drawings%2F[A-Za-z0-9_-]+[.]png[?]alt=media&token=[A-Za-z0-9-]+')))
+             )
+             && (
+               !('backgroundImage' in style)
+               || (style.backgroundImage is string
+                   && style.backgroundImage.matches('(#[0-9A-Fa-f]{6}|/svg/bg/[A-Za-z0-9_-]+[.](svg|webp))'))
+             )
+             && (
+               !('textBlocks' in style)
+               || (style.textBlocks is list
+                   && style.textBlocks.size() <= 3
+                   && (style.textBlocks.size() < 1 || isValidTextBlock(style.textBlocks[0]))
+                   && (style.textBlocks.size() < 2 || isValidTextBlock(style.textBlocks[1]))
+                   && (style.textBlocks.size() < 3 || isValidTextBlock(style.textBlocks[2])))
+             );
+    }
+
+    function isValidTextBlock(block) {
+      return block is map
+             && (!('content' in block) || (block.content is string && block.content.size() <= 1000));
     }
 
     // ── 署名（style.nameTag）──────────────────────────────
@@ -166,13 +224,16 @@ service cloud.firestore {
     // 只能在建立便利貼的那一批裡一起建立：exists() 看的是這一批之前、
     // existsAfter() 看的是之後。少了「之前不存在」這一條的話，任何人都能
     // 把一張已經在牆上、還沒有投稿者紀錄的舊便利貼（匿名時期的）認領成自己的。
-    function canCreateNoteOwner(noteRef) {
+    // 歷史牆也要查：便利貼播完就搬到 queue_history、待播那份會被刪掉，
+    // 只查待播的話，匿名時期的歷史便利貼一樣可以用同一個 ID 重建一次、認領過去。
+    function canCreateNoteOwner(noteRef, historyRef) {
       return isMember()
              && incoming().uid == request.auth.uid
              && incoming().keys().hasOnly(['uid', 'createdAt'])
              && incoming().createdAt == request.time
              && !exists(noteRef)
-             && existsAfter(noteRef);
+             && existsAfter(noteRef)
+             && !exists(historyRef);
     }
 
     // ── users/{uid} 的寫入條件 ─────────────────────────────
@@ -198,15 +259,23 @@ service cloud.firestore {
                   ['displayName', 'avatar', 'email', 'marketingOptIn', 'marketingUpdatedAt',
                    'createdAt', 'updatedAt']
                 )
+             // 頭貼跟署名一樣只收 base64 的圖片 data URL：後台會員面板直接拿它當 <img src>，
+             // 收外部網址的話，店員一打開面板就會連到別人的主機（追蹤、或塞不雅圖給店員看）。
+             // null 是「LINE 沒有頭貼」，前端照常寫入
              && (!incoming().keys().hasAll(['avatar'])
-                 || incoming().avatar.size() <= 30000)
+                 || incoming().avatar == null
+                 || (incoming().avatar is string
+                     && incoming().avatar.size() <= 30000
+                     && incoming().avatar.matches('data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+')))
              && (!touchesUserField('email')
                  || incoming().email == request.auth.token.get('lineEmail', null))
+             // 「要收」時 email 必須真的有值：只檢查欄位存在的話，沒有 lineEmail 時
+             // email 與 claim 兩邊都是 null，照樣通過
              && ((!touchesUserField('marketingOptIn') && !touchesUserField('marketingUpdatedAt'))
                  || (incoming().marketingOptIn is bool
                      && incoming().marketingUpdatedAt == request.time
                      && (incoming().marketingOptIn == false
-                         || incoming().keys().hasAll(['email']))));
+                         || incoming().get('email', null) is string)));
     }
 
     // 這一次寫入有沒有動到某個欄位。新建時文件裡的每個欄位都算。
@@ -339,16 +408,23 @@ service cloud.firestore {
     // （繞過登入走舊格式就好）。測試組（_dev）不收舊格式，一律是新規則。
     //
     // 正式站換成新版、穩定一天（讓還開著舊頁面的人都重新整理過）之後：
-    // 搜尋「【過渡期】」，刪掉這一段與正式組 match 裡的 `|| ...Legacy(...)`，重新部署。
+    // 搜尋「【過渡期】」，刪掉這一段，以及正式組 match 裡呼叫 *Legacy 的條件，重新部署。
+    // 注意 queue_pending 的 create 是舊格式寫在 `||` **左邊**（理由見那裡的註解），
+    // 要刪的是 `canCreateNoteLegacy(...) ||` 這一截；照「刪掉 `|| ...Legacy`」的字面去刪會漏掉它。
     //
     // isStaff() 的拆分不在過渡範圍：舊版後台與大螢幕本來就是帳密登入
     // （sign_in_provider = password），舊程式完全不受影響。
 
     // 【過渡期】舊版匿名投稿：沒有 uid、不需要預約。
     // 舊版程式沒有署名功能，匿名請求也沒有 lineName 可以比對，所以一律不收 nameTag ——
-    // 少了這條，這個相容入口就是一條不必登入就能冒名署名的路
-    function canCreateNoteLegacy(noteId, tokenRef) {
+    // 少了這條，這個相容入口就是一條不必登入就能冒名署名的路。
+    // 歷史牆上已經有的 ID 不收：否則從公開牆上看到別人的 note ID，就能用匿名格式
+    // 建一張同 ID 的便利貼塞入任意內容，後台會員面板還會把它算在原投稿者頭上。
+    // timestamp 同新版，必須是伺服器時間（舊版程式本來就用 serverTimestamp）
+    function canCreateNoteLegacy(noteId, tokenRef, historyRef) {
       return noteId == incoming().token
+             && !exists(historyRef)
+             && incoming().timestamp == request.time
              && incoming().status == 'waiting'
              && incoming().content is string
              && incoming().content.size() <= 1000
@@ -388,14 +464,16 @@ service cloud.firestore {
       // 先算新版條件的話 $(request.auth.uid) 會出錯。|| 會短路，舊格式成立就不往後算
       allow create: if canCreateNoteLegacy(
                          noteId,
-                         /databases/$(database)/documents/tokens/$(noteId)
+                         /databases/$(database)/documents/tokens/$(noteId),
+                         /databases/$(database)/documents/queue_history/$(noteId)
                        )
                     || canCreateNote(
                          noteId,
                          /databases/$(database)/documents/tokens/$(noteId),
                          /databases/$(database)/documents/user_quota/$(request.auth.uid),
                          /databases/$(database)/documents/banned_users/$(request.auth.uid),
-                         /databases/$(database)/documents/note_owners/$(noteId)
+                         /databases/$(database)/documents/note_owners/$(noteId),
+                         /databases/$(database)/documents/queue_history/$(noteId)
                        );
 
       // 送出後就不能再改；只有大螢幕播完或後台管理才會刪。
@@ -471,7 +549,10 @@ service cloud.firestore {
     // 刪便利貼時由後台一起刪；刪除個人資料時也會刪，之後就無法追溯投稿者。
     match /note_owners/{noteId} {
       allow read: if isStaff() || (isMember() && resource.data.uid == request.auth.uid);
-      allow create: if canCreateNoteOwner(/databases/$(database)/documents/queue_pending/$(noteId));
+      allow create: if canCreateNoteOwner(
+                         /databases/$(database)/documents/queue_pending/$(noteId),
+                         /databases/$(database)/documents/queue_history/$(noteId)
+                       );
       allow update: if false;
       allow delete: if isStaff();
     }
@@ -487,7 +568,8 @@ service cloud.firestore {
                          /databases/$(database)/documents/tokens_dev/$(noteId),
                          /databases/$(database)/documents/user_quota_dev/$(request.auth.uid),
                          /databases/$(database)/documents/banned_users_dev/$(request.auth.uid),
-                         /databases/$(database)/documents/note_owners_dev/$(noteId)
+                         /databases/$(database)/documents/note_owners_dev/$(noteId),
+                         /databases/$(database)/documents/queue_history_dev/$(noteId)
                        );
 
       allow update: if isNameTagRemovalByStaff();
@@ -534,19 +616,25 @@ service cloud.firestore {
 
     match /note_owners_dev/{noteId} {
       allow read: if isStaff() || (isMember() && resource.data.uid == request.auth.uid);
-      allow create: if canCreateNoteOwner(/databases/$(database)/documents/queue_pending_dev/$(noteId));
+      allow create: if canCreateNoteOwner(
+                         /databases/$(database)/documents/queue_pending_dev/$(noteId),
+                         /databases/$(database)/documents/queue_history_dev/$(noteId)
+                       );
       allow update: if false;
       allow delete: if isStaff();
     }
 
     // ── system/*：設定文件（正式與測試共用；editor_rate_limit_dev、site_theme_dev 例外，兩站各一份）──
     match /system/{docId} {
-      // 前台要讀 editor_token_requirement 與 editor_geo_fence，
-      // 大螢幕要讀 canvas_video，掃碼頁要讀 active_token。
+      // 前台要讀 editor_token_requirement 與 editor_geo_fence，大螢幕要讀 canvas_video。
       // 節慶主題 site_theme／site_theme_dev 是伺服器端不登入、不帶金鑰用 REST 讀的
       // （server/api/site-theme.get.ts）：這裡若改成只開放特定文件，要把它們列進去，
-      // 否則讀取會被擋，全站默默退回環境變數的主題
-      allow read: if true;
+      // 否則讀取會被擋，全站默默退回環境變數的主題。
+      //
+      // 唯一的例外是 active_token：它是一張有效的上傳憑證本身，公開可讀的話，
+      // Token 驗證一打開，任何人讀這份文件就拿到憑證（或搶先把它用掉，讓店內顧客送不出去）。
+      // 讀它的只有後台與掃碼頁，兩者都是店員登入
+      allow read: if docId != 'active_token' || isStaff();
       allow write: if isStaff();
     }
 

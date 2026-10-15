@@ -8,9 +8,12 @@ service firebase.storage {
     // 後台／大螢幕／掃碼頁是帳號密碼登入；前台顧客是 LINE Login 換來的
     // custom token。兩者一定要分開判斷，理由與 firestore.rules 的同名 function
     // 相同（只寫 request.auth != null 的話，顧客一登入就能換掉大螢幕播的影片）。
+    // 帳號白名單也跟 firestore.rules 相同（帳號密碼開放自行註冊，只看登入方式不夠），
+    // 新增後台帳號時兩份一起改、一起部署。
     function isStaff() {
       return request.auth != null
-             && request.auth.token.firebase.sign_in_provider == 'password';
+             && request.auth.token.firebase.sign_in_provider == 'password'
+             && request.auth.uid in ['pSlurhRiu3PV861N3DeOf83z6hJ3', 'nwYytfHca2OH8YkbLG6MHsSq2DR2'];
     }
 
     function isMember() {

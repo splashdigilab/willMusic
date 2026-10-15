@@ -23,6 +23,25 @@
 部署方式是 Rules API（開發機沒有 firebase CLI）：POST `rulesets` → PATCH `releases/cloud.firestore`，
 帳號 `gcloud --account=splash.digilab@gmail.com`，請求要帶 `x-goog-user-project: willmusic-dd6ae`。
 
+**2026-10-15 上線前 review 的修正（repo 已改，尚未部署）**，Firestore 與 Storage 要一起部署：
+
+- **staff 改成帳號白名單**。Firebase Auth 的帳號密碼登入開放自行註冊（Identity Toolkit 設定的
+  `client.permissions` 是空的），只看 `sign_in_provider == 'password'` 的話，任何人拿網頁裡公開的
+  API key 打一次 signUp 就是 staff：讀得到 `users` 的 email 與行銷名單、清得掉佇列、改得了 `system`。
+  沒有改 Auth 的「允許註冊」開關，因為查不到官方說明保證關掉之後 custom token 建新帳號不受影響，
+  而 LINE 新會員就是走這條路。2026-10-15 查過帳號清單，帳密帳號只有兩個，沒有陌生帳號。
+  **新增後台帳號要把 uid 加進兩份規則的 `isStaff()` 再部署**，否則登得進畫面但讀不到資料。
+- 便利貼：投稿者紀錄必須是這一批建立的、ID 不能已在歷史牆（擋重用 ID 免費重新上牆、認領歷史便利貼），
+  `timestamp` 必須是伺服器時間（擋插隊），`style` 的 `drawing`／`backgroundImage` 不收外部網址、
+  `textBlocks` 最多 3 個、每個 1000 字（`isValidNoteStyle`）。【過渡期】舊格式也加了前兩條。
+- `users.avatar` 只收圖片 data URL；同意收行銷時 email 必須有值。
+- `system/active_token` 只有 staff 讀得到。
+
+`:test` 跑過 Firestore 50 項、Storage 7 項。其中「背景是 `/svg/bg/...`」兩項在測試端點必然失敗：
+**測試端點會把 `/` 開頭的字串當成 path 型別**（mock 參數用同一種寫法表示路徑），`is string` 不成立。
+正式資料存的是一般字串，不受影響；那條 pattern 另外用「把開頭的 `/` 換成別的字元」的方式驗過 20 項。
+之後寫測試遇到 `/` 開頭的值都要注意這點。
+
 ## 這些規則改了什麼
 
 目前線上的規則（依 README 舊版的紀錄）大致是「全部開放」：
@@ -38,7 +57,7 @@ tokens         allow read, update, create: if true;
 
 | 集合 | 未登入 | member（LINE 顧客） | staff（後台／大螢幕／掃碼頁） |
 |---|---|---|---|
-| `queue_pending` | 只能讀 | 讀、投稿（限制欄位與長度，`uid` 必須是自己） | 全部 |
+| `queue_pending` | 只能讀 | 讀、投稿（限制欄位與長度，同一批寫入的 `note_owners` 必須是自己） | 全部 |
 | `queue_history` | 只能讀 | 只能讀 | 全部 |
 | `tokens` | 讀單一文件 | 讀單一文件、把 `unused` 改成 `used` | 全部 |
 | `stats_daily` | 不能碰 | 只能累加計數（限制欄位） | 讀取 |
@@ -46,12 +65,13 @@ tokens         allow read, update, create: if true;
 | `user_quota` | 不能碰 | 讀自己那一份、依冷卻與每日上限預約 | 讀取、刪除 |
 | `banned_users` | 不能碰 | 讀自己那一份（前台用來說明為什麼送不出去） | 全部 |
 | `note_owners` | 不能碰 | 讀自己的（我的便利貼）；只能跟便利貼同一批建立 | 讀取、刪除 |
-| `system/*` | 只能讀 | 只能讀 | 全部 |
+| `system/*` | 只能讀（`active_token` 除外） | 只能讀（`active_token` 除外） | 全部 |
 | 其他 | 全部拒絕 | 全部拒絕 | 全部拒絕 |
 
 兩種身分是用 ID token 的 `sign_in_provider` 分辨的（`password` = staff、
-`custom` = member），那個欄位由 Firebase 簽發、前端偽造不了。詳見 README 的
-「兩種登入」一節。
+`custom` = member），那個欄位由 Firebase 簽發、前端偽造不了。staff 另外要在
+`isStaff()` 的帳號白名單裡（帳號密碼開放自行註冊，見上面 2026-10-15 那段）。
+詳見 README 的「兩種登入」一節。
 
 Storage 則新增 `note_drawings/`（前台上傳手繪圖，限 3MB PNG、不可覆寫），
 `canvas_interstitial/` 維持只有後台能寫。
@@ -147,9 +167,10 @@ Firebase Console 的 Firestore／Storage → 規則 → 「查看歷史記錄」
 
 | 身分 | 應該可以 | 應該被拒 |
 |---|---|---|
-| 未登入 | 讀 `queue_pending` / `queue_history` / `system`；**在正式組**用舊格式建立便利貼、寫 `stats_daily`（過渡期） | 在測試組建立便利貼、寫 `stats_daily_dev`、上傳手繪圖、帶 `uid` 的便利貼 |
-| member（custom token） | 建立自己的便利貼（`uid` == 自己、有預約）、寫自己的 `users/{uid}` | 刪便利貼、寫 `system`、發 token、讀 `stats_daily`、寫別人的 `users/{uid}`、`displayName` 與 `lineName` claim 不符 |
-| staff（password） | 全部 | — |
+| 未登入 | 讀 `queue_pending` / `queue_history` / `system`（`active_token` 除外）；**在正式組**用舊格式建立便利貼、寫 `stats_daily`（過渡期） | 在測試組建立便利貼、寫 `stats_daily_dev`、上傳手繪圖、建立 `note_owners` |
+| member（custom token） | 建立自己的便利貼（同一批的 `note_owners` 是自己、有預約）、寫自己的 `users/{uid}` | 刪便利貼、寫 `system`、發 token、讀 `stats_daily`、寫別人的 `users/{uid}`、`displayName` 與 `lineName` claim 不符、重用已存在的 ID |
+| staff（password，白名單內的帳號） | 全部 | — |
+| 白名單外的帳號密碼帳號（自行註冊） | 跟未登入一樣 | 所有 staff 才能做的事 |
 | 舊便利貼（無 `uid`） | 照常被讀取與顯示 | — |
 
 另外新增了 `users` / `users_dev`、`user_quota` / `user_quota_dev`、
