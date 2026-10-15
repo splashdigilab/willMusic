@@ -148,8 +148,7 @@ export default {
     quotaCooldown: (wait: string) => `${wait} 後才能送出`,
     quotaNth: (nth: number, dailyLimit: number) => `今天第 ${nth} 張，共 ${dailyLimit} 張`,
     /** 收行銷信的勾選（LINE 有給 email 才出現） */
-    marketing: '我願意收到微樂客的活動與優惠資訊',
-    marketingEmail: (email: string) => `寄到 ${email}`
+    marketing: '我願意收到微樂客的活動與優惠資訊'
   },
 
   /** 冷卻還要等多久，接在 alerts.cooldown 的句子裡 */

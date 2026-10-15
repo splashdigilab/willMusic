@@ -333,10 +333,7 @@
               :disabled="isSubmitting || marketingSaving"
               @change="onMarketingToggle"
             />
-            <span class="p-editor__submit-marketing-text">
-              {{ t.editor.submitModal.marketing }}
-              <span class="p-editor__submit-marketing-email" data-clarity-mask="True">{{ t.editor.submitModal.marketingEmail(profile.lineEmail) }}</span>
-            </span>
+            <span class="p-editor__submit-marketing-text">{{ t.editor.submitModal.marketing }}</span>
           </label>
           <!-- 遮罩本身就是「點任意處關閉」的接收層：底下的上傳鈕被它蓋住，
                不會因為使用者只是想關掉提示，就順手把便利貼送出去 -->

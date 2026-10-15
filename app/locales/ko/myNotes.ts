@@ -48,7 +48,6 @@ export default {
   today: (time: string) => `오늘 ${time}`,
 
   marketing: 'WillMusic의 이벤트·혜택 소식을 받을게요',
-  marketingTo: (email: string) => `받는 주소: ${email}`,
 
   footnote: '이벤트 규칙에 맞지 않는 포스트잇은 삭제되어 여기에 표시되지 않아요.'
 } satisfies Messages['myNotes']

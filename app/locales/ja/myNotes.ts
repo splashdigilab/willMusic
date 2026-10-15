@@ -48,7 +48,6 @@ export default {
   today: (time: string) => `今日 ${time}`,
 
   marketing: 'WillMusicからイベントやお得な情報を受け取る',
-  marketingTo: (email: string) => `送信先：${email}`,
 
   footnote: 'イベントのルールに沿わない付箋は削除され、ここには表示されません。'
 } satisfies Messages['myNotes']

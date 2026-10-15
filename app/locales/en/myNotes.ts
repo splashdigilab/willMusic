@@ -49,7 +49,6 @@ export default {
   today: (time: string) => `today ${time}`,
 
   marketing: 'I\'d like to get event and deal news from WillMusic',
-  marketingTo: (email: string) => `We\'ll email ${email}`,
 
   footnote: 'Notes that break the event rules are taken down and won\'t appear here.'
 } satisfies Messages['myNotes']

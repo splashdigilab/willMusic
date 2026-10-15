@@ -97,8 +97,7 @@ export default {
     quotaExhausted: (dailyLimit: number) => `今日の${dailyLimit}枚はすべて送信しました`,
     quotaCooldown: (wait: string) => `${wait}後に送信できます`,
     quotaNth: (nth: number, dailyLimit: number) => `今日の${nth}枚目（全${dailyLimit}枚）`,
-    marketing: 'WillMusicのイベント・特典情報を受け取る',
-    marketingEmail: (email: string) => `送信先：${email}`
+    marketing: 'WillMusicのイベント・特典情報を受け取る'
   },
 
   duration: {

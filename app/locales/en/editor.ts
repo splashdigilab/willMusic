@@ -100,8 +100,7 @@ export default {
       dailyLimit === 1 ? 'You\'ve sent your 1 note for today' : `You\'ve sent all ${dailyLimit} notes for today`,
     quotaCooldown: (wait: string) => `You can send in ${wait}`,
     quotaNth: (nth: number, dailyLimit: number) => `Note ${nth} of ${dailyLimit} today`,
-    marketing: 'Send me WillMusic event news and offers',
-    marketingEmail: (email: string) => `To ${email}`
+    marketing: 'Send me WillMusic event news and offers'
   },
 
   duration: {

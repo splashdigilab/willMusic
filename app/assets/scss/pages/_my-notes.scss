@@ -547,13 +547,6 @@ $ink-red: #D6335A;
   color: $ink;
 }
 
-/* email 可能很長，斷在任何地方都比撐破版面好 */
-.p-my-notes__marketing-email {
-  font-size: 0.75rem;
-  color: $ink-sub;
-  overflow-wrap: anywhere;
-}
-
 /* 頁尾沉到畫面底部：清單短的時候不要貼在最後一張下面。
    回到首頁在上、說明小字壓在最下面，跟一般頁尾的附註同一個位置 */
 .p-my-notes__footer {

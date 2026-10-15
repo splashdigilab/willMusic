@@ -73,7 +73,6 @@ export default {
 
   /** 行銷信的同意 */
   marketing: '我願意收到微樂客的活動與優惠資訊',
-  marketingTo: (email: string) => `寄到 ${email}`,
 
   footnote: '不符合活動規範的便利貼會被撤下，不會出現在這裡。'
 }
