@@ -40,14 +40,10 @@ export default defineNuxtPlugin(() => {
     // 這個站只用帳密（後台）與 LINE 換來的 custom token 登入，用不到。
     // persistence 與 getAuth 的預設順序相同，已登入的人不會被登出。
     const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] })
+    // 重試上限維持預設（上傳 10 分鐘）：這個實例全站共用，後台的插播影片動輒幾十 MB，
+    // 店內網路不穩時要靠長時間重試撐過去。前台送出時的手繪圖另外有自己的期限，
+    // 見 useFirestore 的 persistDrawing
     const storage = getStorage(app)
-    // 重試上限從預設的 10 分鐘（上傳）／2 分鐘（取網址、刪檔）縮到 15 秒。
-    // 送出時手繪圖要先傳 Storage，現場網路壅塞時使用者會盯著「處理中」好幾分鐘；
-    // 傳不上去本來就會退回把圖內嵌在文件裡（見 useFirestore 的 persistDrawing），
-    // 早點放棄改走那條路比較好。
-    // 注意這只限制「失敗後重試」的總時間，已經送出、卡著沒回應的那一次請求不會被中斷
-    storage.maxUploadRetryTime = 15_000
-    storage.maxOperationRetryTime = 15_000
 
     return {
       provide: {

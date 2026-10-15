@@ -31,6 +31,8 @@ export const NOTE_DRAWING_PATH = 'note_drawings'
 
 /** 手繪圖上傳最多等多久，超過就退回把圖內嵌在文件裡（見 persistDrawing） */
 const DRAWING_UPLOAD_TIMEOUT_MS = 20_000
+/** 上傳完成後取網址至少等這麼久 */
+const DRAWING_URL_MIN_WAIT_MS = 5_000
 
 export const useFirestore = () => {
   const { $firestore, $storage, $auth } = useNuxtApp() as any
@@ -91,10 +93,11 @@ export const useFirestore = () => {
       const blob = await (await fetch(drawing)).blob()
       const path = `${NOTE_DRAWING_PATH}/${noteId}-${randomFileSuffix()}.png`
       const fileRef = storageRef(storage, path)
-      // 現場網路壅塞時，送出去卻一直沒回應的那一次請求不會自己逾時
-      // （plugins/firebase.client.ts 設的重試上限只管失敗之後的重試），
-      // 使用者會一直盯著「處理中」。時間到就取消，走下面退回 base64 的路；
-      // 用取消而不是不等它，Storage 上才不會多出一個沒有便利貼引用的檔案
+      // 現場網路壅塞時，Storage SDK 會重試好幾分鐘（上傳預設 10 分鐘），
+      // 使用者就一直盯著「處理中」。上傳加取網址整段有一個期限，到了就放棄、走下面退回 base64 的路。
+      // 期限只在這裡設，不改 SDK 的全站重試上限：後台上傳插播影片也是同一個 Storage 實例。
+      // 上傳用取消而不是不等它，Storage 上才不會多出一個沒有便利貼引用的檔案
+      const deadline = Date.now() + DRAWING_UPLOAD_TIMEOUT_MS
       const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/png' })
       const timer = setTimeout(() => task.cancel(), DRAWING_UPLOAD_TIMEOUT_MS)
       try {
@@ -102,7 +105,19 @@ export const useFirestore = () => {
       } finally {
         clearTimeout(timer)
       }
-      return { ...style, drawing: await getDownloadURL(fileRef) }
+      // 取網址卡住時沒有東西可以取消，只能不等它（檔案已經傳上去了，會留在 Storage 上）。
+      // 至少給 5 秒：上傳剛好在期限前一刻完成的話，剩下的時間不夠取網址，白白多一個沒人用的檔案
+      let urlTimer: ReturnType<typeof setTimeout> | undefined
+      const url = await Promise.race([
+        getDownloadURL(fileRef),
+        new Promise<never>((_, reject) => {
+          urlTimer = setTimeout(
+            () => reject(new Error('DRAWING_URL_TIMEOUT')),
+            Math.max(DRAWING_URL_MIN_WAIT_MS, deadline - Date.now())
+          )
+        })
+      ]).finally(() => clearTimeout(urlTimer))
+      return { ...style, drawing: url }
     } catch (error) {
       console.error('[createNote] 手繪圖上傳 Storage 失敗，暫時沿用內嵌資料', error)
       return style

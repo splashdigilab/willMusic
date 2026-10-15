@@ -10,11 +10,14 @@
  */
 import { computed, markRaw, reactive } from 'vue'
 import {
-    collection, onSnapshot,
-    query, limit, orderBy
+    collection,
+    query, limit, orderBy,
+    type QuerySnapshot
 } from 'firebase/firestore'
 import { useNuxtApp } from '#app'
 import { useFirestore } from '~/composables/useFirestore'
+import { getDocsByIds } from '~/utils/firestore-batch'
+import { watchWithResubscribe } from '~/utils/resilient-snapshot'
 import type { QueuePendingItem, QueueHistoryItem } from '~/types'
 
 /* ─── Types ─── */
@@ -94,13 +97,15 @@ interface ConductorState {
     // internals
     unsubPending: (() => void) | null
     unsubHistory: (() => void) | null
-    /** 待播監聽出錯後，隔一段時間重掛的計時器與已連續失敗幾次 */
-    pendingResubTimer: ReturnType<typeof setTimeout> | null
-    pendingErrorCount: number
     /** 歷史監聽最新一次看到的那幾張（依 playedAt 由新到舊），補位用 */
     latestHistory: QueueHistoryItem[]
     /** 搬到 history 失敗、等著重送的 */
     historyRetries: HistoryRetry[]
+    /**
+     * 這台大螢幕自己正在搬去 history 的。待播監聽看到它們被移除時，是自己搬走的、不是後台刪除：
+     * 搬移失敗等重送的期間，那張已經在牆上、可能被借出來展示，重送成功的那一刻不能被當成「展示中那張被刪了」
+     */
+    movingIds: Set<string>
     onlineHandler: (() => void) | null
     timer: ReturnType<typeof setTimeout> | null
     animTimer: ReturnType<typeof setTimeout> | null
@@ -145,8 +150,8 @@ const PREFER_SLACK_TURNS = 4
 const HISTORY_RETRY_MAX_ATTEMPTS = 10
 const historyRetryDelay = (attempts: number) => Math.min(5 * 60_000, 10_000 * 2 ** (attempts - 1))
 
-/** 監聽出錯後重掛的間隔：5 秒起跳每次加倍，最多 1 分鐘 */
-const resubscribeDelay = (errors: number) => Math.min(60_000, 5_000 * 2 ** (errors - 1))
+/** 歷史紀錄最多等多久才先以空牆開始（監聽一開始就掛不上時，不讓大螢幕停在開始畫面） */
+const HISTORY_STARTUP_TIMEOUT_MS = 20_000
 
 /**
  * 用新資料就地換掉一張便利貼的內容，物件本身不換：canvas 展示區那份與 nowPlaying 是同一個物件，
@@ -173,10 +178,9 @@ function getSingleton(): ConductorState {
             borrowedId: null,
             unsubPending: null,
             unsubHistory: null,
-            pendingResubTimer: null,
-            pendingErrorCount: 0,
             latestHistory: markRaw([]),
             historyRetries: [],
+            movingIds: new Set(),
             onlineHandler: null,
             timer: null,
             animTimer: null,
@@ -384,60 +388,75 @@ export function useConductor() {
             limit(s.gridMax)
         )
 
+        // 監聽出錯會自己重掛（watchWithResubscribe）。後台下架是目前唯一的審核手段，
+        // 這個監聽斷掉的話，被下架的便利貼會一直留在 LED 牆上，直到有人重新整理
         await new Promise<void>((resolve) => {
-            let isFirst = true
-            s.unsubHistory = onSnapshot(
-                q,
-                (snapshot) => {
-                    s.latestHistory = markRaw(snapshot.docs.map(
-                        d => ({ id: d.id, ...d.data() } as QueueHistoryItem)
-                    ))
-                    if (isFirst) {
-                        isFirst = false
-                        // 初次載入
-                        s.liveGrid = s.latestHistory.map(n => ({ ...n }))
-                        // 初次載入後同步 idle bag（避免第一次 idle 隨機重複）
-                        const liveIds = s.liveGrid.map(n => noteId(n)).filter(Boolean)
-                        const cooldownTurns = clampInt(3, Math.floor(s.gridMax * 0.5), 8)
-                        const cooldownMs = cooldownTurns * s.loopMs
-                        s.idleBag = buildIdleBag(liveIds, {
-                            excludeIds: new Set(),
-                            prevPlayingId: null,
-                            cooldownMs,
-                            lastPlayedAt: s.lastPlayedAt
-                        })
-                        resolve()
-                        return
-                    }
+            let loaded = false
+            let startedEmpty = false
+            // 一開始就掛不上時不要卡住整個大螢幕：先以空牆往下走，重掛成功後再把牆補上
+            const startupTimer = setTimeout(() => {
+                if (loaded) return
+                console.error('[Conductor] 歷史紀錄載入逾時，先以空牆開始')
+                startedEmpty = true
+                resolve()
+            }, HISTORY_STARTUP_TIMEOUT_MS)
 
-                    // 後續更新：只處理被遠端刪除或擠出的項目，避免打斷本地已 unshift() 正在執行的 FLIP 動畫
-                    const changes = snapshot.docChanges()
-
-                    // 內容被改了（後台「刪除個人資料」會拿掉署名）：只換資料，不動牆、不重播動畫
-                    for (const change of changes) {
-                        if (change.type === 'modified') refreshNote(change.doc.id, change.doc.data())
-                    }
-
-                    // 只看「本地真的還有」的那些。新投稿展示完時，tick 已經先在本地把它放進牆、
-                    // 擠掉最舊那張，接著 moveToHistory 寫入；寫入完成後這裡會收到最舊那張的 removed。
-                    // 那張本地早就不在了，若照樣呼叫 onBefore，會把剛開始的換張動畫直接跳到終點
-                    // （歷史筆數超過牆面張數後，每次新投稿換張都會這樣）
-                    const liveIds = new Set(s.liveGrid.map(n => noteId(n)))
-                    const playingId = s.nowPlaying ? noteId(s.nowPlaying) : null
-                    const removed = changes
-                        .filter(change =>
-                            change.type === 'removed' &&
-                            (liveIds.has(change.doc.id) || change.doc.id === playingId)
-                        )
-                        .map(change => change.doc.id)
-
-                    if (removed.length) removeNotes(removed)
-                },
-                (error) => {
-                    console.error('[Conductor] history listener error', error)
-                    if (isFirst) resolve() // 避免卡死
+            s.unsubHistory = watchWithResubscribe(q, (snapshot, fresh) => {
+                s.latestHistory = markRaw(snapshot.docs.map(
+                    d => ({ id: d.id, ...d.data() } as QueueHistoryItem)
+                ))
+                if (!loaded) {
+                    loaded = true
+                    clearTimeout(startupTimer)
+                    // 已經以空牆開始跑了：跟後台下架後補位一樣經過 onBefore／onAfter，canvas 才知道牆上多了哪幾張
+                    const lateInfo: StateChangeInfo = { source: 'remote', removed: [] }
+                    if (startedEmpty) s.onBefore?.(lateInfo)
+                    // 初次載入
+                    s.liveGrid = s.latestHistory.map(n => ({ ...n }))
+                    // 初次載入後同步 idle bag（避免第一次 idle 隨機重複）
+                    const liveIds = s.liveGrid.map(n => noteId(n)).filter(Boolean)
+                    const cooldownTurns = clampInt(3, Math.floor(s.gridMax * 0.5), 8)
+                    const cooldownMs = cooldownTurns * s.loopMs
+                    s.idleBag = buildIdleBag(liveIds, {
+                        excludeIds: new Set(),
+                        prevPlayingId: null,
+                        cooldownMs,
+                        lastPlayedAt: s.lastPlayedAt
+                    })
+                    if (startedEmpty) s.onAfter?.(lateInfo)
+                    resolve()
+                    return
                 }
-            )
+
+                // 斷掉之後重掛的第一筆：斷線期間的刪除與修改不在 docChanges 裡，只能拿整份跟牆上比
+                if (fresh) {
+                    void reconcileAfterResubscribe(snapshot)
+                    return
+                }
+
+                // 後續更新：只處理被遠端刪除或擠出的項目，避免打斷本地已 unshift() 正在執行的 FLIP 動畫
+                const changes = snapshot.docChanges()
+
+                // 內容被改了（後台「刪除個人資料」會拿掉署名）：只換資料，不動牆、不重播動畫
+                for (const change of changes) {
+                    if (change.type === 'modified') refreshNote(change.doc.id, change.doc.data())
+                }
+
+                // 只看「本地真的還有」的那些。新投稿展示完時，tick 已經先在本地把它放進牆、
+                // 擠掉最舊那張，接著 moveToHistory 寫入；寫入完成後這裡會收到最舊那張的 removed。
+                // 那張本地早就不在了，若照樣呼叫 onBefore，會把剛開始的換張動畫直接跳到終點
+                // （歷史筆數超過牆面張數後，每次新投稿換張都會這樣）
+                const liveIds = new Set(s.liveGrid.map(n => noteId(n)))
+                const playingId = s.nowPlaying ? noteId(s.nowPlaying) : null
+                const removed = changes
+                    .filter(change =>
+                        change.type === 'removed' &&
+                        (liveIds.has(change.doc.id) || change.doc.id === playingId)
+                    )
+                    .map(change => change.doc.id)
+
+                if (removed.length) removeNotes(removed)
+            }, 'Conductor history')
         })
 
         // 2) 即時監聽 queue_pending
@@ -453,16 +472,22 @@ export function useConductor() {
         tick()
     }
 
+    // 監聽出錯（例如規則改了）之後就不會再收到任何東西，新投稿從此上不了大螢幕，所以會自己重掛。
+    // 重掛的第一筆是全部的待播，跟一開始掛上時一樣處理
     const subscribePending = () => {
         const pq = query(
             collection(db, cols.queuePending),
             orderBy('timestamp', 'asc')
         )
-        s.unsubPending = onSnapshot(pq, snap => {
-            s.pendingErrorCount = 0
+        s.unsubPending = watchWithResubscribe(pq, (snap: QuerySnapshot) => {
             const changes = snap.docChanges()
             const playingId = s.nowPlaying ? noteId(s.nowPlaying) : null
-            const nowPlayingRemoved = !!playingId &&
+            // 自己搬去 history 的被移除不算刪除（見 movingIds）
+            const movedAway = changes
+                .filter(change => change.type === 'removed' && s.movingIds.has(change.doc.id))
+                .map(change => change.doc.id)
+            for (const id of movedAway) s.movingIds.delete(id)
+            const nowPlayingRemoved = !!playingId && !movedAway.includes(playingId) &&
                 changes.some(change => change.type === 'removed' && change.doc.id === playingId)
             const info: StateChangeInfo = { source: 'remote', removed: playingId ? [playingId] : [] }
 
@@ -497,18 +522,47 @@ export function useConductor() {
                 const remaining = Math.max(0, s.loopMs - elapsed)
                 scheduleTick(remaining)
             }
-        }, (error) => {
-            // 監聽出錯（例如規則改了）之後就不會再收到任何東西，新投稿從此上不了大螢幕：隔一段時間重掛。
-            // 重掛的第一筆是全部的待播，跟一開始掛上時一樣處理
-            console.error('[Conductor] pending listener error', error)
-            s.unsubPending = null
-            if (!s.isConductor) return
-            if (s.pendingResubTimer) clearTimeout(s.pendingResubTimer)
-            s.pendingResubTimer = setTimeout(() => {
-                s.pendingResubTimer = null
-                if (s.isConductor && !s.unsubPending) subscribePending()
-            }, resubscribeDelay(++s.pendingErrorCount))
-        })
+        }, 'Conductor pending')
+    }
+
+    /**
+     * 歷史監聽斷掉又重掛之後，拿最新一份跟牆上比：
+     *   - 兩邊都有、內容不同的 → 換資料（斷線期間後台拿掉了署名）
+     *   - 牆上有、最新一份沒有的 → 可能是被刪了，也可能只是被更新的投稿擠出查詢範圍（limit），
+     *     所以去待播與歷史兩邊查，**都不存在**才當成刪除。新投稿展示完、還在搬去 history 的
+     *     （movingIds、historyRetries）這時待播還在，自然會被留下
+     */
+    const reconcileAfterResubscribe = async (snapshot: QuerySnapshot) => {
+        const latest = new Map(snapshot.docs.map(d => [d.id, d.data()]))
+        for (const n of [...s.liveGrid]) {
+            const id = noteId(n)
+            const data = latest.get(id)
+            if (data && JSON.stringify(data.style) !== JSON.stringify(n.style)) refreshNote(id, data)
+        }
+
+        const missing = s.liveGrid.map(n => noteId(n)).filter(id => id && !latest.has(id))
+        if (!missing.length) return
+        try {
+            const [inHistory, inPending] = await Promise.all([
+                getDocsByIds(db, cols.queueHistory, missing),
+                getDocsByIds(db, cols.queuePending, missing)
+            ])
+            const exists = new Set([...inHistory, ...inPending].map(d => d.id))
+            for (const d of inHistory) {
+                const local = s.liveGrid.find(n => noteId(n) === d.id)
+                if (local && JSON.stringify(d.data().style) !== JSON.stringify(local.style)) refreshNote(d.id, d.data())
+            }
+            // 查詢期間牆上可能已經換過一輪，只拿掉現在還在的
+            const liveIds = new Set(s.liveGrid.map(n => noteId(n)))
+            const deleted = missing.filter(id => !exists.has(id) && liveIds.has(id))
+            if (deleted.length && s.isConductor) {
+                console.warn('[Conductor] 歷史監聽重掛後發現已被刪除的便利貼，從牆上拿掉', deleted)
+                removeNotes(deleted)
+            }
+        } catch (error) {
+            // 查不到就先不動：寧可多留一張，也不要把沒被刪的拿掉
+            console.error('[Conductor] 歷史監聽重掛後比對失敗', error)
+        }
     }
 
     /**
@@ -578,9 +632,15 @@ export function useConductor() {
      */
     const sendToHistory = (item: QueuePendingItem, attempts = 0) => {
         const id = noteId(item)
+        // 寫入前就標記：待播的 removed 可能比這個 promise 先回來
+        s.movingIds.add(id)
         moveToHistory(item)
             .then((result) => {
+                // 搬成功的，標記等待播監聽看到 removed 時才拿掉；history 本來就有、待播也早就不在的，
+                // 不會有 removed 進來，過一陣子自己清掉
+                if (result === 'duplicate') setTimeout(() => s.movingIds.delete(id), 60_000)
                 if (result !== 'pending-missing' || !s.isConductor) return
+                s.movingIds.delete(id)
                 const local = s.liveGrid.some(n => noteId(n) === id) ||
                     (!!s.nowPlaying && noteId(s.nowPlaying) === id)
                 if (!local) return
@@ -588,6 +648,8 @@ export function useConductor() {
                 removeNotes([id])
             })
             .catch((e) => {
+                // 等重送的期間待播文件還在：這段時間被後台刪掉的話，要照一般的刪除處理
+                s.movingIds.delete(id)
                 const tries = attempts + 1
                 // 權限錯誤重送也沒用（只會一直失敗），只留紀錄。不在大螢幕上顯示任何字：顧客看得到
                 if ((e as { code?: string } | null)?.code === 'permission-denied') {
@@ -621,8 +683,7 @@ export function useConductor() {
         s.unsubPending = null
         s.unsubHistory?.()
         s.unsubHistory = null
-        if (s.pendingResubTimer) { clearTimeout(s.pendingResubTimer); s.pendingResubTimer = null }
-        s.pendingErrorCount = 0
+        s.movingIds.clear()
         if (s.onlineHandler && typeof window !== 'undefined') window.removeEventListener('online', s.onlineHandler)
         s.onlineHandler = null
         if (s.timer) { clearTimeout(s.timer); s.timer = null }

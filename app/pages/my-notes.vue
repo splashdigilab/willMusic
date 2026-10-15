@@ -173,7 +173,7 @@ import {
   where
 } from 'firebase/firestore'
 import type { QueueHistoryItem, QueuePendingItem } from '~/types'
-import { getDocsByIds } from '~/utils/firestore-batch'
+import { chunkForInQuery, getDocsByIds } from '~/utils/firestore-batch'
 import { HTML_LANG } from '~/utils/i18n'
 import StickyNote from '~/components/StickyNote.vue'
 
@@ -258,8 +258,6 @@ const aheadCounts = ref<Record<string, number>>({})
 const AHEAD_REFRESH_MS = 25_000
 /** 最前面那張的前面剩這麼多張以內，就改成即時監聽（見 watchFront） */
 const NEAR_FRONT = 3
-/** Firestore 的 in 條件一次最多 30 個值（同 utils/firestore-batch） */
-const IN_QUERY_LIMIT = 30
 
 /**
  * 載入的世代。換帳號、按重試、離開頁面都會往前推一號；每個 await 回來先對一次，
@@ -374,14 +372,18 @@ const watchFront = (gen: number) => {
  * 回傳的 promise 在每一組都收到第一份快照時完成；第一份就失敗的話 reject。
  * 監聽一律登記在 unsubPending，由 stopWatching 收。
  */
-const watchPending = (ids: string[], gen: number): Promise<void> => {
+/**
+ * 監聽自己還在排隊的那幾張。第一份快照都到齊時 resolve，
+ * 回傳的是「第一份快照全部來自伺服器」：離線時先到的是本機快取，空的不代表都播完了
+ */
+const watchPending = (ids: string[], gen: number): Promise<boolean> => {
   // 去歷史查過的不再查：被撤下的兩邊都找不到，之後每份快照都會再出現一次
   const lookedUp = new Set<string>()
   // 每一組都到齊之前，myPending 只有一部分：不重算位置，也不判斷「全部播完了」
   let allReady = false
+  let allFromServer = true
 
-  const chunks: string[][] = []
-  for (let i = 0; i < ids.length; i += IN_QUERY_LIMIT) chunks.push(ids.slice(i, i + IN_QUERY_LIMIT))
+  const chunks = chunkForInQuery(ids)
 
   const firstSnapshots = chunks.map(chunk => new Promise<void>((resolve, reject) => {
     let first = true
@@ -408,6 +410,7 @@ const watchPending = (ids: string[], gen: number): Promise<void> => {
 
         if (first) {
           first = false
+          if (snap.metadata.fromCache) allFromServer = false
           resolve()
           return
         }
@@ -425,7 +428,10 @@ const watchPending = (ids: string[], gen: number): Promise<void> => {
     ))
   }))
 
-  return Promise.all(firstSnapshots).then(() => { allReady = true })
+  return Promise.all(firstSnapshots).then(() => {
+    allReady = true
+    return allFromServer
+  })
 }
 
 const loadNotes = async (uid: string) => {
@@ -443,12 +449,14 @@ const loadNotes = async (uid: string) => {
     // 已經上牆的不會再回到佇列，只需要盯著剩下的。一張都不剩就不掛監聽、不算位置
     const waiting = myIds.value.filter(id => !myHistory.value[id])
     if (waiting.length > 0) {
-      await watchPending(waiting, gen)
+      const fromServer = await watchPending(waiting, gen)
       if (gen !== loadGen) return
       // 位置算出來才算載完：先顯示的話，每張都會少一行「前面還有幾張」、過一下才冒出來
       await refreshAhead(gen)
       if (gen !== loadGen) return
-      if (Object.keys(myPending.value).length > 0) {
+      // 快取來的空結果不算數：離線時它可能只是還不知道。監聽留著，伺服器的回覆到了，
+      // 真的全部離開佇列時監聽那邊會自己收工
+      if (Object.keys(myPending.value).length > 0 || !fromServer) {
         // 分頁在背景時不查，回到分頁再馬上補一次（onVisibilityChange）
         aheadTimer = setInterval(() => {
           if (!document.hidden) void refreshAhead(gen)

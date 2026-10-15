@@ -474,9 +474,14 @@ const watchRetiring = (id: string) => {
   retiringWatchers.set(id, onSnapshot(doc(db, cols.queueHistory, id), (snap) => {
     const fromCache = snap.metadata.fromCache
     if (snap.exists()) {
-      // 內容被改了（後台「刪除個人資料」拿掉署名）：流出去途中的也要換
-      const fresh = { id, ...snap.data() }
-      for (const n of retiringNotes.value) if (getId(n) === id) assignNoteData(n, fresh)
+      // 內容被改了（後台「刪除個人資料」拿掉署名）：流出去途中的也要換。
+      // 掛上時的第一筆內容通常沒變，照樣換的話每一張被擠出的便利貼都要多重畫一次
+      const fresh: Record<string, any> = { id, ...snap.data() }
+      for (const n of retiringNotes.value) {
+        if (getId(n) !== id) continue
+        if (n.content === fresh.content && JSON.stringify(n.style) === JSON.stringify(fresh.style)) continue
+        assignNoteData(n, fresh)
+      }
       return
     }
     // 斷線時第一筆是本機快取：快取裡沒有這份文件不代表被刪了，等伺服器的回覆
@@ -938,14 +943,12 @@ onMounted(async () => {
   isCanvasReady.value = true
 })
 
-/** 頁面已卸載：監聽出錯後排好的重掛不要再掛回去 */
+/** 頁面已卸載：onMounted 等待期間離開的話，不要再掛監聽 */
 let disposed = false
-let canvasVideoResubTimer: number | null = null
-let canvasVideoErrors = 0
 
+// 監聽出錯之後就不會再收到更新，後台改的插播設定都不會生效，所以會自己重掛（watchWithResubscribe）
 const subscribeCanvasVideo = () => {
-  unsubCanvasVideo = onSnapshot(doc(db, 'system', 'canvas_video'), (snap) => {
-    canvasVideoErrors = 0
+  unsubCanvasVideo = watchWithResubscribe(doc(db, 'system', 'canvas_video'), (snap) => {
     const data = snap.exists() ? (snap.data() as {
       videoUrl?: string
       interstitialIntervalMinutes?: number
@@ -958,17 +961,7 @@ const subscribeCanvasVideo = () => {
         console.warn('[canvas] 插播影片背景預載失敗', e)
       })
     }
-  }, (error) => {
-    // 監聽出錯之後就不會再收到更新，後台改的插播設定都不會生效：隔一段時間重掛（5 秒起跳加倍，最多 1 分鐘）
-    console.error('[canvas] 插播設定監聽中斷', error)
-    unsubCanvasVideo = null
-    if (disposed) return
-    if (canvasVideoResubTimer !== null) window.clearTimeout(canvasVideoResubTimer)
-    canvasVideoResubTimer = window.setTimeout(() => {
-      canvasVideoResubTimer = null
-      if (!disposed && !unsubCanvasVideo) subscribeCanvasVideo()
-    }, Math.min(60_000, 5_000 * 2 ** canvasVideoErrors++))
-  })
+  }, 'canvas 插播設定')
 }
 
 onUnmounted(() => {
@@ -981,8 +974,6 @@ onUnmounted(() => {
   window.removeEventListener('resize', onResize)
   unsubCanvasVideo?.()
   unsubCanvasVideo = null
-  if (canvasVideoResubTimer !== null) window.clearTimeout(canvasVideoResubTimer)
-  canvasVideoResubTimer = null
   clearInterstitialGuard()
   interstitialActive = false
   if (interstitialArmTimer) {

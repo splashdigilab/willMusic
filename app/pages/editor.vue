@@ -989,6 +989,9 @@ const ensureSubmissionId = (): string => {
  */
 let submitted = false
 
+/** 這次開頁之後存過草稿（存著的那份是現在這張的），見 saveDraftData */
+let draftSavedThisVisit = false
+
 /**
  * 把頁面高度鎖成「鍵盤出現前」量到的值，讓鍵盤只是蓋在頁面上，而不是把版面頂上去。
  *
@@ -2145,7 +2148,16 @@ const saveDraftData = () => {
     !!drawingData.value ||
     backgroundImage.value !== (BACKGROUND_IMAGES?.[0]?.url ?? '') ||
     shape.value !== DEFAULT_SHAPE_ID
-  if (!hasContent) return
+  if (!hasContent) {
+    // 內容全被拿掉了（例如手繪 undo 到一筆不剩）：這次開頁後存過的那份草稿已經不是現況，
+    // 留著的話重新整理會把剛刪掉的東西問回來。只清自己這次存的 —— 剛開頁、
+    // 還沒決定要不要用草稿時編輯器也是空的，那時清掉的會是使用者真正的草稿
+    if (draftSavedThisVisit) {
+      clearDraft()
+      draftSavedThisVisit = false
+    }
+    return
+  }
 
   // 僅儲存有內容的文字區塊（空白內容的區塊不存入草稿）
   const nonEmptyTextBlocks = textBlocks.value.filter(b => b.content.trim())
@@ -2172,6 +2184,7 @@ const saveDraftData = () => {
     timestamp: Date.now()
   }
   saveDraft(draft)
+  draftSavedThisVisit = true
 }
 
 const {
@@ -2738,6 +2751,10 @@ const finishSubmit = async (tokenForSubmit: string | undefined) => {
     clearToken() // 將 SessionStorage 中的 Token 刪除
   }
 
+  // 寫入要等上傳與預約，最久二十幾秒。這段期間離開了編輯器的話，網址與畫面都已經是別頁的：
+  // 再改寫網址或把人拉去等待頁只會讓人搞不清楚。草稿已經清掉，便利貼也已經送出了
+  if (disposed) return
+
   // 如果網址上有 Token，把網址也清乾淨，避免重新整理再次讀取
   const query = { ...route.query }
   if (tokenRequiredForSubmit.value && query.token) {
@@ -3089,6 +3106,21 @@ const loginErrorMessage = (reason: string): string => {
  *       使用者很可能還沒勾就先按了登入；若也跳過開場，就等於沒勾同意也能進編輯器，
  *       第一次來的人也看不到教學。按登入之前已經勾了的話（帶 agreed=1），回來保持勾著。
  */
+/**
+ * 從 LINE 回來、但編輯器已經卸載時，這一頁的事都不做了，登入本身仍要完成：
+ * custom token 只放在兩分鐘的 cookie 裡，網址上的登入結果一清掉（或人已經在別頁），
+ * 就沒有別的地方會去領它，剛才在 LINE 按的同意等於白費，要再登入一次
+ */
+const completeLoginInBackground = async (outcome: unknown): Promise<void> => {
+  if (outcome !== 'ok') return
+  if (!(await completeLogin())) return
+  void syncProfile(
+    profile.value?.lineName ?? '',
+    profile.value?.linePicture ?? null,
+    profile.value?.lineEmail ?? null
+  )
+}
+
 const handleLoginReturn = async (): Promise<void> => {
   const outcome = route.query.login
   if (typeof outcome !== 'string') return
@@ -3111,20 +3143,20 @@ const handleLoginReturn = async (): Promise<void> => {
   delete query[TERMS_AGREED_QUERY]
   delete query[NAME_TAG_QUERY]
   await router.replace({ query })
-  if (disposed) return
+  if (disposed) return completeLoginInBackground(outcome)
 
   if (resumingSubmit || resumingEdit) {
     showIntroOverlay.value = false
     termsAccepted.value = true
     await nextTick()
-    if (disposed) return
+    if (disposed) return completeLoginInBackground(outcome)
     startFabricBrush()
 
     const draft = loadDraft()
     if (draft) {
       await nextTick()
       await new Promise<void>(r => requestAnimationFrame(() => r()))
-      if (disposed) return
+      if (disposed) return completeLoginInBackground(outcome)
       await loadDraftData(draft)
     }
     // 登入失敗或取消也一樣回到原本那一步：使用者只是沒登入成功，不是要重來
@@ -3190,6 +3222,9 @@ const handleLoginReturn = async (): Promise<void> => {
 }
 
 onMounted(async () => {
+  // 從 LINE 回來的登入結果先記下來：下面等載入的期間離開了，登入仍要完成（見 completeLoginInBackground）
+  const loginOutcome = route.query.login
+
   // 先鎖高度，之後鍵盤造成的 resize 都會被 isTextFieldFocused 擋掉；
   // 轉向或瀏覽器工具列收合造成的才會真的更新。
   relockViewportHeight()
@@ -3242,11 +3277,11 @@ onMounted(async () => {
     console.warn('Font loading error', e)
   }
   // 這段最少 800ms、最久 5 秒，期間離開了就到此為止，後面的監聽都不要掛（見 disposed）
-  if (disposed) return
+  if (disposed) return completeLoginInBackground(loginOutcome)
   loading.value = false
 
   await nextTick()
-  if (disposed) return
+  if (disposed) return completeLoginInBackground(loginOutcome)
 
   // 處理 Token
   const tokenFromQuery = route.query.token as string

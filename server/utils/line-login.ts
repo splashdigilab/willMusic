@@ -121,6 +121,10 @@ const isSecureRequest = (event: H3Event): boolean =>
  * 只擋 `//` 開頭不夠：瀏覽器把 `/\evil.example` 的反斜線當成斜線，一樣是站外網址；
  * 控制字元（CR／LF）則會讓設定 Location 標頭時丟例外。所以除了開頭，整串都不收
  * 反斜線與控制字元，最後再用 URL 解析確認沒有跑出本站。
+ *
+ * 回傳的是正規化之後的路徑，而正規化本身會**產生** `//`：`/..//evil.example`、
+ * `/%2e%2e//evil.example` 收掉點點之後就是 `//evil.example`。所以正規化的結果
+ * 要再解析一次，確認瀏覽器拿到它時還是留在本站。
  */
 export const sanitizeReturnTo = (raw: unknown): string => {
   const fallback = '/editor'
@@ -130,8 +134,9 @@ export const sanitizeReturnTo = (raw: unknown): string => {
   const base = 'https://return-to.invalid'
   try {
     const url = new URL(raw, base)
-    if (url.origin !== base) return fallback
-    return url.pathname + url.search + url.hash
+    const normalized = url.pathname + url.search + url.hash
+    if (url.origin !== base || new URL(normalized, base).origin !== base) return fallback
+    return normalized
   } catch {
     return fallback
   }
