@@ -512,12 +512,13 @@
                  判斷「是否為空」必須與上方 is-empty 的 .trim() 一致 —— 刪光文字後瀏覽器常留下一個換行，
                  若只用 || 判斷會認為有內容，量尺量到換行就把編輯框縮成一條。 -->
             <span class="p-editor__edit-frame-sizer" aria-hidden="true" :style="getTextStyleForBlock(block)">{{ sizerTextFor(block) }}</span>
-            <!-- 刪除按鈕 -->
+            <!-- 刪除按鈕：觸控是手指放開才刪（見 onDeleteTouchEnd） -->
             <button
               v-if="selectedTextBlockId === block.id"
               class="p-editor__edit-frame-delete"
               @click.stop="removeTextBlock(block.id)"
-              @touchstart.stop.prevent="removeTextBlock(block.id)"
+              @touchstart.stop.prevent="onDeleteTouchStart"
+              @touchend.stop.prevent="onDeleteTouchEnd($event, () => removeTextBlock(block.id))"
               :aria-label="t.editor.delete"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -556,7 +557,8 @@
             <button
               class="p-editor__edit-frame-delete"
               @click.stop="removeSticker(sticker.id)"
-              @touchstart.stop.prevent="removeSticker(sticker.id)"
+              @touchstart.stop.prevent="onDeleteTouchStart"
+              @touchend.stop.prevent="onDeleteTouchEnd($event, () => removeSticker(sticker.id))"
               :aria-label="t.editor.delete"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -934,7 +936,7 @@ import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z, drawingLayerZ } from 
 import { isSwatchVisibleOn } from '~/utils/color-contrast'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
-import { useCanvasPinch } from '~/composables/useCanvasPinch'
+import { useCanvasPinch, DRAG_THRESHOLD_PX } from '~/composables/useCanvasPinch'
 import { useStorage } from '~/composables/useStorage'
 import { useFirestore } from '~/composables/useFirestore'
 import { useFabricBrush } from '~/composables/useFabricBrush'
@@ -1926,6 +1928,30 @@ const removeTextBlock = (blockId: string) => {
     selectedTextBlockId.value = null
   }
   saveDraftData()
+}
+
+/**
+ * 編輯框左上角的刪除鈕（觸控）：手指放開才刪，中途移動超過拖曳門檻就不算。
+ *
+ * 原本在 touchstart 當下就刪：想拖曳物件、手指剛好落在角落的 X 上，物件立刻不見，而且沒有復原。
+ * touchstart／touchend 仍要 prevent：擋掉觸控後補發的 click（滑鼠才走 @click，不會刪兩次），
+ * 也不讓正在打字的文字框因為按到刪除鈕而先失焦。
+ * 第二根手指放上來就作廢，雙指縮放結束時不會順手把東西刪掉。
+ */
+let deleteTouchStart: { x: number; y: number } | null = null
+
+const onDeleteTouchStart = (e: TouchEvent) => {
+  const t = e.touches[0]
+  deleteTouchStart = t && e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null
+}
+
+const onDeleteTouchEnd = (e: TouchEvent, remove: () => void) => {
+  const start = deleteTouchStart
+  deleteTouchStart = null
+  const t = e.changedTouches[0]
+  if (!start || !t || e.touches.length > 0) return
+  if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > DRAG_THRESHOLD_PX) return
+  remove()
 }
 
 /**

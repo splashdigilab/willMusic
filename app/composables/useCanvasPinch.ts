@@ -76,7 +76,8 @@ const EMPTY_AREA_SELECTORS = [
 ]
 
 const TEXT_AREA_SELECTORS = ['.p-editor__canvas-text']
-const DRAG_THRESHOLD_PX = 10
+/** 手指移動超過這個距離才算拖曳，以內算點一下（編輯框的刪除鈕也用這個值） */
+export const DRAG_THRESHOLD_PX = 10
 
 /**
  * 畫布層級手勢：單指拖曳已選取物件、雙指縮放／旋轉（不改變位置）
