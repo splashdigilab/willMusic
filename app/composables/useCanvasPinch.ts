@@ -27,6 +27,11 @@ export interface UseCanvasPinchOptions {
   onTextTap?: (blockId: string, clientX: number, clientY: number) => void
   /** 在文字區塊上開始拖曳前呼叫（選取文字區塊，不聚焦） */
   onTextDragStart?: (blockId: string) => void
+  /**
+   * 按在貼紙上（不論是否已選取）時呼叫，要負責選取它；呼叫完就直接開始拖曳。
+   * 沒給的話貼紙要先點一下選取、放開再按一次才拖得動。
+   */
+  onStickerPress?: (stickerId: string) => void
   /** 顯示垂直中心參考線（可選） */
   showVerticalCenterGuide?: Ref<boolean>
   /** 顯示水平中心參考線（可選） */
@@ -81,7 +86,8 @@ export const DRAG_THRESHOLD_PX = 10
 
 /**
  * 畫布層級手勢：單指拖曳已選取物件、雙指縮放／旋轉（不改變位置）
- * 有選取時在空白處拖曳即可移動；雙指不需觸碰物件即可縮放旋轉
+ * 有選取時在空白處拖曳即可移動；雙指不需觸碰物件即可縮放旋轉。
+ * 文字與貼紙不論是否已選取，按住就能直接拖
  */
 export function useCanvasPinch(options: UseCanvasPinchOptions) {
   const {
@@ -101,6 +107,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     onStickerDragEnd,
     onTextTap,
     onTextDragStart,
+    onStickerPress,
     showVerticalCenterGuide,
     showHorizontalCenterGuide,
     centerSnapThresholdPct = 2,
@@ -149,6 +156,14 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
     const block = textBlocks.value.find(b => b.id === id)
     if (block?.locked) return null
     return id
+  }
+
+  /** 從觸碰的 DOM 元素上提取貼紙 id（畫布上的貼紙本體，不是編輯框）。貼紙只有 STEP 5 點得到 */
+  const getStickerIdFromTarget = (target: EventTarget | null): string | null => {
+    const el = target as HTMLElement
+    if (!el?.closest) return null
+    const stickerEl = el.closest('.p-editor__sticker-content[data-sticker-id]') as HTMLElement | null
+    return stickerEl?.dataset.stickerId ?? null
   }
 
   const getSelectedBlock = (): TextBlockInstance | undefined => {
@@ -416,7 +431,12 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
       const frameEl = el.querySelector(
         `.p-editor__edit-frame--sticker[data-sticker-id="${s.id}"]`
       ) as HTMLElement | null
-      const { halfWidthPct, halfHeightPct } = getHalfSizePct(frameEl)
+      // 剛按下去才選取的貼紙，編輯框還沒顯示出來（v-show 下一輪才更新），量不到大小；
+      // 改量畫布上的貼紙本體，兩者大小相同
+      const sizeEl = frameEl?.getBoundingClientRect().width
+        ? frameEl
+        : el.querySelector(`.p-editor__sticker-content[data-sticker-id="${s.id}"]`) as HTMLElement | null
+      const { halfWidthPct, halfHeightPct } = getHalfSizePct(sizeEl)
       canvasDragState = {
         type: 'sticker',
         stickerId: s.id,
@@ -600,6 +620,17 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
         }
       }
 
+      // 按在貼紙上：選取它並直接開始拖（跟 IG 一樣按住就能拖，不必先點一下選取）。
+      // 沒移動就放開也走這條，等於點一下選取
+      const stickerId = getStickerIdFromTarget(e.target)
+      if (stickerId && onStickerPress) {
+        if (e.cancelable) e.preventDefault()
+        e.stopPropagation()
+        onStickerPress(stickerId)
+        startCanvasDrag(t.clientX, t.clientY, true)
+        return
+      }
+
       if (hasSelection() && isPointerOnEmptyArea(e.target)) {
         if (e.cancelable) e.preventDefault()
         e.stopPropagation()
@@ -639,9 +670,18 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
 
 
   const onCanvasMouseDown = (e: MouseEvent) => {
-    if (drawMode.value || !hasSelection()) return
+    if (drawMode.value) return
     // 疊在畫布上的按鈕不當成拖曳的起點（同 onCanvasTouchStart）
     if ((e.target as HTMLElement | null)?.closest('[data-canvas-control]')) return
+    // 按在貼紙上：選取並直接開始拖（同 onCanvasTouchStart）
+    const stickerId = getStickerIdFromTarget(e.target)
+    if (stickerId && onStickerPress) {
+      e.preventDefault()
+      onStickerPress(stickerId)
+      startCanvasDrag(e.clientX, e.clientY, false)
+      return
+    }
+    if (!hasSelection()) return
     if (!isPointerOnEmptyArea(e.target)) return
     e.preventDefault()
     startCanvasDrag(e.clientX, e.clientY, false)

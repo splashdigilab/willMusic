@@ -433,15 +433,17 @@
 
           <!-- 貼紙圖片（可裁切）。只在 STEP 5 可點：其他步驟點了也只是跳出一個
                當下沒有任何控制項可用的編輯框，反而擋住底下的東西。
-               署名（名牌）也在這個陣列裡，互動沿用貼紙那一套，只有長相與疊放層不同。 -->
+               署名（名牌）也在這個陣列裡，互動沿用貼紙那一套，只有長相與疊放層不同。
+               按下去就選取並開始拖，由畫布容器的 onCanvasTouchStart／onCanvasMouseDown 處理
+               （靠 data-sticker-id 認出是哪一張）；@click.stop 只是不讓點擊冒到容器去取消選取 -->
           <div
             v-for="sticker in stickers"
             :key="sticker.id"
+            :data-sticker-id="sticker.id"
             class="p-editor__sticker-content"
             :class="{ 'is-sticker-clickable': activeTab === 'sticker', 'is-name-tag': isNameTagSticker(sticker) }"
             :style="[getStickerStyle(sticker), { zIndex: stickerLayerZ(sticker) }]"
             @click.stop="selectSticker(sticker.id)"
-            @touchstart.stop="() => { if (!isTwoFingerGesture) selectSticker(sticker.id) }"
           >
             <NoteNameTag v-if="isNameTagSticker(sticker)" :name="nameTagName" :avatar="nameTagAvatar" />
             <img
@@ -1115,8 +1117,35 @@ const nameTagAvatar = ref<string | null>(null)
  */
 const nameTagBlocked = computed(() => isMember.value && profile.value?.nameTagBlocked === true)
 
-const stickerLayerZ = (sticker: StickerInstance) =>
-  isNameTagSticker(sticker) ? NOTE_LAYER_Z.nameTag : NOTE_LAYER_Z.sticker
+const stickerLayerZ = (sticker: StickerInstance) => {
+  if (isNameTagSticker(sticker)) return NOTE_LAYER_Z.nameTag
+  // 手指按住（拖曳、縮放旋轉）的那張先浮上來，放開時 bringStickerToFront 才真的改順序
+  return sticker.id === draggingStickerId.value || sticker.id === transformingStickerId.value
+    ? NOTE_LAYER_Z.liftedSticker
+    : NOTE_LAYER_Z.sticker
+}
+
+/**
+ * 碰過的貼紙移到陣列最後面，也就是其他貼紙的上面（跟 IG 一樣：拿起來的那張在最上面）。
+ * 貼紙之間的前後就是陣列順序（DOM 順序），存草稿與送出都照這個順序，不需要另外記。
+ *
+ * 手指放開才搬：按住的當下就搬，等於在手勢進行中把手指底下的元素移走再插回去，
+ * 各家瀏覽器（尤其 iOS）後續的觸控事件會不會照常送到，沒有把握。
+ * 按住的期間由 stickerLayerZ 先讓它浮上來，畫面上看起來一按就到最上面。
+ */
+const bringStickerToFront = (id: string | null) => {
+  if (!id) return
+  const i = stickers.value.findIndex(s => s.id === id)
+  if (i < 0 || i === stickers.value.length - 1) return
+  const [sticker] = stickers.value.splice(i, 1)
+  stickers.value.push(sticker!)
+}
+
+/** 貼紙的拖曳、縮放旋轉結束（包括只是點一下）：拿起來的那張放到最上面，再存草稿 */
+const onStickerGestureEnd = () => {
+  bringStickerToFront(selectedStickerId.value)
+  saveDraftData()
+}
 
 /**
  * 草稿裡讀出來、還沒套用的名牌位置。
@@ -2310,12 +2339,13 @@ const {
     focusSelectedTextBlock()
     saveDraftData()
   },
-  onStickerTransformEnd: saveDraftData,
+  onStickerTransformEnd: onStickerGestureEnd,
   onTextDragEnd: () => {
     focusSelectedTextBlock()
     saveDraftData()
   },
-  onStickerDragEnd: saveDraftData,
+  onStickerDragEnd: onStickerGestureEnd,
+  onStickerPress: selectSticker,
   onTextTap: (blockId: string, clientX: number, clientY: number) => {
     const alreadySelected = selectedTextBlockId.value === blockId
     selectTextBlock(blockId)
@@ -2342,8 +2372,8 @@ const {
   draggingStickerId,
   transformingStickerId,
   selectSticker,
-  onDragEnd: saveDraftData,
-  onTransformEnd: saveDraftData,
+  onDragEnd: onStickerGestureEnd,
+  onTransformEnd: onStickerGestureEnd,
   isTwoFingerGesture
 })
 
