@@ -96,6 +96,8 @@ export default {
   eraser: '橡皮擦',
   undoStroke: '復原一筆',
   redoStroke: '重做一筆',
+  /** STEP 4 的開關：手繪整層蓋在貼紙上面。只在有貼紙時出現，自己佔一整列 */
+  drawAboveStickers: '畫在貼紙上面',
 
   /** 署名（把 LINE 頭貼與暱稱當成一張貼紙）：STEP 5 那一列與確認畫面的開關 */
   nameTag: {

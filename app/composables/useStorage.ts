@@ -88,6 +88,7 @@ export const useStorage = () => {
           ? ((raw as any).textBlocks as DraftData['textBlocks'])
           : undefined,
         drawing: typeof raw.drawing === 'string' ? raw.drawing : undefined,
+        drawingAboveStickers: raw.drawingAboveStickers === true,
         objectLayerOrder: normalizeObjectLayerOrder(raw.objectLayerOrder),
         // LINE 登入之前存的草稿沒有這個欄位，載入後由編輯器補一個新的
         submissionId: typeof raw.submissionId === 'string' ? raw.submissionId : undefined,

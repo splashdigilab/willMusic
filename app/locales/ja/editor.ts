@@ -65,6 +65,7 @@ export default {
   eraser: '消しゴム',
   undoStroke: '元に戻す',
   redoStroke: 'やり直し',
+  drawAboveStickers: 'ステッカーの上に描く',
 
   nameTag: {
     added: '追加済み',

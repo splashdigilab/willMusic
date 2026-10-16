@@ -67,6 +67,7 @@ export default {
   eraser: 'Eraser',
   undoStroke: 'Undo',
   redoStroke: 'Redo',
+  drawAboveStickers: 'Draw over stickers',
 
   nameTag: {
     added: 'Added',

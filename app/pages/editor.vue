@@ -450,14 +450,15 @@
             />
           </div>
 
-          <!-- 手繪層 (Fabric.js)。畫圖時也維持在貼紙底下，跟成品的前後順序一致 -->
+          <!-- 手繪層 (Fabric.js)。畫圖時也維持成品的位置（預設在貼紙底下，
+               打開「畫在貼紙上面」就在貼紙上面），畫的時候看到的就是送出後的樣子 -->
           <div
             ref="drawingLayerRef"
             class="p-editor__drawing-layer"
             :class="{ 'is-active': drawMode }"
             :style="{
               pointerEvents: drawMode ? 'auto' : 'none',
-              zIndex: NOTE_LAYER_Z.drawing
+              zIndex: drawingLayerZ(drawingAboveStickers)
             }"
           >
             <!-- Fabric.js canvas：始終留在 DOM（init 需要），縮小後視覺空白 -->
@@ -781,6 +782,26 @@
               </button>
             </div>
           </div>
+          <!-- 手繪整層移到貼紙上面（見 drawingAboveStickers）。只在有貼紙時出現：
+               進這一步之前貼紙數就定了，畫的途中面板高度不會跳。
+               圓圈打勾表示開關，跟「＋ 新增文字」那種按一下做一件事的鈕分開 -->
+          <div v-if="regularStickers.length > 0" class="p-editor__control-section">
+            <div class="p-editor__chip-row">
+              <button
+                type="button"
+                class="p-editor__chip-btn"
+                :class="{ 'is-active': drawingAboveStickers }"
+                :aria-pressed="drawingAboveStickers"
+                @click="toggleDrawingAboveStickers"
+              >
+                <svg class="p-editor__chip-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path v-if="drawingAboveStickers" d="M7.8 12.3l2.8 2.8 5.6-5.8" />
+                </svg>
+                {{ t.editor.drawAboveStickers }}
+              </button>
+            </div>
+          </div>
         </div>
       </transition>
 
@@ -909,7 +930,7 @@ import {
 import { BACKGROUND_IMAGES, isColorMaterial } from '~/data/backgrounds'
 import { DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_STEPS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
-import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z } from '~/utils/sticky-note-style'
+import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z, drawingLayerZ } from '~/utils/sticky-note-style'
 import { isSwatchVisibleOn } from '~/utils/color-contrast'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
@@ -1162,7 +1183,8 @@ const textBlockDragging = ref(false)
 const textBlockTransforming = ref(false)
 
 // 疊放順序是固定的（NOTE_LAYER_Z：貼紙最上、手繪中間、文字最下），編輯器與顯示端共用同一組值。
-// 畫圖時也不例外：原本會把手繪層暫時拉到最上面，結果畫的時候線蓋在貼紙上，
+// 唯一能動的是手繪整層移到貼紙上面（drawingAboveStickers，STEP 4 的開關）。
+// 畫圖時也照這個順序：原本會把手繪層暫時拉到最上面，結果畫的時候線蓋在貼紙上，
 // 送出後卻變成貼紙蓋在線上，看到的跟成品不一樣。不拉也畫得到 —— 畫圖這一步
 // 貼紙是 pointer-events: none（只有 STEP 5 點得到），觸控會穿過貼紙落到手繪層。
 
@@ -1457,6 +1479,23 @@ const brushColor = ref('#ffffff')
 const brushWidth = ref(8)
 const eraserMode = ref(false)
 const drawingData = ref<string | null>(null)
+
+/**
+ * 手繪整層蓋在貼紙上面（STEP 4 的「畫在貼紙上面」）。
+ *
+ * 貼完貼紙才回來畫的人要在貼紙上塗鴉，預設的順序（手繪在貼紙底下）會把線蓋掉。
+ * 整層一起移、只能二選一：背景塗色壓在貼紙底下、同時又在貼紙上塗鴉，這兩件事做不到。
+ * 要做到得把手繪拆成多層，代價見 NOTE_LAYER_Z 的說明。
+ *
+ * 開關只在有貼紙時出現（沒貼紙時開或關看起來一樣）。拿光貼紙也不會自動關：
+ * 再貼上去的貼紙一樣在手繪底下，回到 STEP 4 看得到開關是開著的。
+ */
+const drawingAboveStickers = ref(false)
+
+const toggleDrawingAboveStickers = () => {
+  drawingAboveStickers.value = !drawingAboveStickers.value
+  saveDraftData()
+}
 
 /**
  * 筆刷色在目前的材質上看不到時，換成調色盤裡第一個看得到的。
@@ -2176,6 +2215,7 @@ const saveDraftData = () => {
     textTransform: nonEmptyTextBlocks[0] ? { x: nonEmptyTextBlocks[0].x, y: nonEmptyTextBlocks[0].y, scale: nonEmptyTextBlocks[0].scale, rotation: nonEmptyTextBlocks[0].rotation } : undefined,
     textBlocks: nonEmptyTextBlocks,
     drawing: drawingData.value ?? undefined,
+    drawingAboveStickers: drawingAboveStickers.value,
     submissionId: submissionId.value,
     nameTag,
     timestamp: Date.now()
@@ -2318,6 +2358,7 @@ const loadDraftData = async (draft: DraftData) => {
   pendingDraftNameTag.value = draft.nameTag ?? null
   drawingData.value = draft.drawing ?? null
   drawingBase = drawingData.value
+  drawingAboveStickers.value = draft.drawingAboveStickers === true
   // 還原送出用的 ID —— 被導去 LINE 登入再回來時，就是靠這個值讓重送
   // 寫到同一筆，而不是多出一張便利貼
   submissionId.value = draft.submissionId
@@ -2366,6 +2407,7 @@ const resetEditorToInitial = () => {
   step.value = 0
   drawingData.value = null
   drawingBase = null
+  drawingAboveStickers.value = false
   fabricBrush.clear()
   // 重來就是另一張便利貼。沿用舊的 ID 的話，上一張其實已經上牆（只是回應沒收到）時，
   // 這一張送出會被當成「同一張已經建立過」而直接算成功（見 confirmSubmit）
@@ -2448,7 +2490,11 @@ const previewNoteData = computed(() => {
     textTransform: textBlocks.value[0] ? { x: textBlocks.value[0].x, y: textBlocks.value[0].y, scale: textBlocks.value[0].scale, rotation: textBlocks.value[0].rotation } : undefined,
     textBlocks: textBlocks.value
   }
-  if (drawingData.value) style.drawing = drawingData.value
+  if (drawingData.value) {
+    style.drawing = drawingData.value
+    // 只在打開時寫：沒有這個欄位的便利貼（包括所有舊的）就是手繪在貼紙底下
+    if (drawingAboveStickers.value) style.drawingAboveStickers = true
+  }
 
   // 署名在這裡才把暱稱與頭貼複製進去：預覽、分享圖、送出都讀這一份，
   // 三邊看到的一定是同一個名字。暱稱必須等於登入身分的 lineName，規則會驗

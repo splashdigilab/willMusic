@@ -9,6 +9,10 @@ import type { StickerInstance } from '~/types'
  *
  * 同一類之間不分先後，靠 DOM 順序（＝建立順序）決定，後放的蓋前放的。
  *
+ * 唯一的例外是手繪可以整層移到貼紙上面（STEP 4 的「畫在貼紙上面」，存成
+ * style.drawingAboveStickers），用來在貼紙上塗鴉。整層一起移，不是一筆一筆分開：
+ * 手繪存成一張圖，拆成多層的話橡皮擦與 undo 都碰不到舊的那層。
+ *
  * 署名（名牌）在所有東西上面：它是「這張是誰做的」，被貼紙蓋掉就失去意義。
  *
  * 舊便利貼另當別論：它們存了 objectLayerOrder，顯示端仍以那份記錄為準，
@@ -18,8 +22,14 @@ export const NOTE_LAYER_Z = {
   text: 1,
   drawing: 2,
   sticker: 3,
-  nameTag: 4
+  drawingAboveStickers: 4,
+  nameTag: 5
 } as const
+
+/** 手繪層的疊放值：預設在貼紙底下，打開「畫在貼紙上面」就移到貼紙上面（署名仍在最上） */
+export function drawingLayerZ(aboveStickers: boolean | undefined) {
+  return aboveStickers ? NOTE_LAYER_Z.drawingAboveStickers : NOTE_LAYER_Z.drawing
+}
 
 /** 舊便利貼記錄手繪層順序時用的鍵 */
 export const DRAWING_LAYER_ID = 'drawing-layer'

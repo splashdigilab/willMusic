@@ -80,7 +80,7 @@
 import type { QueuePendingItem, QueueHistoryItem, StickerInstance, TextBlockInstance } from '~/types'
 import { STICKER_LIBRARY } from '~/data/stickers'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
-import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z, DRAWING_LAYER_ID } from '~/utils/sticky-note-style'
+import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z, DRAWING_LAYER_ID, drawingLayerZ } from '~/utils/sticky-note-style'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 import { isInlineAvatar } from '~/utils/name-tag'
 import NoteNameTag from '~/components/NoteNameTag.vue'
@@ -121,7 +121,7 @@ const getStickerWrapStyle = (sticker: StickerInstance) => {
 }
 
 const drawingStyle = computed(() => ({
-  zIndex: objectLayerOrder.value[DRAWING_LAYER_ID] ?? NOTE_LAYER_Z.drawing
+  zIndex: objectLayerOrder.value[DRAWING_LAYER_ID] ?? drawingLayerZ(props.note.style?.drawingAboveStickers)
 }))
 
 const nameTag = computed(() => {

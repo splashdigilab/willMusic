@@ -273,9 +273,9 @@ body.is-editor-page #app {
     @include sn.sticky-note-sticker-img;
   }
 
-  /* 手繪層 (Fabric.js)。實際的前後順序由 template 的 NOTE_LAYER_Z.drawing 決定
-     （貼紙之下、文字之上），畫圖時也不變 —— 這裡的 z-index: 0 只是 inline 樣式
-     套上之前的預設值 */
+  /* 手繪層 (Fabric.js)。實際的前後順序由 template 的 drawingLayerZ 決定
+     （預設貼紙之下、文字之上；打開「畫在貼紙上面」就在貼紙之上），畫圖時也不變 ——
+     這裡的 z-index: 0 只是 inline 樣式套上之前的預設值 */
   &__drawing-layer {
     display: flex;
     align-items: center;
@@ -624,7 +624,7 @@ body.is-editor-page #app {
     gap: 0.5rem;
   }
 
-  /* 面板上的次要開關（目前只有「＋ 新增文字」）。
+  /* 面板上的次要按鈕：「＋ 新增文字」、STEP 4 的「畫在貼紙上面」、STEP 5 的署名。
      底色用實心淺灰而不是描邊 —— 描邊小藥丸在這個淺灰面板上會被誤讀成停用狀態，
      實心反而更清楚它可以按，同時又與底部的漸層主要按鈕拉開階層。 */
   &__chip-btn {
@@ -649,6 +649,12 @@ body.is-editor-page #app {
     &:disabled {
       opacity: 0.45;
       cursor: not-allowed;
+    }
+
+    /* 開著（畫在貼紙上面）／已經貼上（署名）：跟造型選中一樣轉成天藍 */
+    &.is-active {
+      background: var(--theme-accent-tint, rgba(0, 167, 197, 0.14));
+      color: var(--theme-accent-ink, #00879F);
     }
   }
 
@@ -675,11 +681,7 @@ body.is-editor-page #app {
     /* 登入前後同高（＝頭貼加上下內距），從 LINE 回來時下面的格子才不會跳一下 */
     min-height: 2.2rem;
 
-    /* 已經貼上：跟造型選中一樣轉成天藍，按下去是選取那張名牌 */
-    &.is-active {
-      background: var(--theme-accent-tint, rgba(0, 167, 197, 0.14));
-      color: var(--theme-accent-ink, #00879F);
-    }
+    /* 已經貼上時是天藍（chip-btn 的 is-active），按下去是選取那張名牌 */
 
     /* 沒登入：整列就是登入鈕，文字置中 */
     &--login {

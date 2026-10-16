@@ -65,6 +65,7 @@ export default {
   eraser: '지우개',
   undoStroke: '실행 취소',
   redoStroke: '다시 실행',
+  drawAboveStickers: '스티커 위에 그리기',
 
   nameTag: {
     added: '추가됨',
