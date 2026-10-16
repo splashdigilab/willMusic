@@ -69,7 +69,19 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       { id: 'pumpkin-orange', value: '#FF6100' },
       { id: 'skull-lime', value: '#DAE000' }
     ],
-    stickerIds: ['halloween-pumpkin-face', 'halloween-skull-face', 'halloween-ghost-face'],
+    stickerIds: [
+      'halloween-pumpkin-face', 'halloween-skull-face', 'halloween-ghost-face',
+      // 全像貼紙：字 → 角色 → 巫師道具 → 糖果 → 場景
+      'halloween-boo', 'halloween-spooky-vibes', 'halloween-trick-or-treat',
+      'halloween-ghost', 'halloween-jack-o-lantern', 'halloween-pumpkin', 'halloween-skull',
+      'halloween-black-cat', 'halloween-spider', 'halloween-eyeball',
+      'halloween-witch-hat', 'halloween-broom', 'halloween-moon-wand', 'halloween-crystal-ball',
+      'halloween-death-note', 'halloween-cauldron', 'halloween-magic-cauldron', 'halloween-potion',
+      'halloween-poison-apple', 'halloween-candle',
+      'halloween-candy-bucket', 'halloween-candy-corn', 'halloween-skull-lollipop', 'halloween-cupcake',
+      'halloween-spider-web', 'halloween-tombstone', 'halloween-coffin', 'halloween-cross',
+      'halloween-dead-tree', 'halloween-scythe'
+    ],
     // 稿子畫板 02 有字標，2026-10-12 改回按鈕撐滿橫條（跟原本的主題同一個版面，只換顏色）
     wallBarLogo: false
   }
