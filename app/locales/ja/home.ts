@@ -16,7 +16,7 @@ export default {
   halloween: {
     title: 'ハロウィン',
     intro: [
-      'WILL MUSICデジタル応援付箋へようこそ',
+      'WillMusicデジタル応援付箋へようこそ',
       'あなただけの応援メッセージを作って、',
       'みんなと音楽への想いをシェアしましょう。'
     ]

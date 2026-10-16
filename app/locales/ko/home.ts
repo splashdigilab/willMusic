@@ -16,7 +16,7 @@ export default {
   halloween: {
     title: '할로윈',
     intro: [
-      'WILL MUSIC 디지털 응원 포스트잇에',
+      'WillMusic 디지털 응원 포스트잇에',
       '오신 걸 환영해요!',
       '나만의 응원 메시지를 만들어',
       '모두와 음악에 대한 사랑을 나눠 보세요.'

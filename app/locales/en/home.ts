@@ -16,7 +16,7 @@ export default {
   halloween: {
     title: 'HALLOWEEN',
     intro: [
-      'Welcome to WILL MUSIC',
+      'Welcome to WillMusic',
       'Digital Cheer Notes!',
       'Create your own cheer message',
       'and share your love of music.'
