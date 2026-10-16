@@ -1,6 +1,7 @@
 <template>
-  <div class="p-editor">
-      <!-- 稿子的編輯器畫面沒有上方橫條，返回與說明改為浮動圓鈕（與首頁一致） -->
+  <div class="p-editor" :class="{ 'is-manipulating': isManipulating }">
+      <!-- 稿子的編輯器畫面沒有上方橫條，返回與說明改為浮動圓鈕（與首頁一致）。
+           手指在便利貼上操作時跟「全部重來」一起淡出（見 isManipulating） -->
       <div class="p-editor__float-actions">
         <button type="button" class="p-index__icon-btn" :aria-label="t.editor.back" @click="goBack">
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
@@ -381,6 +382,7 @@
         :class="{ 'is-draw-mode': drawMode }"
         @click="deselectAll"
         @mousedown="onCanvasMouseDown"
+        @pointerdown.capture="onCanvasPointerDown"
         @touchstart.capture="onCanvasTouchStart"
         @touchmove.capture="onCanvasTouchMove"
         @touchend.capture="onCanvasTouchEnd"
@@ -1497,6 +1499,42 @@ const drawingAboveStickers = ref(false)
 const toggleDrawingAboveStickers = () => {
   drawingAboveStickers.value = !drawingAboveStickers.value
   saveDraftData()
+}
+
+/**
+ * 手指正在便利貼上操作：拖曳、雙指縮放旋轉、畫線。
+ *
+ * 這段時間把疊在便利貼上的按鈕淡出（上排圓鈕、全部重來），手指附近的作品才看得到，
+ * 拖到角落或畫線經過時不會被按鈕蓋住；放開就回來。淡出有一點延遲（見 .p-editor.is-manipulating），
+ * 點一下貼紙也會短暫算成拖曳，沒有延遲的話按鈕會閃一下。
+ */
+const isDrawingStroke = ref(false)
+
+const isManipulating = computed(() =>
+  !!draggingStickerId.value ||
+  !!transformingStickerId.value ||
+  textBlockDragging.value ||
+  textBlockTransforming.value ||
+  isDrawingStroke.value
+)
+
+const endDrawingStroke = () => {
+  isDrawingStroke.value = false
+  window.removeEventListener('pointerup', endDrawingStroke)
+  window.removeEventListener('pointercancel', endDrawingStroke)
+}
+
+/**
+ * 畫線的起點。筆畫是 Fabric 自己處理的，這裡只在畫布容器上（capture）看手指什麼時候按下；
+ * 放開聽在 window 上：線畫出便利貼外才放手也收得到，按鈕不會一直藏著。
+ * 從疊在畫布上的按鈕（全部重來）按下去的不是畫線。
+ */
+const onCanvasPointerDown = (e: PointerEvent) => {
+  if (!drawMode.value || isDrawingStroke.value) return
+  if ((e.target as HTMLElement | null)?.closest('[data-canvas-control]')) return
+  isDrawingStroke.value = true
+  window.addEventListener('pointerup', endDrawingStroke)
+  window.addEventListener('pointercancel', endDrawingStroke)
 }
 
 /**
@@ -3408,6 +3446,7 @@ onUnmounted(() => {
   if (drawExportTimer) saveDraftData()
   unsubTokenRequirement?.()
   unsubTokenRequirement = null
+  endDrawingStroke()
   fabricBrush.dispose()
 })
 

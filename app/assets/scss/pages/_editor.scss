@@ -88,6 +88,23 @@ body.is-editor-page {
   opacity: 0;
 }
 
+/* 手指在便利貼上拖曳、縮放旋轉、畫線時（editor.vue 的 isManipulating），
+   疊在便利貼上的按鈕淡出，放開再出現。
+   淡出延遲 0.15 秒、出現不延遲：點一下貼紙也會短暫算成拖曳，沒有延遲按鈕會閃一下 */
+.p-editor__float-actions,
+.p-editor__reset-btn {
+  transition: opacity 0.2s ease;
+}
+
+.p-editor.is-manipulating {
+  .p-editor__float-actions,
+  .p-editor__reset-btn {
+    opacity: 0;
+    pointer-events: none;
+    transition-delay: 0.15s;
+  }
+}
+
 body.is-editor-page #__nuxt,
 body.is-editor-page #app {
   overflow: hidden;
