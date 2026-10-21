@@ -83,6 +83,11 @@ const EMPTY_AREA_SELECTORS = [
 const TEXT_AREA_SELECTORS = ['.p-editor__canvas-text']
 /** 手指移動超過這個距離才算拖曳，以內算點一下（編輯框的刪除鈕也用這個值） */
 export const DRAG_THRESHOLD_PX = 10
+/**
+ * 正在打字的文字區塊上，按住不動超過這個時間就算長按（交給瀏覽器移游標、選字），之後移動不算拖曳。
+ * 要比系統的長按（iOS／Android 約 500ms）短：系統的放大鏡出來之後才搶著拖，兩邊會打架
+ */
+const TEXT_LONG_PRESS_MS = 400
 
 /**
  * 畫布層級手勢：單指拖曳已選取物件、雙指縮放／旋轉（不改變位置）
@@ -585,22 +590,37 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
           // 不分「是否已選取」，一律比照貼紙邏輯：
           // - 單指 tap：選取文字區塊並進入編輯（由 onTextTap 處理）
           // - 單指拖曳：超過門檻後開始拖曳整個文字區塊
-          if (e.cancelable) e.preventDefault()
+          // 例外是正在打字的那一塊（游標就在裡面）：touchstart 不攔，點一下定位游標、長按選字、
+          // 叫出「貼上」選單都交給瀏覽器 —— 攔了這些就全部沒有，使用者沒辦法貼上別處複製的文字。
+          // 這時照樣可以拖，但按住不動超過 TEXT_LONG_PRESS_MS 再移動，是在移游標或拉選取範圍，不算拖曳
+          const textEl = (e.target as HTMLElement).closest('.p-editor__canvas-text')
+          const isTyping = !!textEl && textEl === document.activeElement
+          if (!isTyping && e.cancelable) e.preventDefault()
           e.stopPropagation()
+          const pressedAt = e.timeStamp
           pendingTextTouch = { startX: t.clientX, startY: t.clientY, blockId }
+
+          const detach = () => {
+            el.removeEventListener('touchmove', onMove, { capture: true })
+            el.removeEventListener('touchend', onEnd)
+            el.removeEventListener('touchcancel', onEnd)
+          }
 
           const onMove = (moveEvent: TouchEvent) => {
             if (!pendingTextTouch || !moveEvent.touches[0]) return
             const dx = moveEvent.touches[0].clientX - pendingTextTouch.startX
             const dy = moveEvent.touches[0].clientY - pendingTextTouch.startY
             if (Math.hypot(dx, dy) <= DRAG_THRESHOLD_PX) return
+            if (isTyping && moveEvent.timeStamp - pressedAt > TEXT_LONG_PRESS_MS) {
+              pendingTextTouch = null
+              detach()
+              return
+            }
             if (moveEvent.cancelable) moveEvent.preventDefault()
             onTextDragStart?.(pendingTextTouch.blockId)
             startCanvasDrag(pendingTextTouch.startX, pendingTextTouch.startY, true)
             pendingTextTouch = null
-            el.removeEventListener('touchmove', onMove, { capture: true })
-            el.removeEventListener('touchend', onEnd)
-            el.removeEventListener('touchcancel', onEnd)
+            detach()
           }
 
           const onEnd = () => {
@@ -608,9 +628,7 @@ export function useCanvasPinch(options: UseCanvasPinchOptions) {
               onTextTap?.(pendingTextTouch.blockId, pendingTextTouch.startX, pendingTextTouch.startY)
               pendingTextTouch = null
             }
-            el.removeEventListener('touchmove', onMove, { capture: true })
-            el.removeEventListener('touchend', onEnd)
-            el.removeEventListener('touchcancel', onEnd)
+            detach()
           }
 
           el.addEventListener('touchmove', onMove, { capture: true, passive: false })

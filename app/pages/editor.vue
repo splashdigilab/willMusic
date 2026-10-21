@@ -423,6 +423,7 @@
                 @compositionstart="() => { isComposing = true }"
                 @compositionend="(e: Event) => handleCompositionEnd(e, block.id)"
                 @input="(e: Event) => handleTextInput(e, block.id)"
+                @paste="handleTextPaste"
                 @click.stop="() => { if (!block.locked) selectTextBlock(block.id) }"
                 @focus="() => { isTextFieldFocused = true; if (!block.locked) selectTextBlock(block.id) }"
                 @blur="onTextFieldBlur"
@@ -1926,6 +1927,18 @@ const handleCompositionEnd = (e: Event, blockId: string) => {
   })
 }
 
+/**
+ * 貼上只取純文字。contenteditable 預設會連來源的字型、顏色、大小一起貼進來，
+ * 畫面上看到的就跟送出後（只存 innerText）不一樣；剪貼簿裡只有圖片時也會貼成 <img>。
+ * 用 insertText 插入：會觸發 input（字數上限照 handleTextInput 處理），也能用復原鍵撤回
+ */
+const handleTextPaste = (e: ClipboardEvent) => {
+  const text = e.clipboardData?.getData('text/plain')
+  if (text == null) return
+  e.preventDefault()
+  if (text) document.execCommand('insertText', false, text.replace(/\r\n?/g, '\n'))
+}
+
 const placeCaretAtEnd = (el: HTMLElement) => {
   const range = document.createRange()
   const sel = window.getSelection()
@@ -2181,8 +2194,9 @@ const selectTextBlock = (blockId: string) => {
   if (activeTab.value !== 'text') return
 
   if (selectedTextBlockId.value === blockId) {
-    // 再次點擊同一個文字區塊：確保重新聚焦並叫出鍵盤
-    focusSelectedTextBlock()
+    // 再次點擊同一個文字區塊：鍵盤收起來了才重新聚焦叫出鍵盤。
+    // 正在打字就不動游標 —— 否則點哪裡都被拉回最後，點游標、長按叫出的「貼上」選單也會被打斷
+    if (document.activeElement !== contentEditableRefs.get(blockId)) focusSelectedTextBlock()
     return
   }
 
