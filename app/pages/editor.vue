@@ -602,6 +602,28 @@
             {{ t.editor.startOver }}
           </button>
         </Transition>
+
+        <!-- 畫在貼紙上面（見 drawingAboveStickers）：疊在便利貼左下角，跟右下角的全部重來對稱。
+             只在 STEP 4、有貼紙時出現。原本放在面板最下面自成一列，那一列讓 STEP 4 的面板比其他步驟高，
+             四步統一高度之後每一步的便利貼都會跟著縮小，所以搬到畫布上。
+             圓圈打勾表示這是開關；data-canvas-control：從這裡按下去不算畫線（見 onCanvasPointerDown） -->
+        <Transition name="p-editor-reset-fade">
+          <button
+            v-if="activeTab === 'draw' && regularStickers.length > 0"
+            type="button"
+            class="p-editor__layer-btn"
+            :class="{ 'is-active': drawingAboveStickers }"
+            :aria-pressed="drawingAboveStickers"
+            data-canvas-control
+            @click.stop="toggleDrawingAboveStickers"
+          >
+            <svg class="p-editor__reset-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path v-if="drawingAboveStickers" d="M7.8 12.3l2.8 2.8 5.6-5.8" />
+            </svg>
+            {{ t.editor.drawAboveStickers }}
+          </button>
+        </Transition>
       </div>
     </div>
 
@@ -627,10 +649,15 @@
       </div>
 
     <!-- Control Panel -->
+    <!-- 四個步驟的面板一樣高，換步驟時便利貼才不會上下跳、在矮螢幕上也不會忽大忽小。
+         作法是 STEP 1／3／4 一直留在畫面上、疊在同一格（grid-area 1/1），沒輪到的只是看不見（.is-active），
+         格子高度自然等於三者最高的那一個；換主題（材質數）、換語言（標題折行）都會自己跟著。
+         不能用 v-if／v-show：拿掉的面板不佔高度，就又回到各步驟各自的高度。
+         STEP 5 的貼圖庫有一百多張縮圖，一直掛著等於一進來就全部下載，所以仍用 v-if，
+         絕對定位鋪滿這一格，不參與量高度（格子本來就可以捲動，空間多了只是多露幾張）。 -->
     <div class="p-editor__control-panel">
-      <!-- Tab: 便利貼（v-if 才能觸發 leave 動畫，v-show 只切 display 不會跑 transition） -->
-      <transition name="p-editor-tab">
-        <div v-if="activeTab === 'note'" class="p-editor__tab-content">
+      <!-- Tab: 便利貼 -->
+        <div class="p-editor__tab-content" :class="{ 'is-active': activeTab === 'note' }">
           <div class="p-editor__control-section">
             <h3 class="p-editor__control-title">STEP 1. {{ t.editor.stepTitles.material }}</h3>
             <div class="p-editor__background-grid">
@@ -670,11 +697,9 @@
             </div>
           </div>
         </div>
-      </transition>
 
       <!-- Tab: 文字 -->
-      <transition name="p-editor-tab">
-        <div v-if="activeTab === 'text'" class="p-editor__tab-content">
+        <div class="p-editor__tab-content" :class="{ 'is-active': activeTab === 'text' }">
           <!-- 沒有選取文字時不再整片換成提示文字：控制項停用、「＋ 新增文字」照樣可按，
                面板高度也才不會在選取切換時上下跳。 -->
           <div class="p-editor__control-section">
@@ -727,11 +752,9 @@
             </div>
           </div>
         </div>
-      </transition>
 
       <!-- Tab: 繪圖 -->
-      <transition name="p-editor-tab">
-        <div v-if="activeTab === 'draw'" class="p-editor__tab-content">
+        <div class="p-editor__tab-content" :class="{ 'is-active': activeTab === 'draw' }">
           <div class="p-editor__control-section">
             <h3 class="p-editor__control-title">STEP 4. {{ t.editor.stepTitles.draw }}</h3>
             <div class="p-editor__color-grid">
@@ -789,32 +812,11 @@
               </button>
             </div>
           </div>
-          <!-- 手繪整層移到貼紙上面（見 drawingAboveStickers）。只在有貼紙時出現：
-               進這一步之前貼紙數就定了，畫的途中面板高度不會跳。
-               圓圈打勾表示開關，跟「＋ 新增文字」那種按一下做一件事的鈕分開 -->
-          <div v-if="regularStickers.length > 0" class="p-editor__control-section">
-            <div class="p-editor__chip-row">
-              <button
-                type="button"
-                class="p-editor__chip-btn"
-                :class="{ 'is-active': drawingAboveStickers }"
-                :aria-pressed="drawingAboveStickers"
-                @click="toggleDrawingAboveStickers"
-              >
-                <svg class="p-editor__chip-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <path v-if="drawingAboveStickers" d="M7.8 12.3l2.8 2.8 5.6-5.8" />
-                </svg>
-                {{ t.editor.drawAboveStickers }}
-              </button>
-            </div>
-          </div>
         </div>
-      </transition>
 
-      <!-- Tab: 貼紙 -->
+      <!-- Tab: 貼紙（v-if，見上面 control-panel 的說明） -->
       <transition name="p-editor-tab">
-        <div v-if="activeTab === 'sticker'" class="p-editor__tab-content">
+        <div v-if="activeTab === 'sticker'" class="p-editor__tab-content p-editor__tab-content--sticker">
           <div class="p-editor__control-section">
             <h3 class="p-editor__control-title">STEP 5. {{ t.editor.stepTitles.sticker }}</h3>
             <!-- 署名：把 LINE 頭貼與暱稱當成一張貼紙貼上去，不貼就是匿名。

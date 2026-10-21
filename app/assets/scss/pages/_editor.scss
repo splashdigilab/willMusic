@@ -41,8 +41,10 @@ body.is-editor-page {
 
 /* 全部重來：疊在便利貼右下角的帶字藥丸（位置的理由見 editor.vue）。
    比上排的圓鈕小一號、底色半透明：它蓋著便利貼的一角，要看得出是按鈕，又不能搶掉作品本身。
-   深色底加細亮邊，放在淺色（黃、白）與深色（黑）的便利貼上都看得到 */
-.p-editor__reset-btn {
+   深色底加細亮邊，放在淺色（黃、白）與深色（黑）的便利貼上都看得到。
+   STEP 4 的「畫在貼紙上面」（.p-editor__layer-btn）同一個樣子，鏡射到左下角 */
+.p-editor__reset-btn,
+.p-editor__layer-btn {
   @include btn.btn-reset;
   position: absolute;
   /* 右緣跟右上角的圓鈕切齊（離頁面右緣 $editor-float-btn-inset）。按鈕在畫布容器裡，
@@ -78,6 +80,18 @@ body.is-editor-page {
   }
 }
 
+/* 左緣跟左上角的圓鈕切齊，算法同全部重來的 right（見上面） */
+.p-editor__layer-btn {
+  right: auto;
+  left: calc(#{ed.$editor-float-btn-inset} - (min(100vw, #{ed.$editor-control-max-width}) - 100cqw) / 2);
+
+  /* 開著：轉成主題色實心，跟關著的半透明深色一眼分得出來 */
+  &.is-active {
+    border-color: rgba(255, 255, 255, 0.8);
+    background: var(--theme-accent-ink, #00879F);
+  }
+}
+
 .p-editor-reset-fade-enter-active,
 .p-editor-reset-fade-leave-active {
   transition: opacity 0.2s ease;
@@ -92,13 +106,15 @@ body.is-editor-page {
    疊在便利貼上的按鈕淡出，放開再出現。
    淡出延遲 0.15 秒、出現不延遲：點一下貼紙也會短暫算成拖曳，沒有延遲按鈕會閃一下 */
 .p-editor__float-actions,
-.p-editor__reset-btn {
+.p-editor__reset-btn,
+.p-editor__layer-btn {
   transition: opacity 0.2s ease;
 }
 
 .p-editor.is-manipulating {
   .p-editor__float-actions,
-  .p-editor__reset-btn {
+  .p-editor__reset-btn,
+  .p-editor__layer-btn {
     opacity: 0;
     pointer-events: none;
     transition-delay: 0.15s;
@@ -467,14 +483,15 @@ body.is-editor-page #app {
   }
 
   &__control-panel {
+    position: relative;
     padding: 0;
     background: transparent;
     overflow-y: auto;
     flex-shrink: 0;
-    transition: height ed.$editor-transition-duration ease-in-out;
-    /* 使用 grid 讓子元素可以在同一個區域重疊，達到 position:absolute 的效果但不破壞父層高度 */
+    /* 四個步驟的面板疊在同一格，格子高度＝最高的那一步，換步驟時面板（與便利貼）不動（見 editor.vue）。
+       靠上對齊：較矮的步驟多出來的空間留在下面，STEP 標題永遠在同一個位置、對齊右上的步驟點 */
     display: grid;
-    align-items: end;
+    align-items: start;
   }
 
   /* 步驟指示／捷徑。絕對定位在面板右上，與第一個 STEP 標題同一條水平線，
@@ -529,7 +546,7 @@ body.is-editor-page #app {
   }
 
   &__tab-content {
-    /* control-panel 是 grid（原本用來讓分頁列與內容重疊），現在只剩內容這一個子元素 */
+    /* STEP 1／3／4 疊在 control-panel 的同一格（見 editor.vue），格子高度取最高的那一個 */
     grid-area: 1 / 1;
     width: 100%;
 
@@ -549,53 +566,36 @@ body.is-editor-page #app {
        原本沿用 6.48vw（與左右內距同值），兩個區塊之間會多出約 7px。 */
     gap: ed.$editor-panel-gap;
     box-sizing: border-box;
-    /* 展開時給足夠 max-height，讓 leave 動畫能從此值過渡到 0（height: auto 無法過渡） */
-    max-height: 70vh;
     z-index: 5;
 
-    /* 貼紙 tab：固定高度，內部 sticker-grid 可捲動（維持原狀） */
-    &:has(.p-editor__sticker-grid) {
-      height: ed.$editor-tab-content-sticker-height;
-      max-height: ed.$editor-tab-content-sticker-height;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-  }
-
-  /* Tab 內容切換：用 max-height 做收合；出現 ease-in-out、消失 ease-in */
-  .p-editor-tab-enter-active {
-    transition:
-      opacity ed.$editor-transition-duration ease-in-out,
-      padding ed.$editor-transition-duration ease-in-out,
-      max-height ed.$editor-transition-duration ease-in-out;
-  }
-
-  .p-editor-tab-leave-active {
-    transition:
-      opacity ed.$editor-transition-duration ease-in-out,
-      padding ed.$editor-transition-duration ease-in-out,
-      max-height ed.$editor-transition-duration ease-in-out;
-  }
-
-  .p-editor-tab-enter-from,
-  .p-editor-tab-leave-to {
-    max-height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
+    /* 沒輪到的步驟：看不見、點不到、讀屏與 Tab 鍵也跳過，但照樣佔高度。
+       換步驟是交叉淡入淡出；visibility 等淡出結束才切，不然一按就消失、看不到淡出 */
     opacity: 0;
-  }
+    visibility: hidden;
+    transition:
+      opacity ed.$editor-transition-duration ease-in-out,
+      visibility 0s linear ed.$editor-transition-duration;
 
-  .p-editor-tab-enter-to,
-  .p-editor-tab-leave-from {
-    max-height: 70vh;
-    opacity: 1;
-  }
+    &.is-active {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity ed.$editor-transition-duration ease-in-out;
+    }
 
-  /* 貼紙 tab 的過渡用固定高度 */
-  .p-editor__tab-content:has(.p-editor__sticker-grid).p-editor-tab-enter-to,
-  .p-editor__tab-content:has(.p-editor__sticker-grid).p-editor-tab-leave-from {
-    max-height: ed.$editor-tab-content-sticker-height;
+    /* STEP 5：仍是 v-if（貼圖庫的縮圖不要一進來就全部下載），絕對定位鋪滿 STEP 1／3／4 撐出來的高度，
+       自己不參與量高度；裡面的 sticker-grid 可以捲動。進出用 <transition name="p-editor-tab"> 淡入淡出 */
+    &--sticker {
+      position: absolute;
+      inset: 0;
+      opacity: 1;
+      visibility: visible;
+      transition: opacity ed.$editor-transition-duration ease-in-out;
+
+      &.p-editor-tab-enter-from,
+      &.p-editor-tab-leave-to {
+        opacity: 0;
+      }
+    }
   }
 
   &__control-section {
@@ -641,7 +641,7 @@ body.is-editor-page #app {
     gap: 0.5rem;
   }
 
-  /* 面板上的次要按鈕：「＋ 新增文字」、STEP 4 的「畫在貼紙上面」、STEP 5 的署名。
+  /* 面板上的次要按鈕：「＋ 新增文字」、STEP 5 的署名。
      底色用實心淺灰而不是描邊 —— 描邊小藥丸在這個淺灰面板上會被誤讀成停用狀態，
      實心反而更清楚它可以按，同時又與底部的漸層主要按鈕拉開階層。 */
   &__chip-btn {
@@ -668,7 +668,7 @@ body.is-editor-page #app {
       cursor: not-allowed;
     }
 
-    /* 開著（畫在貼紙上面）／已經貼上（署名）：跟造型選中一樣轉成天藍 */
+    /* 已經貼上（署名）：跟造型選中一樣轉成天藍 */
     &.is-active {
       background: var(--theme-accent-tint, rgba(0, 167, 197, 0.14));
       color: var(--theme-accent-ink, #00879F);
