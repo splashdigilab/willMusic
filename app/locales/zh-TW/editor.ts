@@ -84,6 +84,8 @@ export default {
   textPlaceholder: '在這裡輸入文字...',
   /** 編輯框右上角刪除鈕的無障礙名稱 */
   delete: '刪除',
+  /** 編輯框右下角縮放旋轉鈕的提示（滑鼠移上去的 title；只有滑鼠的裝置看得到這顆鈕） */
+  transformHandle: '拖曳可以縮放、旋轉',
   /** 在目前材質上看不到、被停用的色票（滑鼠移上去的 title） */
   swatchHidden: '這個顏色在目前的材質上看不到',
   /** 對齊鈕的無障礙名稱，key 是 TEXT_ALIGN_OPTIONS 的 value */

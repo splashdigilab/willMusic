@@ -55,6 +55,7 @@ export default {
 
   textPlaceholder: 'ここに入力…',
   delete: '削除',
+  transformHandle: 'ドラッグで拡大・縮小、回転',
   swatchHidden: 'この色は今の付箋のカラーでは見えません',
   align: {
     left: '左揃え',

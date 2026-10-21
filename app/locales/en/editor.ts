@@ -57,6 +57,7 @@ export default {
 
   textPlaceholder: 'Type here...',
   delete: 'Delete',
+  transformHandle: 'Drag to resize or rotate',
   swatchHidden: 'This color won\'t show up on this note',
   align: {
     left: 'Align left',

@@ -55,6 +55,7 @@ export default {
 
   textPlaceholder: '여기에 입력...',
   delete: '삭제',
+  transformHandle: '드래그해서 크기 조절·회전',
   swatchHidden: '이 색은 지금 포스트잇 색상에서 보이지 않아요',
   align: {
     left: '왼쪽 정렬',

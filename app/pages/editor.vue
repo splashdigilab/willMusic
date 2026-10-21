@@ -530,6 +530,21 @@
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
+            <!-- 縮放旋轉鈕：只有滑鼠的裝置看得到（手機用雙指），見 onTransformHandlePointerDown。
+                 @click.stop：拖完放開的那下 click 不能冒到畫布去取消選取 -->
+            <div
+              v-if="selectedTextBlockId === block.id"
+              class="p-editor__edit-frame-transform-handle"
+              data-canvas-control
+              :title="t.editor.transformHandle"
+              aria-hidden="true"
+              @pointerdown="onTransformHandlePointerDown($event, { textBlockId: block.id })"
+              @click.stop
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 11V5h6M19 13v6h-6M5 5l14 14" />
+              </svg>
+            </div>
           </div>
 
           <!-- 貼紙編輯框：在貼紙 tab，或 default 狀態且有選取貼紙時顯示 -->
@@ -570,13 +585,19 @@
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
-            <!-- <div
+            <!-- 縮放旋轉鈕：同文字框 -->
+            <div
               class="p-editor__edit-frame-transform-handle"
-              @mousedown.stop="onTransformHandleMouseDown($event, sticker)"
-              @touchstart.stop="onTransformHandleTouchStart($event, sticker)"
+              data-canvas-control
+              :title="t.editor.transformHandle"
+              aria-hidden="true"
+              @pointerdown="onTransformHandlePointerDown($event, { stickerId: sticker.id })"
+              @click.stop
             >
-              ↻
-            </div> -->
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 11V5h6M19 13v6h-6M5 5l14 14" />
+              </svg>
+            </div>
           </div>
         </div>
         </div>
@@ -2363,6 +2384,7 @@ const {
   onCanvasTouchMove,
   onCanvasTouchEnd,
   onCanvasMouseDown,
+  onTransformHandlePointerDown,
   lastCanvasDragEndAt,
   isTwoFingerGesture
 } = useCanvasPinch({
@@ -2403,9 +2425,7 @@ const {
 const {
   onStickerMouseDown,
   onStickerTouchStart,
-  onStickerClick,
-  onTransformHandleMouseDown,
-  onTransformHandleTouchStart
+  onStickerClick
 } = useStickerInteraction({
   canvasRef,
   stickers,
@@ -2414,7 +2434,6 @@ const {
   transformingStickerId,
   selectSticker,
   onDragEnd: onStickerGestureEnd,
-  onTransformEnd: onStickerGestureEnd,
   isTwoFingerGesture
 })
 

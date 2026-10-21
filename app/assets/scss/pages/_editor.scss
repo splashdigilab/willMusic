@@ -3,6 +3,7 @@
 @use '../components/button' as btn;
 @use '../components/sticky-note' as sn;
 @use '../mixins/editor' as edm;
+@use '../mixins/breakpoints' as bp;
 
 /// 畫布區的內距，也就是便利貼與頁面邊緣的最小距離。「全部重來」的位置要扣掉它（見 .p-editor__reset-btn）
 $canvas-section-pad: 0.5rem;
@@ -416,7 +417,7 @@ body.is-editor-page #app {
     }
 
     &.is-transforming {
-      cursor: nwse-resize;
+      cursor: grabbing;
     }
   }
 
@@ -446,26 +447,36 @@ body.is-editor-page #app {
     z-index: 2;
   }
 
+  /* 縮放旋轉鈕：跟左上角的刪除鈕對角，圓心一樣對準白線。
+     只給滑鼠：手機用雙指捏合，多一顆鈕只會擋住小貼紙 */
   &__edit-frame-transform-handle {
     position: absolute;
-    bottom: 0;
-    right: 0;
+    bottom: -3px;
+    right: -3px;
     width: ed.$editor-edit-frame-transform-handle-size;
     height: ed.$editor-edit-frame-transform-handle-size;
     background: var(--theme-accent, #00A7C5); /* 縮放把手：改用新色票的天藍 */
     color: white;
     border: 2px solid white;
     border-radius: 50%;
-    font-size: 1rem;
-    cursor: nwse-resize;
-    display: flex;
+    cursor: grab;
+    display: none;
     align-items: center;
     justify-content: center;
     transition: background ed.$editor-transition-duration ease-in-out;
     z-index: 2;
     transform: translate(50%, 50%) scale(var(--inverse-scale, 1));
-    transform-origin: bottom right;
+    transform-origin: center center;
     backface-visibility: hidden;
+    touch-action: none;
+
+    @include bp.mouse-device {
+      display: flex;
+    }
+
+    .is-transforming > & {
+      cursor: grabbing;
+    }
   }
 
   /* ========== 控制面板：Tab Bar + Tab Content ========== */

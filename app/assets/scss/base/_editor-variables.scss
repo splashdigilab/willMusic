@@ -7,7 +7,8 @@ $editor-control-max-width: 600px;
 $editor-edit-frame-delete-size: 48px;
 $editor-edit-frame-drag-bar-width: 48px;
 $editor-edit-frame-drag-bar-height: 20px;
-$editor-edit-frame-transform-handle-size: 28px;
+/// 縮放旋轉鈕跟刪除鈕一樣大：桌機的便利貼也只有 300 多 px 寬（縮成六成左右），再小就難按
+$editor-edit-frame-transform-handle-size: 48px;
 $editor-picker-check-size: 1rem;
 $editor-grid-gap: 0.5rem;
 
