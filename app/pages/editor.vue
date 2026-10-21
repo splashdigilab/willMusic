@@ -1522,12 +1522,35 @@ const drawingData = ref<string | null>(null)
  *
  * 開關只在有貼紙時出現（沒貼紙時開或關看起來一樣）。拿光貼紙也不會自動關：
  * 再貼上去的貼紙一樣在手繪底下，回到 STEP 4 看得到開關是開著的。
+ * 貼了貼紙才第一次來畫的人，進 STEP 4 時會自動打開（見 applyDrawingLayerDefault）。
  */
 const drawingAboveStickers = ref(false)
 
+/**
+ * 使用者這次自己按過開關。按過就照他的，不再自動打開。
+ * 不存進草稿：重新整理之後頂多再自動打開一次，而那時還沒畫任何東西，開或關看起來都一樣。
+ */
+let drawingLayerChosen = false
+
 const toggleDrawingAboveStickers = () => {
+  drawingLayerChosen = true
   drawingAboveStickers.value = !drawingAboveStickers.value
   saveDraftData()
+}
+
+/**
+ * 進 STEP 4 時的預設：已經貼了貼紙、還沒畫過任何東西，就把手繪放到貼紙上面。
+ *
+ * 這時候來畫的人幾乎都是要在貼紙上畫，例如幫萬聖節的臉貼紙畫眼睛（正式站就有一張，
+ * 畫好的眼睛被骷髏臉貼紙整片蓋掉）。照原本的順序，線一畫下去就躲到貼紙底下，
+ * 使用者得先看到線不見、再自己去找開關。開關照樣顯示是開著的，不想要隨時可以關。
+ * 已經畫過就不動：不然原本壓在貼紙底下的筆跡會突然整層蓋到貼紙上。
+ */
+const applyDrawingLayerDefault = () => {
+  if (drawingLayerChosen || drawingAboveStickers.value) return
+  if (regularStickers.value.length === 0) return
+  if (drawingData.value || fabricBrush.canUndo()) return
+  drawingAboveStickers.value = true
 }
 
 /**
@@ -1680,6 +1703,8 @@ watch(activeTab, (tab) => {
   // 繪圖：進入/退出繪圖模式
   if (tab === 'draw') {
     ensureUsableBrushColor()
+    // 在第一筆之前決定手繪在貼紙上面還是底下
+    applyDrawingLayerDefault()
     drawMode.value = true
     // 恢復畫布尺寸（從 1×1 最小化還原為 600×600，重新分配 GPU backing store）
     fabricBrush.restoreCanvas()
@@ -2502,6 +2527,7 @@ const resetEditorToInitial = () => {
   drawingData.value = null
   drawingBase = null
   drawingAboveStickers.value = false
+  drawingLayerChosen = false
   fabricBrush.clear()
   // 重來就是另一張便利貼。沿用舊的 ID 的話，上一張其實已經上牆（只是回應沒收到）時，
   // 這一張送出會被當成「同一張已經建立過」而直接算成功（見 confirmSubmit）
