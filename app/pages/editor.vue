@@ -3,12 +3,12 @@
       <!-- 稿子的編輯器畫面沒有上方橫條，返回與說明改為浮動圓鈕（與首頁一致）。
            手指在便利貼上操作時跟「全部重來」一起淡出（見 isManipulating） -->
       <div class="p-editor__float-actions">
-        <button type="button" class="p-index__icon-btn" :aria-label="t.editor.back" @click="goBack">
+        <button type="button" class="p-index__icon-btn" :aria-label="t.editor.back" :title="t.editor.back" @click="goBack">
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
             <path d="M15 18l-6-6 6-6"></path>
           </svg>
         </button>
-        <button type="button" class="p-index__icon-btn" :aria-label="t.editor.help" @click="showTutorialModal = true">
+        <button type="button" class="p-index__icon-btn" :aria-label="t.editor.help" :title="t.editor.help" @click="showTutorialModal = true">
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
@@ -662,6 +662,7 @@
           class="p-editor__step-dot"
           :class="{ 'is-active': step === i, 'is-done': i < step }"
           :aria-label="t.editor.stepDot(i + 1, t.editor.steps[s.id])"
+          :title="t.editor.stepDot(i + 1, t.editor.steps[s.id])"
           :aria-current="step === i ? 'step' : undefined"
           @click="goToStep(i)"
         >
@@ -702,7 +703,7 @@
           </div>
           <div class="p-editor__control-section">
             <h3 class="p-editor__control-title">STEP 2. {{ t.editor.stepTitles.shape }}</h3>
-            <div class="p-editor__shape-grid">
+            <div class="p-editor__shape-grid" @wheel="onShapeGridWheel">
               <button
                 v-for="shapeItem in shapes"
                 :key="shapeItem.id"
@@ -2449,6 +2450,67 @@ const removeSticker = (id: string) => {
 }
 
 /**
+ * 造型列是橫向捲動的，滑鼠卻只有直向滾輪：把直向滾動轉成橫向，最後幾個造型才捲得到。
+ * 觸控板左右滑本來就會捲（deltaX 比較大），不受影響；電腦版左右並排時造型改成換行，捲不動也不攔
+ */
+const onShapeGridWheel = (e: WheelEvent) => {
+  const el = e.currentTarget as HTMLElement
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return
+  // Firefox 的滾輪是以「行」為單位（deltaMode 1），一行大約 16px
+  el.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+  e.preventDefault()
+}
+
+/**
+ * 電腦版的鍵盤快速鍵：
+ * - Delete／Backspace：刪除選取的貼紙（同編輯框左上角的 X）
+ * - Esc：取消選取。正在打字也算：等於點便利貼外面，結束這段文字的編輯
+ * - ⌘Z／Ctrl+Z 復原一筆，⇧⌘Z／Ctrl+Shift+Z／Ctrl+Y 重做一筆（繪圖步驟）
+ * 打字中（文字框、輸入框）除了 Esc 一律不攔，Backspace 照樣是刪字；組字中、彈出視窗開著時全部不攔。
+ * 語言選單、登入狀態的小卡（role menu／dialog）自己處理鍵盤
+ */
+const onEditorKeydown = (e: KeyboardEvent) => {
+  if (e.defaultPrevented || e.isComposing || isComposing.value) return
+  if (
+    showIntroOverlay.value || showTermsModal.value || showDraftModal.value || showTutorialModal.value ||
+    showExitModal.value || showSubmitModal.value || showAlertModal.value || showClearAllModal.value
+  ) return
+  const target = e.target instanceof HTMLElement ? e.target : null
+  if (target?.closest('[role="menu"], [role="dialog"]')) return
+  const isTyping = !!target && (
+    target.isContentEditable ||
+    target.tagName === 'TEXTAREA' ||
+    (target instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'button', 'submit'].includes(target.type))
+  )
+
+  if (e.key === 'Escape') {
+    if (!selectedStickerId.value && !selectedTextBlockId.value) return
+    if (isTyping && !target?.closest('.p-editor__canvas-text')) return
+    target?.blur()
+    deselectAll()
+    return
+  }
+  if (isTyping) return
+
+  if ((e.key === 'Delete' || e.key === 'Backspace') && showStickerEditFrame.value && selectedStickerId.value) {
+    e.preventDefault()
+    removeSticker(selectedStickerId.value)
+    return
+  }
+
+  if (activeTab.value === 'draw' && (e.metaKey || e.ctrlKey) && !e.altKey) {
+    const key = e.key.toLowerCase()
+    if (key === 'z' && !e.shiftKey) {
+      e.preventDefault()
+      if (drawCanUndo.value) fabricBrush.undo()
+    } else if ((key === 'z' && e.shiftKey) || (key === 'y' && e.ctrlKey)) {
+      e.preventDefault()
+      if (drawCanRedo.value) fabricBrush.redo()
+    }
+  }
+}
+
+/**
  * 貼上署名。已經有了就回傳那一張 —— 一張便利貼最多一個名牌。
  * 位置優先用上次拿掉時的，沒有就依造型放在下緣置中（見 defaultNameTagPlacement）。
  */
@@ -3428,6 +3490,7 @@ onMounted(async () => {
   relockViewportHeight()
   window.addEventListener('resize', relockViewportHeight)
   window.addEventListener('orientationchange', relockViewportHeight)
+  window.addEventListener('keydown', onEditorKeydown)
 
   // 在背景預載 Fabric.js（不 await，讓它在使用者閱讀規範的期間下載完畢）
   if (import.meta.client) {
@@ -3529,6 +3592,7 @@ onUnmounted(() => {
   disposed = true
   window.removeEventListener('resize', relockViewportHeight)
   window.removeEventListener('orientationchange', relockViewportHeight)
+  window.removeEventListener('keydown', onEditorKeydown)
   // 這個變數掛在 <html> 上，離開編輯器要收掉，不要影響其他頁
   document.documentElement.style.removeProperty('--editor-locked-h')
   if (resizeObserver) resizeObserver.disconnect()

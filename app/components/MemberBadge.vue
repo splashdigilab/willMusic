@@ -8,6 +8,7 @@
       class="c-member-badge__btn"
       :class="{ 'is-guest': !isMember }"
       :aria-label="isMember ? t.member.badge.accountWithName(name) : t.member.badge.notLoggedIn"
+      :title="isMember ? t.member.badge.account : t.member.badge.notLoggedIn"
       aria-haspopup="dialog"
       :aria-expanded="open"
       @click="toggle"

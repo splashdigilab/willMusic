@@ -7,6 +7,7 @@
       type="button"
       class="c-locale-menu__btn"
       :aria-label="t.common.language"
+      :title="t.common.language"
       aria-haspopup="menu"
       :aria-expanded="open"
       @click="open = !open"

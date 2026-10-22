@@ -8,6 +8,15 @@
 /// 畫布區的內距，也就是便利貼與頁面邊緣的最小距離。「全部重來」的位置要扣掉它（見 .p-editor__reset-btn）
 $canvas-section-pad: 0.5rem;
 
+/// 電腦版的左右並排：面板在左、便利貼在右（2026-10-22 使用者決定面板放左邊，同 Canva）。
+/// 只給用滑鼠、夠寬、橫放的螢幕；手機與平板維持上下排 —— 平板橫放時打字的鍵盤會蓋住多少還沒實機測過。
+/// 960 ≈ 面板 460 加上便利貼至少四百多、再加兩邊留白
+@mixin wide-layout {
+  @media (hover: hover) and (pointer: fine) and (min-width: 960px) and (orientation: landscape) {
+    @content;
+  }
+}
+
 /* ========== 全域：編輯器頁面鎖定視窗 ========== */
 /* --editor-locked-h 由 editor.vue 在鍵盤出現前量好寫進 <html>，
    讓鍵盤只是蓋在頁面上而不把版面頂上去（內建瀏覽器不認 meta 的 interactive-widget）。
@@ -1128,6 +1137,113 @@ body.is-editor-page #app {
     }
   }
 
+}
+
+/* ========== 電腦版：面板在左、便利貼在右（條件見 wide-layout） ==========
+   上下排時面板固定 457px 高，1366×768 的筆電上便利貼只剩 295px、左右各空 380px。
+   改成左右並排後，便利貼只受高度限制，到虛擬畫布的 600px 為止。
+   四步統一高度的作法照舊（STEP 1／3／4 疊在同一格），只是面板變成整個高度、內容超出時自己捲 */
+@include wide-layout {
+  .p-editor {
+    max-width: none;
+    /* DOM 裡畫布在前、面板在後（手機上下排的順序），這裡只把畫面上的左右對調 */
+    flex-direction: row-reverse;
+  }
+
+  .p-editor__canvas-section {
+    min-width: 0;
+    padding: ed.$editor-side-canvas-pad;
+  }
+
+  /* 上下排時是用 flex 撐滿高度、再用 aspect-ratio 推出寬度；這裡改成直接給邊長：
+     不超過 600px、不超過畫布區的寬，也不超過頁面高扣掉上下留白 */
+  .p-editor__canvas-container {
+    flex: none;
+    width: min(
+      #{ed.$editor-side-canvas-max},
+      100%,
+      calc(var(--editor-locked-h, 100dvh) - 2 * #{ed.$editor-side-canvas-pad})
+    );
+    height: auto;
+    max-height: none;
+  }
+
+  .p-editor__panel-wrap {
+    flex: 0 0 ed.$editor-side-panel-width;
+    width: ed.$editor-side-panel-width;
+    border-radius: 0 1.4rem 1.4rem 0;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.18);
+  }
+
+  /* 面板撐滿高度；STEP 5 的貼圖庫是絕對定位鋪滿這一格，所以大螢幕上一次看得到的貼紙也跟著變多 */
+  .p-editor__control-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* 造型改成換行：面板窄了一截，橫向捲動在滑鼠上又捲不動（滾輪只有直向） */
+  .p-editor__shape-grid {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  /* 上排圓鈕移到便利貼那一側的兩個角，不壓在面板上，也不蓋住便利貼（便利貼在中間，四角空著） */
+  .p-editor__float-actions {
+    left: calc(#{ed.$editor-side-panel-width} + #{ed.$editor-float-btn-inset});
+
+    &--right {
+      left: auto;
+    }
+  }
+
+  /* 全部重來、畫在貼紙上面：貼在便利貼自己的兩個下角。
+     上下排時是對齊頁面兩側的圓鈕（算式見上面 .p-editor__reset-btn），這裡便利貼不貼頁面邊緣 */
+  .p-editor__reset-btn {
+    right: ed.$editor-float-btn-inset;
+  }
+
+  .p-editor__layer-btn {
+    left: ed.$editor-float-btn-inset;
+  }
+}
+
+/* ========== 滑鼠移上去的回饋 ==========
+   手機沒有 hover，所以只給滑鼠；用滑鼠時看不出哪些能點，移上去要有反應 */
+@include bp.mouse-device {
+  .p-editor__background-btn,
+  .p-editor__shape-btn,
+  .p-editor__align-btn,
+  .p-editor__color-btn,
+  .p-editor__sticker-btn {
+    &:hover:not(:disabled) {
+      transform: translateY(-2px);
+    }
+  }
+
+  .p-editor__sticker-btn:hover {
+    border-color: var(--theme-accent, #00A7C5);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+  }
+
+  .p-editor__chip-btn:not(.is-active):hover:not(:disabled) {
+    background: #D6D6D6;
+  }
+
+  .p-editor__action-btn,
+  .p-editor__draw-btn {
+    &:hover:not(:disabled) {
+      filter: brightness(1.06);
+    }
+  }
+
+  .p-editor__step-dot:not(.is-active):not(.is-done):hover span {
+    background: #B8B8B8;
+  }
+
+  .p-editor__reset-btn:hover,
+  .p-editor__layer-btn:not(.is-active):hover {
+    background: rgba(30, 30, 30, 0.8);
+  }
 }
 
 /* ========== 確認上傳畫面的身分列 ==========

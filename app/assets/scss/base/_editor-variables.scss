@@ -36,3 +36,9 @@ $editor-float-btn-size: 42px;
 $editor-float-btn-inset: 0.75rem;
 $editor-draw-btn-size: 46px;
 $editor-draw-btn-height: 36px;
+
+/// 電腦版左右並排（見 _editor.scss 的 wide-layout）：左邊面板的寬度、右邊便利貼四周的留白，
+/// 與便利貼的上限。上限就是虛擬畫布的 600px：手繪是 600×600 的 Fabric 畫布，再放大會糊
+$editor-side-panel-width: 460px;
+$editor-side-canvas-pad: 2.5rem;
+$editor-side-canvas-max: 600px;
