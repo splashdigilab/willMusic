@@ -54,7 +54,9 @@
   object-fit: contain;
 }
 
-/* 便利貼圖層順序（editor 與 display 一致）：文字 1 → 手繪 2 → 貼紙 3 */
+/* 便利貼圖層順序的預設值：文字 1 → 手繪 2 → 貼紙 3。
+   新的便利貼每個物件的 z-index 由 template 照 objectLayerOrder 給（見 utils/sticky-note-style.ts），
+   這裡只是沒有記錄時的退路 */
 @mixin sticky-note-layer-text {
   z-index: 1;
 }

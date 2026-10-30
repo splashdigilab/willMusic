@@ -133,7 +133,7 @@ service cloud.firestore {
              && incoming().content.size() <= 1000
              && incoming().style is map
              && isValidNameTag(incoming().style)
-             && isValidNoteStyle(incoming().style)
+             && isValidNoteStyle(incoming().style, noteId)
              && incoming().token is string
              && incoming().keys().hasOnly(
                   ['content', 'style', 'token', 'timestamp', 'status']
@@ -146,16 +146,27 @@ service cloud.firestore {
     // 就能填外部網址：牆上的圖由別人的主機供應（審核過、甚至下架前後都還能換圖），
     // 每個看牆的人的 IP 也會被對方記下來。理由跟署名頭貼只收 data URL 相同。
     //   · drawing：本站 bucket 的 note_drawings/，或上傳 Storage 失敗時退回的 PNG data URL。
-    //     bucket 寫死：只驗 firebasestorage.googleapis.com 的話，別人的 Firebase 專案也是這個網域
+    //     bucket 寫死：只驗 firebasestorage.googleapis.com 的話，別人的 Firebase 專案也是這個網域。
+    //     檔名必須以這張便利貼的 ID 開頭（前台存成 `{id}-{隨機碼}.png`，見 useFirestore 的 uploadDrawing）：
+    //     不然可以把別人的圖片網址抄進自己的便利貼，後台刪他這張時會連別人的圖一起刪掉。
+    //     ID 要先限定字元才能拼進 pattern，不然取一個 `.*` 當 ID 就什麼都比對得上
+    //   · drawingLayers：第二輪以後的手繪（見 app/utils/sticky-note-style.ts 的 NOTE_LAYER_Z），
+    //     每一張的 src 規則同 drawing。最多 3 張（MAX_DRAWING_LAYERS 減掉 drawing 那張），改的時候兩邊一起改
     //   · backgroundImage：色碼，或站內 /svg/bg/ 底下的材質圖（含舊版的 bg-*.svg／webp）
     //   · textBlocks：牆上顯示的是這裡的文字，不是 content，所以數量與長度另外限
     // 只放在新版的 canCreateNote：【過渡期】的舊格式本來就什麼都收，要到步驟 ③ 才有意義。
-    function isValidNoteStyle(style) {
+    function isValidNoteStyle(style, noteId) {
       return (
                !('drawing' in style)
-               || (style.drawing is string
-                   && (style.drawing.matches('data:image/png;base64,[A-Za-z0-9+/=]+')
-                       || style.drawing.matches('https://firebasestorage[.]googleapis[.]com/v0/b/willmusic-dd6ae[.]firebasestorage[.]app/o/note_drawings%2F[A-Za-z0-9_-]+[.]png[?]alt=media&token=[A-Za-z0-9-]+')))
+               || isValidDrawingSrc(style.drawing, noteId)
+             )
+             && (
+               !('drawingLayers' in style)
+               || (style.drawingLayers is list
+                   && style.drawingLayers.size() <= 3
+                   && (style.drawingLayers.size() < 1 || isValidDrawingLayer(style.drawingLayers[0], noteId))
+                   && (style.drawingLayers.size() < 2 || isValidDrawingLayer(style.drawingLayers[1], noteId))
+                   && (style.drawingLayers.size() < 3 || isValidDrawingLayer(style.drawingLayers[2], noteId)))
              )
              && (
                !('backgroundImage' in style)
@@ -170,6 +181,22 @@ service cloud.firestore {
                    && (style.textBlocks.size() < 2 || isValidTextBlock(style.textBlocks[1]))
                    && (style.textBlocks.size() < 3 || isValidTextBlock(style.textBlocks[2])))
              );
+    }
+
+    function isValidDrawingSrc(src, noteId) {
+      return src is string
+             && (src.matches('data:image/png;base64,[A-Za-z0-9+/=]+')
+                 || (noteId.matches('[A-Za-z0-9_-]{1,64}')
+                     && src.matches('https://firebasestorage[.]googleapis[.]com/v0/b/willmusic-dd6ae[.]firebasestorage[.]app/o/note_drawings%2F'
+                                    + noteId + '-[A-Za-z0-9_-]+[.]png[?]alt=media&token=[A-Za-z0-9-]+')));
+    }
+
+    function isValidDrawingLayer(layer, noteId) {
+      return layer is map
+             && layer.keys().hasOnly(['id', 'src'])
+             && layer.id is string
+             && layer.id.size() <= 40
+             && isValidDrawingSrc(layer.src, noteId);
     }
 
     function isValidTextBlock(block) {

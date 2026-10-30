@@ -20,9 +20,9 @@ import {
   writeBatch,
   type QueryDocumentSnapshot
 } from 'firebase/firestore'
-import { deleteObject, ref as storageRef } from 'firebase/storage'
 import type { NoteOwner, QueueHistoryItem, QueuePendingItem, UserProfile } from '~/types'
 import { getDocsByIds } from '~/utils/firestore-batch'
+import { deleteNoteDrawings } from '~/utils/note-drawings'
 
 export const MEMBER_PAGE_SIZE = 20
 
@@ -36,7 +36,7 @@ export interface MemberRow extends UserProfile {
  */
 export interface NoteRef {
   id: string
-  style?: { drawing?: unknown }
+  style?: { drawing?: unknown, drawingLayers?: unknown }
 }
 
 /** 後台列出的一張便利貼。isPending 決定它在哪個集合 */
@@ -144,15 +144,7 @@ export const useMemberAdmin = () => {
     batch.delete(doc($firestore, cols.noteOwners, note.id))
     await batch.commit()
 
-    const drawing = note.style?.drawing
-    if (typeof drawing !== 'string' || !drawing.startsWith('http')) return
-    try {
-      await deleteObject(storageRef($storage, drawing))
-    } catch (err: any) {
-      if (err?.code !== 'storage/object-not-found') {
-        console.warn('[admin] 便利貼已刪除，但手繪圖檔案清除失敗', err)
-      }
-    }
+    await deleteNoteDrawings($storage, note.id, note.style, '[admin] 便利貼已刪除，但手繪圖檔案清除失敗')
   }
 
   /**

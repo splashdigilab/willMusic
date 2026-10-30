@@ -25,14 +25,14 @@ import type {
 } from '~/types'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { recordUploadStat } from '~/composables/useUploadStats'
-
-/** 手繪圖在 Storage 上的資料夾 */
-export const NOTE_DRAWING_PATH = 'note_drawings'
+import { NOTE_DRAWING_PATH } from '~/utils/note-drawings'
 
 /** 手繪圖上傳最多等多久，超過就退回把圖內嵌在文件裡（見 persistDrawing） */
 const DRAWING_UPLOAD_TIMEOUT_MS = 20_000
 /** 上傳完成後取網址至少等這麼久 */
 const DRAWING_URL_MIN_WAIT_MS = 5_000
+/** 便利貼 style 最多多大（字元數）。文件上限是 1MiB，留一點給 content 與欄位名稱 */
+const MAX_NOTE_STYLE_CHARS = 1_000_000
 
 export const useFirestore = () => {
   const { $firestore, $storage, $auth } = useNuxtApp() as any
@@ -84,10 +84,31 @@ export const useFirestore = () => {
    *
    * 上傳失敗時沿用原本的 base64：這樣「程式碼先上線、Storage 規則後套用」
    * 的順序也不會壞掉，只是暫時退回舊行為。
+   *
+   * 一張便利貼可能有好幾輪手繪（drawing 與 drawingLayers，見 NOTE_LAYER_Z）：
+   * 每一張同時各傳各的，哪一張失敗就只有那一張沿用 base64。
+   * 好幾張都失敗時，內嵌的圖加起來可能超過文件 1MB 的上限，寫進去一定被拒。
+   * 那就在預約與寫入之前先停下來（DRAWING_UPLOAD_FAILED，走一般的送出失敗訊息）：
+   * 額度還沒用掉、草稿也還在，網路好一點再送一次就好
    */
   const persistDrawing = async (style: any, noteId: string): Promise<any> => {
-    const drawing = style?.drawing
-    if (typeof drawing !== 'string' || !drawing.startsWith('data:')) return style
+    const layers: any[] = Array.isArray(style?.drawingLayers) ? style.drawingLayers : []
+    const [drawing, ...layerSrcs] = await Promise.all([
+      uploadDrawing(style?.drawing, noteId),
+      ...layers.map(l => uploadDrawing(l?.src, noteId))
+    ])
+    const persisted = {
+      ...style,
+      ...(drawing !== undefined ? { drawing } : {}),
+      ...(layers.length ? { drawingLayers: layers.map((l, i) => ({ ...l, src: layerSrcs[i] })) } : {})
+    }
+    if (JSON.stringify(persisted).length > MAX_NOTE_STYLE_CHARS) throw new Error('DRAWING_UPLOAD_FAILED')
+    return persisted
+  }
+
+  /** 上傳一張手繪圖，回傳網址。不是 data URL 的原樣回傳；上傳失敗回傳原本的 data URL */
+  const uploadDrawing = async (drawing: unknown, noteId: string): Promise<unknown> => {
+    if (typeof drawing !== 'string' || !drawing.startsWith('data:')) return drawing
 
     try {
       const blob = await (await fetch(drawing)).blob()
@@ -117,10 +138,10 @@ export const useFirestore = () => {
           )
         })
       ]).finally(() => clearTimeout(urlTimer))
-      return { ...style, drawing: url }
+      return url
     } catch (error) {
       console.error('[createNote] 手繪圖上傳 Storage 失敗，暫時沿用內嵌資料', error)
-      return style
+      return drawing
     }
   }
 

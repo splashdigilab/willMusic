@@ -23,7 +23,20 @@
 部署方式是 Rules API（開發機沒有 firebase CLI）：POST `rulesets` → PATCH `releases/cloud.firestore`，
 帳號 `gcloud --account=splash.digilab@gmail.com`，請求要帶 `x-goog-user-project: willmusic-dd6ae`。
 
-**2026-10-15 上線前 review 的修正（repo 已改，尚未部署）**，Firestore 與 Storage 要一起部署：
+**2026-10-30 補部署 Firestore（手繪圖檔名要以便利貼 ID 開頭）**：部署前讀回線上版本，確認差別只有
+`isValidNoteStyle`／`isValidDrawingSrc`／`isValidDrawingLayer` 多帶 `noteId` 這一段；以 `:test` 跑過 17 項後部署，
+讀回與 repo 逐字相同。現行 Firestore ruleset `1bfa2c28-17aa-49f7-a516-26ced8c157bd`，
+上一版 `06996e3e-8ac2-4eed-b61f-644bfa5f08d4`。Storage 沒有改。
+
+**2026-10-30 部署 10/15 的修正與手繪多輪（`drawingLayers`）**：Firestore 與 Storage 一起部署。
+部署前讀回線上版本，確認差別就是下面這些、以及 `drawingLayers` 那段；以 `:test` 跑過 Firestore 17 項
+（含整份編譯、`drawingLayers` 12 項）、Storage 6 項（白名單店員可寫、其他帳密帳號與會員不可寫、會員可傳手繪圖）。
+部署後讀回與 repo 逐字相同。
+當時的 Firestore ruleset `06996e3e-8ac2-4eed-b61f-644bfa5f08d4`（已被上面那次取代），上一版 `d914a223-2e65-4b55-ae38-8f54a911971c`；
+現行 Storage ruleset `83d9f5fa-fed7-4721-824b-6debc8e135c1`，上一版 `42c6b1fc-128b-42d4-9640-f730c46da3b3`。
+要退回時把對應的 release 指回上一版即可。
+
+**2026-10-15 上線前 review 的修正**（10/30 已部署），Firestore 與 Storage 要一起部署：
 
 - **staff 改成帳號白名單**。Firebase Auth 的帳號密碼登入開放自行註冊（Identity Toolkit 設定的
   `client.permissions` 是空的），只看 `sign_in_provider == 'password'` 的話，任何人拿網頁裡公開的
@@ -34,6 +47,10 @@
 - 便利貼：投稿者紀錄必須是這一批建立的、ID 不能已在歷史牆（擋重用 ID 免費重新上牆、認領歷史便利貼），
   `timestamp` 必須是伺服器時間（擋插隊），`style` 的 `drawing`／`backgroundImage` 不收外部網址、
   `textBlocks` 最多 3 個、每個 1000 字（`isValidNoteStyle`）。【過渡期】舊格式也加了前兩條。
+  第二輪以後的手繪 `drawingLayers`（最多 3 張，每張 `{ id, src }`）的 `src` 跟 `drawing` 同一套驗法；
+  2026-10-30 以 `:test` 跑過 12 項（含整份編譯）。
+  之後再收緊：Storage 網址的檔名必須以這張便利貼的 ID 開頭（擋「抄別人的圖片網址，後台刪他時連別人的圖一起刪」），
+  ID 先限定字元才拼進 pattern；以 `:test` 跑過 17 項。後台刪除時也只刪檔名是這張 ID 的圖（`deleteNoteDrawings`）。
 - `users.avatar` 只收圖片 data URL；同意收行銷時 email 必須有值。
 - `system/active_token` 只有 staff 讀得到。
 
@@ -317,6 +334,11 @@ Firestore 才做得到，還牽涉測試／正式兩組名單），所以被封�
 ## 4. 手繪圖改存 Storage
 
 新送出的便利貼，`style.drawing` 會從內嵌的 base64 變成 Storage 的網址。
+回到 STEP 4 再畫的便利貼會有好幾張手繪（`style.drawingLayers`，見 `app/utils/sticky-note-style.ts`），
+每一張都一樣存成 Storage 的網址，刪除便利貼時一起清掉。
+**這一點下面「舊版程式也能顯示新格式」不成立**：舊版只認得 `drawing`，第二輪以後的手繪看不到，
+新的前後順序（`objectLayerOrder` 會超過 6）也可能蓋過署名。測試站與正式站共用資料，
+所以新版上測試站之後，正式站要盡快跟上。
 
 - **舊便利貼完全不受影響**，也不需要搬移資料。
 - **正式站（舊版程式）也能正常顯示新格式**：顯示端是 `<img :src>`，

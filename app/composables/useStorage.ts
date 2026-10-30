@@ -1,12 +1,12 @@
 /**
  * LocalStorage 和 SessionStorage 工具函式
  */
-import type { DraftData, NameTagDraft } from '~/types'
+import type { DraftData, DrawingLayer, NameTagDraft } from '~/types'
 
 const DRAFT_KEY = 'willmusic_draft'
 const TOKEN_KEY = 'willmusic_token'
 
-/** 從 localStorage 解析出的 objectLayerOrder 做複製並將值轉成 number，避免字串或參考問題 */
+/** 從 localStorage 解析出的前後順序（layerOrder、舊的 objectLayerOrder）做複製並將值轉成 number，避免字串或參考問題 */
 function normalizeObjectLayerOrder(
   raw: unknown
 ): Record<string, number> | undefined {
@@ -18,6 +18,14 @@ function normalizeObjectLayerOrder(
     if (!Number.isNaN(n)) out[key] = n
   }
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** 之前幾輪的手繪：只留 id 與圖都是字串的，壞掉的那幾輪當作沒畫 */
+function parseDrawingLayers(raw: unknown): DrawingLayer[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const layers = raw.filter((l): l is DrawingLayer =>
+    !!l && typeof l === 'object' && typeof l.id === 'string' && typeof l.src === 'string')
+  return layers.length > 0 ? layers.map(l => ({ id: l.id, src: l.src })) : undefined
 }
 
 /** 草稿裡的署名位置：欄位不齊（或不是數字）就當作沒有，由編輯器照預設位置重放 */
@@ -32,10 +40,11 @@ function parseNameTagDraft(raw: unknown): NameTagDraft | undefined {
 
 export const useStorage = () => {
   /**
-   * 儲存草稿到 LocalStorage
+   * 儲存草稿到 LocalStorage。存不進去（例如好幾輪手繪超過容量）回傳 false，
+   * 這時裡面還是上一次存成功的那份
    */
-  const saveDraft = (data: DraftData) => {
-    if (!import.meta.client) return
+  const saveDraft = (data: DraftData): boolean => {
+    if (!import.meta.client) return false
 
     try {
       const draft = {
@@ -43,8 +52,10 @@ export const useStorage = () => {
         timestamp: Date.now()
       }
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+      return true
     } catch (error) {
       console.error('Error saving draft:', error)
+      return false
     }
   }
 
@@ -88,8 +99,10 @@ export const useStorage = () => {
           ? ((raw as any).textBlocks as DraftData['textBlocks'])
           : undefined,
         drawing: typeof raw.drawing === 'string' ? raw.drawing : undefined,
+        drawingId: typeof raw.drawingId === 'string' ? raw.drawingId : undefined,
+        drawingLayers: parseDrawingLayers(raw.drawingLayers),
+        layerOrder: normalizeObjectLayerOrder(raw.layerOrder),
         drawingAboveStickers: raw.drawingAboveStickers === true,
-        objectLayerOrder: normalizeObjectLayerOrder(raw.objectLayerOrder),
         // LINE 登入之前存的草稿沒有這個欄位，載入後由編輯器補一個新的
         submissionId: typeof raw.submissionId === 'string' ? raw.submissionId : undefined,
         // 署名的位置。少了這一欄，草稿裡調好的名牌位置每次重新整理都會被丟掉

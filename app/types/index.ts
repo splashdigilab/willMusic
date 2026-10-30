@@ -47,6 +47,14 @@ export interface NameTagDraft extends NameTagPlacement {
 }
 
 /**
+ * 一輪手繪（第二輪以後）。id 是 objectLayerOrder 裡的鍵
+ */
+export interface DrawingLayer {
+  id: string
+  src: string
+}
+
+/**
  * 文字區塊實例（多文字支援）
  */
 export interface TextBlockInstance {
@@ -79,11 +87,16 @@ export interface DraftData {
   stickers: StickerInstance[]
   textTransform?: TextBlockTransform
   textBlocks?: TextBlockInstance[] // 多文字區塊
-  drawing?: string // 手繪內容 data URL
-  /** 手繪整層蓋在貼紙上面（STEP 4 的開關）。見 StickyNoteStyle 的同名欄位 */
+  /** 目前這一輪的手繪 data URL（還在 Fabric 上、可以 undo 的那一輪） */
+  drawing?: string
+  /** 目前這一輪手繪的 id（layerOrder 的鍵）。沒有就是 DRAWING_LAYER_ID */
+  drawingId?: string
+  /** 之前幾輪的手繪，src 是 data URL（見 NOTE_LAYER_Z 的說明） */
+  drawingLayers?: DrawingLayer[]
+  /** 各物件新增時拿到的前後順序（見 NOTE_LAYER_Z）。舊版草稿沒有，載入時照舊的固定順序補上 */
+  layerOrder?: Record<string, number>
+  /** 舊版草稿才有：當時「畫在貼紙上面」有沒有打開，只用來推算 layerOrder */
   drawingAboveStickers?: boolean
-  /** 各物件 id 的疊放順序（與編輯器 objectZOrder 一致）；載入草稿時還原 */
-  objectLayerOrder?: Record<string, number>
   /**
    * 這份草稿送出時要用的 queue_pending doc ID。
    *
@@ -119,10 +132,16 @@ export interface StickyNoteStyle {
   stickers?: StickerInstance[] // 貼紙
   textTransform?: TextBlockTransform // 文字區塊位置、縮放、旋轉（舊格式向下相容）
   textBlocks?: TextBlockInstance[] // 多文字區塊
-  drawing?: string // 手繪內容 data URL (base64 PNG)
-  /** 手繪整層蓋在貼紙上面（見 NOTE_LAYER_Z）。只在打開時寫入，沒有這個欄位就是在貼紙底下 */
+  /** 第一輪手繪：Storage 網址，或上傳失敗時退回的 data URL */
+  drawing?: string
+  /** 第二輪以後的手繪（見 NOTE_LAYER_Z 的說明）。src 的規則同 drawing */
+  drawingLayers?: DrawingLayer[]
+  /** 舊便利貼才有：手繪整層蓋在貼紙上面（舊版 STEP 4 的開關）。新的便利貼改用 objectLayerOrder */
   drawingAboveStickers?: boolean
-  /** 各物件 id 的疊放順序（預覽/上傳/display 與編輯器一致）；無則沿用預設文字 1、貼紙 3 */
+  /**
+   * 各物件 id 的前後順序，越大越上面（見 NOTE_LAYER_Z）。第一輪手繪的鍵是 DRAWING_LAYER_ID。
+   * 沒有記錄的物件照固定值：文字 1、手繪 2、貼紙 3
+   */
   objectLayerOrder?: Record<string, number>
   /** 署名。沒有這個欄位就是匿名投稿 */
   nameTag?: NameTag

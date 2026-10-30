@@ -51,10 +51,8 @@ body.is-editor-page {
 
 /* 全部重來：疊在便利貼右下角的帶字藥丸（位置的理由見 editor.vue）。
    比上排的圓鈕小一號、底色半透明：它蓋著便利貼的一角，要看得出是按鈕，又不能搶掉作品本身。
-   深色底加細亮邊，放在淺色（黃、白）與深色（黑）的便利貼上都看得到。
-   STEP 4 的「畫在貼紙上面」（.p-editor__layer-btn）同一個樣子，鏡射到左下角 */
-.p-editor__reset-btn,
-.p-editor__layer-btn {
+   深色底加細亮邊，放在淺色（黃、白）與深色（黑）的便利貼上都看得到。 */
+.p-editor__reset-btn {
   @include btn.btn-reset;
   position: absolute;
   /* 右緣跟右上角的圓鈕切齊（離頁面右緣 $editor-float-btn-inset）。按鈕在畫布容器裡，
@@ -90,18 +88,6 @@ body.is-editor-page {
   }
 }
 
-/* 左緣跟左上角的圓鈕切齊，算法同全部重來的 right（見上面） */
-.p-editor__layer-btn {
-  right: auto;
-  left: calc(#{ed.$editor-float-btn-inset} - (min(100vw, #{ed.$editor-control-max-width}) - 100cqw) / 2);
-
-  /* 開著：轉成主題色實心，跟關著的半透明深色一眼分得出來 */
-  &.is-active {
-    border-color: rgba(255, 255, 255, 0.8);
-    background: var(--theme-accent-ink, #00879F);
-  }
-}
-
 .p-editor-reset-fade-enter-active,
 .p-editor-reset-fade-leave-active {
   transition: opacity 0.2s ease;
@@ -116,15 +102,13 @@ body.is-editor-page {
    疊在便利貼上的按鈕淡出，放開再出現。
    淡出延遲 0.15 秒、出現不延遲：點一下貼紙也會短暫算成拖曳，沒有延遲按鈕會閃一下 */
 .p-editor__float-actions,
-.p-editor__reset-btn,
-.p-editor__layer-btn {
+.p-editor__reset-btn {
   transition: opacity 0.2s ease;
 }
 
 .p-editor.is-manipulating {
   .p-editor__float-actions,
-  .p-editor__reset-btn,
-  .p-editor__layer-btn {
+  .p-editor__reset-btn {
     opacity: 0;
     pointer-events: none;
     transition-delay: 0.15s;
@@ -316,9 +300,8 @@ body.is-editor-page #app {
     @include sn.sticky-note-sticker-img;
   }
 
-  /* 手繪層 (Fabric.js)。實際的前後順序由 template 的 drawingLayerZ 決定
-     （預設貼紙之下、文字之上；打開「畫在貼紙上面」就在貼紙之上），畫圖時也不變 ——
-     這裡的 z-index: 0 只是 inline 樣式套上之前的預設值 */
+  /* 手繪層 (Fabric.js)：目前這一輪。前後順序由 template 給（layerZ，見 startDrawingRound），
+     畫圖時也不變 —— 這裡的 z-index: 0 只是 inline 樣式套上之前的預設值 */
   &__drawing-layer {
     display: flex;
     align-items: center;
@@ -338,7 +321,10 @@ body.is-editor-page #app {
     height: 100%;
   }
 
-  &__drawing-preview {
+  /* 之前幾輪的手繪（STEP 4 是 canvas，其他步驟是 img）跟目前這一輪的預覽同一個擺法，
+     z-index 由 template 給 */
+  &__drawing-preview,
+  &__past-drawing {
     position: absolute;
     inset: 0;
     display: block;
@@ -1196,14 +1182,10 @@ body.is-editor-page #app {
     }
   }
 
-  /* 全部重來、畫在貼紙上面：貼在便利貼自己的兩個下角。
-     上下排時是對齊頁面兩側的圓鈕（算式見上面 .p-editor__reset-btn），這裡便利貼不貼頁面邊緣 */
+  /* 全部重來：貼在便利貼自己的右下角。
+     上下排時是對齊頁面右側的圓鈕（算式見上面 .p-editor__reset-btn），這裡便利貼不貼頁面邊緣 */
   .p-editor__reset-btn {
     right: ed.$editor-float-btn-inset;
-  }
-
-  .p-editor__layer-btn {
-    left: ed.$editor-float-btn-inset;
   }
 }
 
@@ -1240,8 +1222,7 @@ body.is-editor-page #app {
     background: #B8B8B8;
   }
 
-  .p-editor__reset-btn:hover,
-  .p-editor__layer-btn:not(.is-active):hover {
+  .p-editor__reset-btn:hover {
     background: rgba(30, 30, 30, 0.8);
   }
 }

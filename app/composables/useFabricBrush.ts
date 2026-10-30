@@ -25,7 +25,18 @@ const ERASER_STROKE_KEY = '__eraserStrokeId'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyObj = any
 
-export function useFabricBrush(onPathCreated?: () => void) {
+export interface FabricBrushOptions {
+  onPathCreated?: () => void
+  /**
+   * 橡皮擦在這張畫布上擦了一段（畫布座標）。之前幾輪的手繪是另外的圖，
+   * 編輯器靠這個在那幾張上同步擦掉同一段（見 usePastDrawings）
+   */
+  onEraserSegment?: (strokeId: number, x1: number, y1: number, x2: number, y2: number, width: number) => void
+  /** undo 拿掉、或 redo 放回一筆橡皮擦。present：放回來了沒有 */
+  onEraserStrokeToggle?: (strokeId: number, present: boolean) => void
+}
+
+export function useFabricBrush({ onPathCreated, onEraserSegment, onEraserStrokeToggle }: FabricBrushOptions = {}) {
   let fabricCanvas: AnyObj = null
   let pencilBrush: AnyObj = null
   let eraserBrush: AnyObj = null
@@ -104,6 +115,7 @@ export function useFabricBrush(onPathCreated?: () => void) {
               ;(path as AnyObj)[ERASER_STROKE_KEY] = this._currentStrokeId
               ;(this as AnyObj).canvas.add(path)
               this._lastAddedPoint = p2
+              onEraserSegment?.(this._currentStrokeId, p1.x, p1.y, p2.x, p2.y, (this as AnyObj).width)
             }
           }
         }
@@ -211,6 +223,7 @@ export function useFabricBrush(onPathCreated?: () => void) {
         fabricCanvas.remove(p)
         redoStack.push(p)
       }
+      onEraserStrokeToggle?.(strokeId, false)
     } else {
       fabricCanvas.remove(last)
       redoStack.push(last)
@@ -238,6 +251,7 @@ export function useFabricBrush(onPathCreated?: () => void) {
     for (const p of toAdd) {
       fabricCanvas.add(p)
     }
+    if (strokeId !== undefined) onEraserStrokeToggle?.(strokeId, true)
     fabricCanvas.renderAll()
     onUndoRedoChange?.()
   }
@@ -245,14 +259,23 @@ export function useFabricBrush(onPathCreated?: () => void) {
   const canUndo = () => getPathObjects().length > 0
   const canRedo = () => redoStack.length > 0
 
+  /**
+   * 畫布每清一次（clear、重新載入）就加一，還在解碼的那張圖回來時對不上就丟掉：
+   * 還原草稿時圖還沒解碼完，使用者就進了繪圖步驟、開了新的一輪（clear），
+   * 晚到的舊圖不能疊進新的這一輪，不然舊的畫會多出一份
+   */
+  let contentVersion = 0
+
   const loadFromDataURL = async (dataUrl: string): Promise<void> => {
     if (!fabricCanvas) return
     try {
       redoStack.length = 0
       fabricCanvas.clear()
       fabricCanvas.backgroundColor = 'transparent'
+      const version = ++contentVersion
       const { FabricImage } = await import('fabric')
       const img = await FabricImage.fromURL(dataUrl)
+      if (version !== contentVersion || !fabricCanvas) return
       if (img.width && img.height) {
         // 用原始尺寸而不是畫布當下的尺寸：不在繪圖步驟時畫布是縮成 1×1 的，
         // 照當下尺寸算，還原的畫會被縮成 1/600
@@ -283,6 +306,7 @@ export function useFabricBrush(onPathCreated?: () => void) {
   }
 
   const clear = () => {
+    contentVersion++
     if (fabricCanvas) {
       redoStack.length = 0
       fabricCanvas.clear()

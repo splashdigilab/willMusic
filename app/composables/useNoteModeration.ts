@@ -24,8 +24,8 @@ import {
   where,
   writeBatch
 } from 'firebase/firestore'
-import { deleteObject, ref as storageRef } from 'firebase/storage'
 import { STRIKE_LIMIT, type BlockedNote, type NoteOwner, type UserProfile, type UserStrikes } from '~/types'
+import { deleteNoteDrawings } from '~/utils/note-drawings'
 
 /** 後台一次載入的已下架清單上限。下架是例外處置，不做分頁 */
 export const BLOCKED_LIST_LIMIT = 200
@@ -240,15 +240,7 @@ export const useNoteModeration = () => {
     batch.delete(doc($firestore, cols.noteOwners, record.id))
     await batch.commit()
 
-    const drawing = record.note?.style?.drawing
-    if (typeof drawing !== 'string' || !drawing.startsWith('http')) return
-    try {
-      await deleteObject(storageRef($storage, drawing))
-    } catch (err: any) {
-      if (err?.code !== 'storage/object-not-found') {
-        console.warn('[admin] 下架紀錄已刪除，但手繪圖檔案清除失敗', err)
-      }
-    }
+    await deleteNoteDrawings($storage, record.id, record.note?.style, '[admin] 下架紀錄已刪除，但手繪圖檔案清除失敗')
   }
 
   /** 已下架的便利貼，新下架的在前 */

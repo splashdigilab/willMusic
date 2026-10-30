@@ -53,12 +53,11 @@
           fetchpriority="low"
         />
       </div>
-      <!-- 手繪圖層。疊放順序要跟編輯器一致：編輯器裡每回進繪圖步驟都會把它移到最上層，
-           所以它可能在文字與貼紙之上。這裡若寫死 z-index，回頭再畫一次的便利貼
-           在預覽與大螢幕上就會與畫布長得不一樣。 -->
+      <!-- 手繪：第一輪是 drawing，之後幾輪是 drawingLayers，各自照 objectLayerOrder 的前後
+           （見 NOTE_LAYER_Z）。前後要跟編輯器一致，不然在貼紙上畫的線在預覽與大螢幕上會被貼紙蓋掉 -->
       <img
-        v-if="props.note.style?.drawing"
-        :src="props.note.style.drawing"
+        v-if="drawingSrc"
+        :src="drawingSrc"
         alt=""
         class="c-sticky-note__drawing"
         :style="drawingStyle"
@@ -66,7 +65,18 @@
         decoding="async"
         fetchpriority="low"
       />
-      <!-- 署名。疊在所有東西上面（NOTE_LAYER_Z.nameTag），沒有就是匿名投稿 -->
+      <img
+        v-for="layer in drawingLayers"
+        :key="layer.id"
+        :src="layer.src"
+        alt=""
+        class="c-sticky-note__drawing"
+        :style="{ zIndex: layerZ(layer.id, NOTE_LAYER_Z.drawingAboveStickers) }"
+        loading="lazy"
+        decoding="async"
+        fetchpriority="low"
+      />
+      <!-- 署名。疊在所有東西上面（見 nameTagStyle），沒有就是匿名投稿 -->
       <div v-if="nameTag" class="c-sticky-note__name-tag" :style="nameTagStyle">
         <NoteNameTag :name="nameTag.name" :avatar="nameTagAvatar" />
       </div>
@@ -77,12 +87,13 @@
 </template>
 
 <script setup lang="ts">
-import type { QueuePendingItem, QueueHistoryItem, StickerInstance, TextBlockInstance } from '~/types'
+import type { DrawingLayer, QueuePendingItem, QueueHistoryItem, StickerInstance, TextBlockInstance } from '~/types'
 import { STICKER_LIBRARY } from '~/data/stickers'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
 import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z, DRAWING_LAYER_ID, drawingLayerZ } from '~/utils/sticky-note-style'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 import { isInlineAvatar } from '~/utils/name-tag'
+import { isNoteDrawingSrc } from '~/utils/note-drawings'
 import NoteNameTag from '~/components/NoteNameTag.vue'
 
 interface Props {
@@ -103,26 +114,46 @@ const stickers = computed(() => {
 const textBlocks = computed<TextBlockInstance[]>(() => props.note.style?.textBlocks ?? [])
 
 /**
- * 疊放順序。新的便利貼不再存這份記錄，一律走 NOTE_LAYER_Z 的固定順序；
- * 舊的便利貼存過，就以它自己的記錄為準，這次改動不會讓已經上牆的內容變樣。
+ * 前後順序（見 NOTE_LAYER_Z）：新的便利貼每個物件都有記錄，照記錄排；
+ * 沒有記錄的（舊便利貼）照固定值，已經上牆的內容不會因此變樣。
+ * 只收數字：【過渡期】的舊格式什麼 style 都收，不是數字的值會讓署名的 z-index 算成 NaN
  */
-const objectLayerOrder = computed(() => props.note.style?.objectLayerOrder ?? {})
+const objectLayerOrder = computed<Record<string, number>>(() => {
+  const raw: unknown = props.note.style?.objectLayerOrder
+  if (!raw || typeof raw !== 'object') return {}
+  return Object.fromEntries(Object.entries(raw).filter(([, z]) => typeof z === 'number' && Number.isFinite(z)))
+})
+
+const layerZ = (id: string, fallback: number) => objectLayerOrder.value[id] ?? fallback
 
 const getBlockWrapStyle = (block: TextBlockInstance) => {
   const base = getTextBlockStyle(block.x, block.y, block.scale, block.rotation)
-  const z = objectLayerOrder.value[block.id] ?? NOTE_LAYER_Z.text
-  return { ...base, zIndex: z }
+  return { ...base, zIndex: layerZ(block.id, NOTE_LAYER_Z.text) }
 }
 
 const getStickerWrapStyle = (sticker: StickerInstance) => {
   const base = getStickerStyle(sticker)
-  const z = objectLayerOrder.value[sticker.id] ?? NOTE_LAYER_Z.sticker
-  return { ...base, zIndex: z }
+  return { ...base, zIndex: layerZ(sticker.id, NOTE_LAYER_Z.sticker) }
 }
 
 const drawingStyle = computed(() => ({
-  zIndex: objectLayerOrder.value[DRAWING_LAYER_ID] ?? drawingLayerZ(props.note.style?.drawingAboveStickers)
+  zIndex: layerZ(DRAWING_LAYER_ID, drawingLayerZ(props.note.style?.drawingAboveStickers))
 }))
+
+/**
+ * 手繪圖只顯示本站的，理由見 isNoteDrawingSrc。drawingLayers 不是陣列、或某一張欄位不對，
+ * 一樣是【過渡期】舊格式才寫得進來的，當作沒有，不能讓整張便利貼（以及大螢幕整面牆）跟著出錯
+ */
+const storageBucket = useRuntimeConfig().public.firebase?.storageBucket ?? ''
+const drawingSrc = computed(() => {
+  const src = props.note.style?.drawing
+  return isNoteDrawingSrc(src, storageBucket) ? src : null
+})
+const drawingLayers = computed(() => {
+  const raw: unknown = props.note.style?.drawingLayers
+  if (!Array.isArray(raw)) return []
+  return raw.filter((l): l is DrawingLayer => typeof l?.id === 'string' && isNoteDrawingSrc(l.src, storageBucket))
+})
 
 const nameTag = computed(() => {
   const tag = props.note.style?.nameTag
@@ -133,8 +164,12 @@ const nameTag = computed(() => {
 // 不該讓牆上的圖片由別人的主機供應。擋掉就退成暱稱第一個字
 const nameTagAvatar = computed(() => (isInlineAvatar(nameTag.value?.avatar) ? nameTag.value!.avatar : null))
 
+/** 署名在所有東西上面：至少 NOTE_LAYER_Z.nameTag，有記錄順序的便利貼就放在最上面那個的再上一層 */
 const nameTagStyle = computed(() => (nameTag.value
-  ? { ...getStickerStyle(nameTag.value), zIndex: NOTE_LAYER_Z.nameTag }
+  ? {
+      ...getStickerStyle(nameTag.value),
+      zIndex: Math.max(NOTE_LAYER_Z.nameTag, ...Object.values(objectLayerOrder.value).map(z => z + 1))
+    }
   : undefined))
 
 const noteStyleProps = computed<StickyNoteStyleProps>(() => ({

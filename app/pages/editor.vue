@@ -401,7 +401,7 @@
             :key="block.id"
             :data-text-block-id="block.id"
             class="p-editor__text-content"
-            :style="[getTextBlockStyleComputed(block), activeTab === 'text' ? STYLE_EMPTY : STYLE_POINTER_NONE, { zIndex: NOTE_LAYER_Z.text }]"
+            :style="[getTextBlockStyleComputed(block), activeTab === 'text' ? STYLE_EMPTY : STYLE_POINTER_NONE, { zIndex: layerZ(block.id) }]"
             @click.stop="selectTextBlock(block.id)"
           >
             <!-- 外層包裹器：接收 padding，點擊時觸發拖曳 -->
@@ -455,15 +455,34 @@
             />
           </div>
 
-          <!-- 手繪層 (Fabric.js)。畫圖時也維持成品的位置（預設在貼紙底下，
-               打開「畫在貼紙上面」就在貼紙上面），畫的時候看到的就是送出後的樣子 -->
+          <!-- 之前幾輪的手繪，各自留在原本的前後位置（見 usePastDrawings）。
+               STEP 4 用 canvas，橡皮擦擦的當下就看得到；其他步驟顯示匯出好的 PNG -->
+          <template v-for="layer in pastDrawings.layers.value" :key="layer.id">
+            <canvas
+              v-if="drawMode"
+              :ref="(el) => pastDrawings.registerCanvas(layer.id, el)"
+              class="p-editor__past-drawing"
+              :style="{ zIndex: layerZ(layer.id) }"
+            />
+            <img
+              v-else-if="layer.data"
+              :src="layer.data"
+              class="p-editor__past-drawing"
+              :style="{ zIndex: layerZ(layer.id) }"
+              alt=""
+              draggable="false"
+            />
+          </template>
+
+          <!-- 手繪層 (Fabric.js)：目前這一輪。畫圖時也維持成品的位置（見 startDrawingRound），
+               畫的時候看到的就是送出後的樣子 -->
           <div
             ref="drawingLayerRef"
             class="p-editor__drawing-layer"
             :class="{ 'is-active': drawMode }"
             :style="{
               pointerEvents: drawMode ? 'auto' : 'none',
-              zIndex: drawingLayerZ(drawingAboveStickers)
+              zIndex: layerZ(drawingId)
             }"
           >
             <!-- Fabric.js canvas：始終留在 DOM（init 需要），縮小後視覺空白 -->
@@ -509,7 +528,7 @@
               'is-dragging': textBlockDragging && selectedTextBlockId === block.id,
               'is-transforming': textBlockTransforming && selectedTextBlockId === block.id
             }"
-            :style="[getTextBlockStyleComputed(block), { zIndex: NOTE_LAYER_Z.text }]"
+            :style="[getTextBlockStyleComputed(block), { zIndex: layerZ(block.id) }]"
             @mousedown="() => selectTextBlock(block.id)"
             @touchstart="() => { if (!isTwoFingerGesture) selectTextBlock(block.id) }"
           >
@@ -621,28 +640,6 @@
               <path d="M3 6.5V12h5.5" />
             </svg>
             {{ t.editor.startOver }}
-          </button>
-        </Transition>
-
-        <!-- 畫在貼紙上面（見 drawingAboveStickers）：疊在便利貼左下角，跟右下角的全部重來對稱。
-             只在 STEP 4、有貼紙時出現。原本放在面板最下面自成一列，那一列讓 STEP 4 的面板比其他步驟高，
-             四步統一高度之後每一步的便利貼都會跟著縮小，所以搬到畫布上。
-             圓圈打勾表示這是開關；data-canvas-control：從這裡按下去不算畫線（見 onCanvasPointerDown） -->
-        <Transition name="p-editor-reset-fade">
-          <button
-            v-if="activeTab === 'draw' && regularStickers.length > 0"
-            type="button"
-            class="p-editor__layer-btn"
-            :class="{ 'is-active': drawingAboveStickers }"
-            :aria-pressed="drawingAboveStickers"
-            data-canvas-control
-            @click.stop="toggleDrawingAboveStickers"
-          >
-            <svg class="p-editor__reset-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" />
-              <path v-if="drawingAboveStickers" d="M7.8 12.3l2.8 2.8 5.6-5.8" />
-            </svg>
-            {{ t.editor.drawAboveStickers }}
           </button>
         </Transition>
       </div>
@@ -961,7 +958,7 @@ import {
 import { BACKGROUND_IMAGES, isColorMaterial } from '~/data/backgrounds'
 import { DEFAULT_SHAPE_ID, getShapeById } from '~/data/shapes'
 import { EDITOR_STEPS, TEXT_ALIGN_OPTIONS, TEXT_COLORS, BRUSH_COLORS, MAX_CONTENT_LENGTH } from '~/data/editor-config'
-import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z, drawingLayerZ } from '~/utils/sticky-note-style'
+import { getTextBlockStyle, getStickerStyle, DRAWING_LAYER_ID, MAX_DRAWING_LAYERS } from '~/utils/sticky-note-style'
 import { isSwatchVisibleOn } from '~/utils/color-contrast'
 import { useStickyNoteStyle, type StickyNoteStyleProps } from '~/composables/useStickyNoteStyle'
 import { useStickerInteraction } from '~/composables/useStickerInteraction'
@@ -1142,35 +1139,13 @@ const nameTagAvatar = ref<string | null>(null)
  */
 const nameTagBlocked = computed(() => isMember.value && profile.value?.nameTagBlocked === true)
 
-const stickerLayerZ = (sticker: StickerInstance) => {
-  if (isNameTagSticker(sticker)) return NOTE_LAYER_Z.nameTag
-  // 手指按住（拖曳、縮放旋轉）的那張先浮上來，放開時 bringStickerToFront 才真的改順序
-  return sticker.id === draggingStickerId.value || sticker.id === transformingStickerId.value
-    ? NOTE_LAYER_Z.liftedSticker
-    : NOTE_LAYER_Z.sticker
-}
-
 /**
- * 碰過的貼紙移到陣列最後面，也就是其他貼紙的上面（跟 IG 一樣：拿起來的那張在最上面）。
- * 貼紙之間的前後就是陣列順序（DOM 順序），存草稿與送出都照這個順序，不需要另外記。
- *
- * 手指放開才搬：按住的當下就搬，等於在手勢進行中把手指底下的元素移走再插回去，
- * 各家瀏覽器（尤其 iOS）後續的觸控事件會不會照常送到，沒有把握。
- * 按住的期間由 stickerLayerZ 先讓它浮上來，畫面上看起來一按就到最上面。
+ * 貼紙的前後：新增時決定（layerOrder），拖曳、縮放旋轉、點選都不會改。
+ * 原本碰到的那張會浮到其他貼紙上面，現在拿掉了 —— 在骷髏上畫好眼珠之後挪一下骷髏，
+ * 它一浮上來就把眼珠蓋掉。署名永遠在最上面
  */
-const bringStickerToFront = (id: string | null) => {
-  if (!id) return
-  const i = stickers.value.findIndex(s => s.id === id)
-  if (i < 0 || i === stickers.value.length - 1) return
-  const [sticker] = stickers.value.splice(i, 1)
-  stickers.value.push(sticker!)
-}
-
-/** 貼紙的拖曳、縮放旋轉結束（包括只是點一下）：拿起來的那張放到最上面，再存草稿 */
-const onStickerGestureEnd = () => {
-  bringStickerToFront(selectedStickerId.value)
-  saveDraftData()
-}
+const stickerLayerZ = (sticker: StickerInstance) =>
+  isNameTagSticker(sticker) ? nameTagZ.value : layerZ(sticker.id)
 
 /**
  * 草稿裡讀出來、還沒套用的名牌位置。
@@ -1240,11 +1215,57 @@ const selectedTextBlockId = ref<string | null>(null)
 const textBlockDragging = ref(false)
 const textBlockTransforming = ref(false)
 
-// 疊放順序是固定的（NOTE_LAYER_Z：貼紙最上、手繪中間、文字最下），編輯器與顯示端共用同一組值。
-// 唯一能動的是手繪整層移到貼紙上面（drawingAboveStickers，STEP 4 的開關）。
-// 畫圖時也照這個順序：原本會把手繪層暫時拉到最上面，結果畫的時候線蓋在貼紙上，
-// 送出後卻變成貼紙蓋在線上，看到的跟成品不一樣。不拉也畫得到 —— 畫圖這一步
-// 貼紙是 pointer-events: none（只有 STEP 5 點得到），觸控會穿過貼紙落到手繪層。
+// ====== 前後順序（規則見 utils/sticky-note-style.ts 的 NOTE_LAYER_Z） ======
+// 文字、貼紙、每一輪手繪，新增時放到最上面，之後就不再變；署名不在這裡，它永遠在最上面。
+// 畫圖時也照這個順序，不把手繪層暫時拉到最上面：那樣畫的時候看到的跟成品不一樣。
+// 不拉也畫得到 —— 畫圖這一步貼紙是 pointer-events: none（只有 STEP 5 點得到），觸控會穿過貼紙落到手繪層。
+
+/** 各物件的前後順序，越大越上面。存草稿與送出時只留還在便利貼上的（見 currentLayerOrder） */
+const layerOrder = ref<Record<string, number>>({})
+
+/** 目前在便利貼上、有前後順序的物件（署名除外） */
+const layeredIds = (): string[] => [
+  ...textBlocks.value.map(b => b.id),
+  ...regularStickers.value.map(s => s.id),
+  ...pastDrawings.layers.value.map(l => l.id),
+  drawingId.value
+]
+
+const layerZ = (id: string) => layerOrder.value[id] ?? 0
+
+/** 最上面那個的順序（skip 不算） */
+const topLayerOrder = (skip?: string) =>
+  Math.max(0, ...layeredIds().filter(id => id !== skip).map(layerZ))
+
+/** 新增的東西放到最上面 */
+const putOnTop = (id: string) => {
+  layerOrder.value[id] = topLayerOrder(id) + 1
+}
+
+const nameTagZ = computed(() => topLayerOrder() + 1)
+
+/** 存草稿用：只留還在便利貼上的物件，刪掉的不會殘留在記錄裡 */
+const currentLayerOrder = () =>
+  Object.fromEntries(layeredIds().filter(id => id in layerOrder.value).map(id => [id, layerZ(id)]))
+
+/**
+ * 舊版草稿沒有 layerOrder：照當時的固定順序排 —— 文字、手繪、貼紙（各自照陣列順序），
+ * 打開過「畫在貼紙上面」的手繪排在貼紙上面。還原出來跟存草稿時看到的一樣
+ */
+const legacyLayerOrder = (drawingAboveStickers: boolean) => {
+  const ids = [
+    ...textBlocks.value.map(b => b.id),
+    ...(drawingAboveStickers ? [] : [drawingId.value]),
+    ...regularStickers.value.map(s => s.id),
+    ...(drawingAboveStickers ? [drawingId.value] : [])
+  ]
+  return Object.fromEntries(ids.map((id, i) => [id, i + 1]))
+}
+
+/** 還原草稿後，沒有順序的物件（例如從舊格式轉過來的文字）放到最上面 */
+const fillMissingLayerOrder = () => {
+  for (const id of layeredIds()) if (!(id in layerOrder.value)) putOnTop(id)
+}
 
 // 文字編輯時的原始內容快照（用於取消還原）
 const textBlockInitialContents = new Map<string, string>()
@@ -1536,47 +1557,48 @@ const drawCanRedo = ref(false)
 const brushColor = ref('#ffffff')
 const brushWidth = ref(8)
 const eraserMode = ref(false)
+/** 目前這一輪手繪（Fabric 上那一輪）匯出的 PNG */
 const drawingData = ref<string | null>(null)
+/** 目前這一輪手繪的 id（layerOrder 的鍵）。第一輪是 DRAWING_LAYER_ID，送出時存在 style.drawing */
+const drawingId = ref(DRAWING_LAYER_ID)
 
 /**
- * 手繪整層蓋在貼紙上面（STEP 4 的「畫在貼紙上面」）。
+ * 進 STEP 4、第一筆之前：決定這一輪畫在哪一層。規則是「新增的在最上面」，所以
+ *  - 目前這一輪是空的：直接放到最上面（空的，換位置看不出來）
+ *  - 上一輪畫完之後沒再加過別的東西：它本來就在最上面，接著畫
+ *  - 之後又加了文字或貼紙：上一輪收起來留在原位（usePastDrawings），開新的一輪畫在最上面。
+ *    在貼紙上畫的線因此蓋在貼紙上，在那之前畫的背景還是在貼紙底下
+ * 開新的一輪會清掉 Fabric 的筆畫記錄，上一輪的筆畫就不能再 undo 了（橡皮擦還擦得到）。
  *
- * 貼完貼紙才回來畫的人要在貼紙上塗鴉，預設的順序（手繪在貼紙底下）會把線蓋掉。
- * 整層一起移、只能二選一：背景塗色壓在貼紙底下、同時又在貼紙上塗鴉，這兩件事做不到。
- * 要做到得把手繪拆成多層，代價見 NOTE_LAYER_Z 的說明。
- *
- * 開關只在有貼紙時出現（沒貼紙時開或關看起來一樣）。拿光貼紙也不會自動關：
- * 再貼上去的貼紙一樣在手繪底下，回到 STEP 4 看得到開關是開著的。
- * 貼了貼紙才第一次來畫的人，進 STEP 4 時會自動打開（見 applyDrawingLayerDefault）。
+ * 輪數用完（MAX_DRAWING_LAYERS，整張擦光的不算）就不開新的，改成把目前這一輪整個搬到最上面：
+ * 接著畫在原位的話，新畫的線會躲到之後加的貼紙底下，畫了等於沒畫，而且畫面上看不出為什麼。
+ * 搬上去的代價是這一輪之前畫的也會蓋到那幾張貼紙上 —— 至少進 STEP 4 的當下就看得到。
  */
-const drawingAboveStickers = ref(false)
-
-/**
- * 使用者這次自己按過開關。按過就照他的，不再自動打開。
- * 不存進草稿：重新整理之後頂多再自動打開一次，而那時還沒畫任何東西，開或關看起來都一樣。
- */
-let drawingLayerChosen = false
-
-const toggleDrawingAboveStickers = () => {
-  drawingLayerChosen = true
-  drawingAboveStickers.value = !drawingAboveStickers.value
-  saveDraftData()
+const startDrawingRound = () => {
+  const id = drawingId.value
+  const top = topLayerOrder(id)
+  if (!drawingData.value) {
+    layerOrder.value[id] = top + 1
+    return
+  }
+  if (layerZ(id) > top) return
+  pastDrawings.exportDirty()
+  if (pastDrawings.saved().length + 1 >= MAX_DRAWING_LAYERS) {
+    layerOrder.value[id] = top + 1
+    return
+  }
+  pastDrawings.bake()
+  pastDrawings.add(id, drawingData.value)
+  drawingData.value = null
+  drawingBase = null
+  fabricBrush.clear()
+  const next = `drawing-${Date.now()}`
+  drawingId.value = next
+  layerOrder.value[next] = top + 1
 }
 
-/**
- * 進 STEP 4 時的預設：已經貼了貼紙、還沒畫過任何東西，就把手繪放到貼紙上面。
- *
- * 這時候來畫的人幾乎都是要在貼紙上畫，例如幫萬聖節的臉貼紙畫眼睛（正式站就有一張，
- * 畫好的眼睛被骷髏臉貼紙整片蓋掉）。照原本的順序，線一畫下去就躲到貼紙底下，
- * 使用者得先看到線不見、再自己去找開關。開關照樣顯示是開著的，不想要隨時可以關。
- * 已經畫過就不動：不然原本壓在貼紙底下的筆跡會突然整層蓋到貼紙上。
- */
-const applyDrawingLayerDefault = () => {
-  if (drawingLayerChosen || drawingAboveStickers.value) return
-  if (regularStickers.value.length === 0) return
-  if (drawingData.value || fabricBrush.canUndo()) return
-  drawingAboveStickers.value = true
-}
+/** 手繪有沒有東西：目前這一輪，或之前任何一輪 */
+const hasDrawing = computed(() => !!drawingData.value || pastDrawings.layers.value.some(l => l.data))
 
 /**
  * 手指正在便利貼上操作：拖曳、雙指縮放旋轉、畫線。
@@ -1684,6 +1706,7 @@ const isBlankDrawing = (data: string): boolean => {
 
 /**
  * 立刻把畫布轉成 PNG 寫進 drawingData。有變動才回傳 true（不存檔，交給呼叫端）
+ * 之前幾輪被橡皮擦擦過的，也在這時候重新匯出。
  *
  * 畫布上空了（undo 到一筆不剩、或整張擦掉）要把 drawingData 清成 null，
  * 不然預覽與送出用的還是最後一次匯出的舊圖。
@@ -1692,17 +1715,18 @@ const isBlankDrawing = (data: string): boolean => {
  */
 const exportDrawingNow = (): boolean => {
   if (drawExportTimer) { clearTimeout(drawExportTimer); drawExportTimer = null }
-  if (!fabricBrush.isInitialized()) return false
+  const pastChanged = pastDrawings.exportDirty()
+  if (!fabricBrush.isInitialized()) return pastChanged
   let next: string | null
   if (fabricBrush.canUndo()) {
     const data = fabricBrush.exportToDataURL()
-    if (!data) return false
+    if (!data) return pastChanged
     next = isBlankDrawing(data) ? null : data
   } else {
     // 一筆都沒有：畫布上只剩草稿還原的圖，或什麼都沒有
     next = drawingBase
   }
-  if (next === drawingData.value) return false
+  if (next === drawingData.value) return pastChanged
   drawingData.value = next
   return true
 }
@@ -1721,15 +1745,21 @@ const scheduleDrawingExport = () => {
   }, DRAW_EXPORT_IDLE_MS)
 }
 
+/** 之前幾輪的手繪。橡皮擦在目前這一輪上擦的，在這幾張上也照樣擦（見 usePastDrawings） */
+const pastDrawings = usePastDrawings(isBlankDrawing)
+
 // path:created 同時會呼叫 setOnUndoRedoChange 設的那支，那支已經排了匯出，這裡不必再排
-const fabricBrush = useFabricBrush()
+const fabricBrush = useFabricBrush({
+  onEraserSegment: pastDrawings.eraseSegment,
+  onEraserStrokeToggle: pastDrawings.toggleStroke
+})
 // 切換 tab 時同步繪圖模式與文字選取狀態
 watch(activeTab, (tab) => {
   // 繪圖：進入/退出繪圖模式
   if (tab === 'draw') {
     ensureUsableBrushColor()
-    // 在第一筆之前決定手繪在貼紙上面還是底下
-    applyDrawingLayerDefault()
+    // 在第一筆之前決定這一輪畫在哪一層
+    startDrawingRound()
     drawMode.value = true
     // 恢復畫布尺寸（從 1×1 最小化還原為 600×600，重新分配 GPU backing store）
     fabricBrush.restoreCanvas()
@@ -1740,15 +1770,17 @@ watch(activeTab, (tab) => {
       // 一定要在 minimizeCanvas 之前：縮成 1×1 之後就匯出不了了
       if (exportDrawingNow()) saveDraftData()
       fabricBrush.setDrawingMode(false)
-      // 最小化畫布：釋放 ~1.4MB GPU backing store，降低文字編輯時的記憶體壓力
+      // 最小化畫布：釋放 ~1.4MB GPU backing store，降低文字編輯時的記憶體壓力。
+      // 之前幾輪的 canvas 也一樣，離開 STEP 4 後改顯示剛匯出的 PNG
       fabricBrush.minimizeCanvas()
+      pastDrawings.releaseCanvases()
       // 使用者剛離開繪圖模式（例如按下完成），清除所有物件選取，確保沒有殘留的編輯框
       selectedTextBlockId.value = null
       selectedStickerId.value = null
     }
     drawMode.value = false
   }
-  // 離開文字步驟就收起文字選取與鍵盤。疊放順序是固定的、與選取無關，
+  // 離開文字步驟就收起文字選取與鍵盤。前後順序在新增時就定了、與選取無關，
   // 所以清掉選取不會影響文字在第幾層。
   if (tab !== 'text') {
     selectedTextBlockId.value = null
@@ -1807,7 +1839,7 @@ const {
 const hasAnyContent = computed(() =>
   textBlocks.value.some(b => b.content.trim()) ||
   stickers.value.length > 0 ||
-  !!drawingData.value ||
+  hasDrawing.value ||
   // 手繪要停筆後才匯出成 drawingData，第一筆畫下去時靠這個讓「全部重來」立刻可按
   drawCanUndo.value ||
   backgroundImage.value !== (BACKGROUND_IMAGES?.[0]?.url ?? '') ||
@@ -2043,6 +2075,7 @@ const addTextBlock = (): TextBlockInstance => {
     locked: false
   }
   textBlocks.value.push(newBlock)
+  putOnTop(newBlock.id)
   snapshotTextBlockInitial(newBlock.id)
   newTextBlockIds.add(newBlock.id)
   saveDraftData()
@@ -2051,6 +2084,7 @@ const addTextBlock = (): TextBlockInstance => {
 
 const removeTextBlock = (blockId: string) => {
   textBlocks.value = textBlocks.value.filter(b => b.id !== blockId)
+  delete layerOrder.value[blockId]
   textBlockInitialContents.delete(blockId)
   newTextBlockIds.delete(blockId)
   if (selectedTextBlockId.value === blockId) {
@@ -2194,6 +2228,7 @@ const addSticker = (stickerType: string) => {
     rotation: (Math.random() - 0.5) * 30
   }
   stickers.value.push(newSticker)
+  putOnTop(newSticker.id)
   saveDraftData()
   // 選取新貼紙讓編輯框出現（貼紙只能從 STEP 5 的貼圖庫加，本來就在這一步）
   selectedStickerId.value = newSticker.id
@@ -2337,7 +2372,7 @@ const saveDraftData = () => {
   const hasContent =
     textBlocks.value.some(b => b.content.trim()) ||
     regularStickers.value.length > 0 ||
-    !!drawingData.value ||
+    hasDrawing.value ||
     backgroundImage.value !== (BACKGROUND_IMAGES?.[0]?.url ?? '') ||
     shape.value !== DEFAULT_SHAPE_ID
   if (!hasContent) {
@@ -2371,13 +2406,16 @@ const saveDraftData = () => {
     textTransform: nonEmptyTextBlocks[0] ? { x: nonEmptyTextBlocks[0].x, y: nonEmptyTextBlocks[0].y, scale: nonEmptyTextBlocks[0].scale, rotation: nonEmptyTextBlocks[0].rotation } : undefined,
     textBlocks: nonEmptyTextBlocks,
     drawing: drawingData.value ?? undefined,
-    drawingAboveStickers: drawingAboveStickers.value,
+    drawingId: drawingId.value,
+    drawingLayers: pastDrawings.saved(),
+    layerOrder: currentLayerOrder(),
     submissionId: submissionId.value,
     nameTag,
     timestamp: Date.now()
   }
-  saveDraft(draft)
-  draftSavedThisVisit = true
+  // 好幾輪手繪的草稿可能超過瀏覽器的容量而存不進去（saveDraft 會記在 console）。
+  // 那時候留在裡面的是上一次存成功的那份，不能當成這次存過了
+  if (saveDraft(draft)) draftSavedThisVisit = true
 }
 
 const {
@@ -2403,12 +2441,12 @@ const {
     focusSelectedTextBlock()
     saveDraftData()
   },
-  onStickerTransformEnd: onStickerGestureEnd,
+  onStickerTransformEnd: saveDraftData,
   onTextDragEnd: () => {
     focusSelectedTextBlock()
     saveDraftData()
   },
-  onStickerDragEnd: onStickerGestureEnd,
+  onStickerDragEnd: saveDraftData,
   onStickerPress: selectSticker,
   onTextTap: (blockId: string, clientX: number, clientY: number) => {
     const alreadySelected = selectedTextBlockId.value === blockId
@@ -2434,7 +2472,7 @@ const {
   draggingStickerId,
   transformingStickerId,
   selectSticker,
-  onDragEnd: onStickerGestureEnd,
+  onDragEnd: saveDraftData,
   isTwoFingerGesture
 })
 
@@ -2445,6 +2483,7 @@ const removeSticker = (id: string) => {
     lastNameTagPlacement = { x, y, scale, rotation }
   }
   stickers.value = stickers.value.filter(s => s.id !== id)
+  delete layerOrder.value[id]
   selectedStickerId.value = null
   saveDraftData()
 }
@@ -2574,7 +2613,8 @@ const loadDraftData = async (draft: DraftData) => {
   pendingDraftNameTag.value = draft.nameTag ?? null
   drawingData.value = draft.drawing ?? null
   drawingBase = drawingData.value
-  drawingAboveStickers.value = draft.drawingAboveStickers === true
+  drawingId.value = draft.drawingId ?? DRAWING_LAYER_ID
+  pastDrawings.restore(draft.drawingLayers ?? [])
   // 還原送出用的 ID —— 被導去 LINE 登入再回來時，就是靠這個值讓重送
   // 寫到同一筆，而不是多出一張便利貼
   submissionId.value = draft.submissionId
@@ -2600,15 +2640,19 @@ const loadDraftData = async (draft: DraftData) => {
     textBlocks.value = []
   }
 
+  // 前後順序：新版草稿照存下來的。舊版沒有，照當時的固定順序推回來（見 legacyLayerOrder）；
+  // 更舊的 objectLayerOrder 是動態順序留下的，不讀 —— 它正是「回復草稿後東西自己換位」的來源
+  layerOrder.value = draft.layerOrder
+    ? { ...draft.layerOrder }
+    : legacyLayerOrder(draft.drawingAboveStickers === true)
+  fillMissingLayerOrder()
+
   await nextTick()
   syncContentToDom()
   if (draft.drawing) {
     await nextTick()
-    fabricBrush.loadFromDataURL(draft.drawing)
+    await fabricBrush.loadFromDataURL(draft.drawing)
   }
-  // 疊放順序不用還原了：現在是固定的（NOTE_LAYER_Z），草稿裡的 objectLayerOrder
-  // 只有舊版寫過，讀了也不會用到。這裡原本有一整段「把存下來的順序重新編號」的程式，
-  // 正是它造成了「回復草稿後東西自己換位」的兩個問題。
 }
 
 const resetEditorToInitial = () => {
@@ -2623,8 +2667,9 @@ const resetEditorToInitial = () => {
   step.value = 0
   drawingData.value = null
   drawingBase = null
-  drawingAboveStickers.value = false
-  drawingLayerChosen = false
+  drawingId.value = DRAWING_LAYER_ID
+  pastDrawings.reset()
+  layerOrder.value = {}
   fabricBrush.clear()
   // 重來就是另一張便利貼。沿用舊的 ID 的話，上一張其實已經上牆（只是回應沒收到）時，
   // 這一張送出會被當成「同一張已經建立過」而直接算成功（見 confirmSubmit）
@@ -2677,7 +2722,7 @@ const submitConfirmText = computed(() =>
  */
 const hasSubmittableContent = computed(() =>
   textBlocks.value.some(b => b.content.trim()) ||
-  !!drawingData.value ||
+  hasDrawing.value ||
   regularStickers.value.length > 0
 )
 
@@ -2707,11 +2752,26 @@ const previewNoteData = computed(() => {
     textTransform: textBlocks.value[0] ? { x: textBlocks.value[0].x, y: textBlocks.value[0].y, scale: textBlocks.value[0].scale, rotation: textBlocks.value[0].rotation } : undefined,
     textBlocks: textBlocks.value
   }
-  if (drawingData.value) {
-    style.drawing = drawingData.value
-    // 只在打開時寫：沒有這個欄位的便利貼（包括所有舊的）就是手繪在貼紙底下
-    if (drawingAboveStickers.value) style.drawingAboveStickers = true
-  }
+  // 手繪：照畫的先後，第一輪放 drawing（鍵改成 DRAWING_LAYER_ID），之後的放 drawingLayers。
+  // 擦光的那幾輪不送
+  const drawings = [
+    ...pastDrawings.saved(),
+    ...(drawingData.value ? [{ id: drawingId.value, src: drawingData.value }] : [])
+  ]
+  const [firstDrawing, ...moreDrawings] = drawings
+  if (firstDrawing) style.drawing = firstDrawing.src
+  if (moreDrawings.length) style.drawingLayers = moreDrawings
+
+  // 前後順序：只記這張便利貼上真的有的東西，照先後重新編成 1、2、3…
+  const ordered = [
+    ...textBlocks.value.map(b => b.id),
+    ...regularStickers.value.map(s => s.id),
+    ...drawings.map(d => d.id)
+  ].sort((a, b) => layerZ(a) - layerZ(b))
+  style.objectLayerOrder = Object.fromEntries(ordered.map((id, i) => [
+    id === firstDrawing?.id ? DRAWING_LAYER_ID : id,
+    i + 1
+  ]))
 
   // 署名在這裡才把暱稱與頭貼複製進去：預覽、分享圖、送出都讀這一份，
   // 三邊看到的一定是同一個名字。暱稱必須等於登入身分的 lineName，規則會驗
@@ -3603,6 +3663,8 @@ onUnmounted(() => {
   unsubTokenRequirement = null
   endDrawingStroke()
   fabricBrush.dispose()
+  // 之前幾輪的 canvas 也一樣立刻釋放，不等 GC（iOS 的 canvas 記憶體上限很緊）
+  pastDrawings.reset()
 })
 
 // Auto-save on changes
