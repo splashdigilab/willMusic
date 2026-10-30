@@ -38,9 +38,12 @@
     <div ref="dimIdleRef" class="p-canvas__dim p-canvas__dim--idle" aria-hidden="true" />
     <div ref="dimHighlightRef" class="p-canvas__dim p-canvas__dim--highlight" aria-hidden="true" />
 
-    <!-- 萬聖節：整面的左上、右下角各一張白色蜘蛛網（稿子畫板 03、04，樣式在 themes/_halloween.scss） -->
+    <!-- 萬聖節：左右兩個螢幕的左上、右下角各一張白色蜘蛛網（稿子畫板 03、04，樣式在 themes/_halloween.scss）。
+         --seam 是貼著中間接縫的那兩張：左螢幕的右下、右螢幕的左上 -->
     <template v-if="themeId === 'halloween'">
       <i class="t-hw-canvas-web t-hw-canvas-web--tl" aria-hidden="true" />
+      <i class="t-hw-canvas-web t-hw-canvas-web--br t-hw-canvas-web--seam" aria-hidden="true" />
+      <i class="t-hw-canvas-web t-hw-canvas-web--tl t-hw-canvas-web--seam" aria-hidden="true" />
       <i class="t-hw-canvas-web t-hw-canvas-web--br" aria-hidden="true" />
     </template>
 

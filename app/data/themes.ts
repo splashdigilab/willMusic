@@ -56,7 +56,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
 
   /**
    * 萬聖節。稿子：「(Draft) 萬聖節便利貼 - WillMusic.ai」畫板 01（開場）、02（便利貼牆）、
-   * 03／04（大螢幕徽章的正反面，見 CanvasPromo.vue；大螢幕左上、右下另加蜘蛛網，見 canvas.vue）。
+   * 03／04（大螢幕徽章的正反面，見 CanvasPromo.vue；大螢幕左右兩個螢幕的左上、右下另加蜘蛛網，見 canvas.vue）。
    * 南瓜、骷髏、幽靈的本體與臉取自稿子畫板上方的素材，已轉正（見 scripts/themes/README.md）。
    * 本體色就是下面兩個材質（幽靈用既有的白），臉做成貼紙，自己挑要不要貼。
    * 編輯器、確認彈窗、等待頁稿子沒有畫，按鈕與選中色照開場推（--theme-* 變數，見 themes/_halloween.scss）。

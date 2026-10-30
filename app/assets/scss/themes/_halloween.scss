@@ -407,7 +407,7 @@ $bottom-bar-overflow: min(1.43vw, 11px);
 }
 
 /* ===================== 大螢幕的蜘蛛網（canvas.vue） =====================
-   畫板 03、04 四角的白色蜘蛛網，使用者指定放在大螢幕整面的左上（左螢幕）與右下（右螢幕）。
+   畫板 03、04 四角的白色蜘蛛網，使用者指定左右兩個螢幕都放左上、右下各一張（共四張）。
    形狀跟開場（畫板 01）的黑色蜘蛛網同一張，用遮罩上白色，不另外放一份白的。
    大小照稿子：網寬 275、畫板高 1440，換成螢幕高的比例。
    疊在深色底（150）之上、highlight（300）與徽章（400）之下，插播影片（500）會蓋掉它 */
@@ -434,5 +434,17 @@ $bottom-bar-overflow: min(1.43vw, 11px);
         aspect-ratio: 274.98 / 266.62;
         mask-image: url('/themes/halloween/web-bottom-right.svg');
         -webkit-mask-image: url('/themes/halloween/web-bottom-right.svg');
+    }
+
+    /* 貼著中間接縫（整面的 50%）的那兩張：左螢幕的右下、右螢幕的左上。
+       網角貼齊螢幕邊，不像徽章、highlight 那樣避開接縫的 30px */
+    &--seam {
+        &.t-hw-canvas-web--tl {
+            left: 50%;
+        }
+
+        &.t-hw-canvas-web--br {
+            right: 50%;
+        }
     }
 }
