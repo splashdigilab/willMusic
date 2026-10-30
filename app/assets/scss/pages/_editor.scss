@@ -42,7 +42,7 @@ body.is-editor-page {
   display: flex;
   gap: 0.6rem;
 
-  /* 右上角：語言選單與登入狀態，與左上的返回／說明對稱（全部重來移到便利貼右下角了） */
+  /* 右上角：語言選單與登入狀態，與左上的返回／說明對稱（全部重來移到便利貼右下角了，電腦版在畫面右下角） */
   &--right {
     left: auto;
     right: ed.$editor-float-btn-inset;
@@ -1182,10 +1182,29 @@ body.is-editor-page #app {
     }
   }
 
-  /* 全部重來：貼在便利貼自己的右下角。
-     上下排時是對齊頁面右側的圓鈕（算式見上面 .p-editor__reset-btn），這裡便利貼不貼頁面邊緣 */
+  /* 全部重來：放在畫面右下角，跟右上角的語言／登入圓鈕上下對齊（2026-10-31 使用者決定）。
+     原本貼在便利貼右下角，但電腦版的便利貼四周都是空白，疊在作品上只是擋住角落的筆畫。
+     按鈕還是留在畫布容器裡（手機要靠它的 cqw 對齊便利貼），所以跟手機一樣，用容器的大小反推：
+       右：便利貼在畫布區（頁面寬扣掉左邊面板）裡左右置中，右緣離頁面右緣 (畫布區寬 - 100cqw) / 2
+       下：容器是正方形、在整個高度裡上下置中，下緣離頁面底 (頁面高 - 100cqw) / 2
+     不疊在作品上了，不必再小一號、半透明：跟右上角的圓鈕同高、同底色、同一圈細亮邊 */
   .p-editor__reset-btn {
-    right: ed.$editor-float-btn-inset;
+    right: calc(#{ed.$editor-float-btn-inset} - (100vw - #{ed.$editor-side-panel-width} - 100cqw) / 2);
+    bottom: calc(#{ed.$editor-float-btn-inset} - (var(--editor-locked-h, 100dvh) - 100cqw) / 2);
+    height: ed.$editor-float-btn-size;
+    gap: 0.4rem;
+    padding: 0 1.1rem;
+    border-color: rgba(255, 255, 255, 0.55);
+    background: var.$will-dark-deep;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+    font-size: 0.875rem;
+
+    &-icon {
+      width: 17px;
+      height: 17px;
+    }
   }
 }
 
@@ -1222,8 +1241,10 @@ body.is-editor-page #app {
     background: #B8B8B8;
   }
 
+  /* 細亮邊變亮：電腦版的底色是不透明的深灰（見 wide-layout），只改底色幾乎看不出來 */
   .p-editor__reset-btn:hover {
     background: rgba(30, 30, 30, 0.8);
+    border-color: rgba(255, 255, 255, 0.9);
   }
 }
 
