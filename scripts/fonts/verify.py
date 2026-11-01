@@ -41,6 +41,7 @@ def parse_faces(css: str) -> list[dict]:
     for block in re.findall(r"@font-face\{.*?\}", css, re.S):
         m_url = re.search(r'url\("([^"]+)"\)', block)
         m_range = re.search(r"unicode-range:([^;}]+)", block)
+        m_weight = re.search(r"font-weight:(\d+)", block)
         if not m_url:
             continue
         cps: set[int] = set()
@@ -55,7 +56,8 @@ def parse_faces(css: str) -> list[dict]:
                 else:
                     cps.add(int(p, 16))
         rel = m_url.group(1).lstrip("/").removeprefix("fonts/")
-        faces.append({"cps": cps, "path": FONT_DIR / rel, "url": m_url.group(1)})
+        weight = int(m_weight.group(1)) if m_weight else None
+        faces.append({"cps": cps, "path": FONT_DIR / rel, "url": m_url.group(1), "weight": weight})
     for face in faces:
         face["size"] = face["path"].stat().st_size
     return faces
@@ -115,22 +117,32 @@ def main() -> int:
         print(f"✓ {len(ui_faces) + len(content_faces)} 個 @font-face 宣告的碼位都有對應字形")
 
     # ── 4. 下載成本
-    preload = sum(f["size"] for f in ui_faces)
-    print(f"\n每頁固定成本（介面字 400+700）: {preload/1024:.0f} KB")
+    # 介面層三份（見 build.py）：首頁開場那份每頁都預載，-front 是編輯器這些前台頁面另外預載的，
+    # -more（後台、LED 牆、條款頁才有的字）用到才下載
+    home = [f for f in ui_faces if "/line-seed-ui-front-" not in f["url"] and "/line-seed-ui-more-" not in f["url"]]
+    front = [f for f in ui_faces if "/line-seed-ui-front-" in f["url"]]
+    on_demand = [f for f in ui_faces if "/line-seed-ui-more-" in f["url"]]
+    print(f"\n首頁固定成本（首頁開場的介面字 400／700／800）: {sum(f['size'] for f in home)/1024:.0f} KB")
+    print(f"其他前台頁面另外預載（編輯器、我的便利貼）: {sum(f['size'] for f in front)/1024:.0f} KB")
+    print(f"介面字其他（後台、LED 牆、條款頁才下載）: {sum(f['size'] for f in on_demand)/1024:.0f} KB")
+
+    # 以編輯器為準（首頁開場與前台兩份都預載了），算一張便利貼還要多抓多少。便利貼上的字一律是 700
+    free_cps: set[int] = set().union(*[f["cps"] for f in home + front if f["weight"] == 700])
+    paid_faces = [f for f in on_demand if f["weight"] == 700] + content_faces
 
     def cost(text: str) -> tuple[int, int, str]:
         hit, missing = set(), []
         for ch in set(text):
             cp = ord(ch)
-            if cp in ui_cps:
+            if cp in free_cps:
                 continue
-            for i, f in enumerate(content_faces):
+            for i, f in enumerate(paid_faces):
                 if cp in f["cps"]:
                     hit.add(i)
                     break
             else:
                 missing.append(ch)
-        return len(hit), sum(content_faces[i]["size"] for i in hit), "".join(missing)
+        return len(hit), sum(paid_faces[i]["size"] for i in hit), "".join(missing)
 
     print("額外成本（依畫面上的文字）:")
     for label, text in SAMPLES.items():

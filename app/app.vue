@@ -8,6 +8,7 @@
 <script setup lang="ts">
 import { HTML_LANG } from '~/utils/i18n'
 import { LOCALE_UI_FONTS } from '~/utils/locale-fonts'
+import { UI_FONT_WEIGHTS, fontPreloadLink, uiFontHref } from '~/utils/ui-fonts'
 
 // data-theme 是節慶主題樣式的範圍（app/assets/scss/themes/），原本的主題是 default
 const { themeId } = useTheme()
@@ -17,21 +18,20 @@ const { locale } = useI18n()
 // 日文、韓文介面的字型：選了那個語言才內嵌 @font-face 並預載（見 utils/locale-fonts.ts）
 const localeFont = computed(() => LOCALE_UI_FONTS[locale.value])
 
+const route = useRoute()
+
 useHead({
   htmlAttrs: {
     lang: computed(() => HTML_LANG[locale.value]),
     'data-theme': themeId
   },
   style: computed(() => (localeFont.value ? [{ key: 'locale-ui-font', innerHTML: localeFont.value.css }] : [])),
-  link: computed(() =>
-    (localeFont.value?.files ?? []).map(href => ({
-      rel: 'preload',
-      as: 'font',
-      type: 'font/woff2',
-      href,
-      crossorigin: ''
-    }))
-  )
+  link: computed(() => [
+    ...(localeFont.value?.files ?? []).map(fontPreloadLink),
+    // 首頁以外的頁面還要前台那份介面字（首頁開場那份 nuxt.config 每頁都預載，見 utils/ui-fonts.ts）。
+    // 首頁不預載：它等 START 能按之後才抓，一開始的頻寬留給開場與 JS
+    ...(route.name === 'index' ? [] : UI_FONT_WEIGHTS.map(w => fontPreloadLink(uiFontHref('front', w))))
+  ])
 })
 
 // 分享預覽圖（原稿與產生方式見 scripts/og/）。og:image 一定要絕對網址，網域從請求推導，

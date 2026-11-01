@@ -25,7 +25,8 @@ import type {
 } from '~/types'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { recordUploadStat } from '~/composables/useUploadStats'
-import { NOTE_DRAWING_PATH } from '~/utils/note-drawings'
+import { NOTE_DRAWING_CACHE_CONTROL, NOTE_DRAWING_PATH } from '~/utils/note-drawings'
+import { deduplicateByToken } from '~/utils/dedupe-notes'
 
 /** 手繪圖上傳最多等多久，超過就退回把圖內嵌在文件裡（見 persistDrawing） */
 const DRAWING_UPLOAD_TIMEOUT_MS = 20_000
@@ -119,7 +120,11 @@ export const useFirestore = () => {
       // 期限只在這裡設，不改 SDK 的全站重試上限：後台上傳插播影片也是同一個 Storage 實例。
       // 上傳用取消而不是不等它，Storage 上才不會多出一個沒有便利貼引用的檔案
       const deadline = Date.now() + DRAWING_UPLOAD_TIMEOUT_MS
-      const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/png' })
+      const task = uploadBytesResumable(fileRef, blob, {
+        contentType: 'image/png',
+        // 不設的話 Storage 回 private, max-age=0，每次看牆每張圖都要再問一次伺服器
+        cacheControl: NOTE_DRAWING_CACHE_CONTROL
+      })
       const timer = setTimeout(() => task.cancel(), DRAWING_UPLOAD_TIMEOUT_MS)
       try {
         await task
@@ -272,19 +277,6 @@ export const useFirestore = () => {
       console.warn('[stats] 累加每日上傳統計失敗', error)
     })
     return createdId
-  }
-
-  /**
-   * 依 token 去重：同一 token 只保留一筆
-   */
-  const deduplicateByToken = (items: QueueHistoryItem[]): QueueHistoryItem[] => {
-    const seen = new Set<string>()
-    return items.filter((item) => {
-      const key = item.token || item.id || ''
-      if (!key || seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
   }
 
   /**

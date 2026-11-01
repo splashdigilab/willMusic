@@ -21,6 +21,7 @@
  */
 import { createError, defineEventHandler, getQuery, setResponseHeader, type H3Event } from 'h3'
 import { normalizeFirestoreSuffix } from '~~/app/utils/firestore-suffix'
+import { firestoreBase } from '~~/server/utils/firestore-rest'
 
 const FETCH_TIMEOUT_MS = 2_000
 const MAX_AGE_MS = 30_000
@@ -28,15 +29,6 @@ const MAX_AGE_MS = 30_000
 /** 這個站讀得到的唯一一份；要跟 useCollections().siteThemeConfig 算出來的一樣 */
 const siteThemeDocId = (event: H3Event): string =>
   `site_theme${normalizeFirestoreSuffix(useRuntimeConfig(event).public.firestoreSuffix)}`
-
-/**
- * Firestore REST 的位址。本機用 Firebase 模擬器測試時，照 Firebase 官方 SDK 的慣例
- * 看 FIRESTORE_EMULATOR_HOST（例如 127.0.0.1:8080）；正式與測試站都不會設這個變數
- */
-const firestoreBase = (): string => {
-  const emulator = process.env.FIRESTORE_EMULATOR_HOST
-  return emulator ? `http://${emulator}/v1` : 'https://firestore.googleapis.com/v1'
-}
 
 interface FirestoreDocument {
   fields?: { themeId?: { stringValue?: string } }

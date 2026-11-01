@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import type { DrawingLayer, QueuePendingItem, QueueHistoryItem, StickerInstance, TextBlockInstance } from '~/types'
+import type { DrawingLayer, QueuePendingItem, QueueHistoryItem, StickerInstance, TextBlockInstance, WallNote } from '~/types'
 import { STICKER_LIBRARY } from '~/data/stickers'
 import { getShapeById, DEFAULT_SHAPE_ID } from '~/data/shapes'
 import { getTextBlockStyle, getStickerStyle, NOTE_LAYER_Z, DRAWING_LAYER_ID, drawingLayerZ } from '~/utils/sticky-note-style'
@@ -97,7 +97,7 @@ import { isNoteDrawingSrc } from '~/utils/note-drawings'
 import NoteNameTag from '~/components/NoteNameTag.vue'
 
 interface Props {
-  note: QueuePendingItem | QueueHistoryItem
+  note: QueuePendingItem | QueueHistoryItem | WallNote
   animate?: boolean
 }
 

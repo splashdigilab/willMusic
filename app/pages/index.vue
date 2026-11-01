@@ -164,20 +164,30 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { gsap } from 'gsap'
-import type { QueueHistoryItem } from '~/types'
+import type { WallNote } from '~/types'
 import { useFirestore } from '~/composables/useFirestore'
 import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
 import { calculateScatterPositions, type ScatterPosition } from '~/utils/scatter-layout'
 import { WALL_LOOK, randomWallLook, turnFactor, type WallLook } from '~/utils/wall-look'
+import { UI_FONT_WEIGHTS, preloadFontNow, uiFontHref } from '~/utils/ui-fonts'
 import StickyNote from '~/components/StickyNote.vue'
 import MemberBadge from '~/components/MemberBadge.vue'
 import AppModal from '~/components/AppModal.vue'
 import HalloweenIntro from '~/components/theme/HalloweenIntro.vue'
 
-definePageMeta({ layout: false, ssr: false })
+// 不要加 ssr: false：definePageMeta 不認這個欄位（要關掉 SSR 得寫在 nuxt.config 的 routeRules），
+// 而開場畫面本來就該由伺服器先畫好，手機才不用等 JS 下載執行完才看到東西
+definePageMeta({ layout: false })
 
 const { t } = useI18n()
 usePageSeo(() => t.value.seo.home.title, () => t.value.seo.home.description)
+
+// 便利貼牆的資料跟 JS 同時開始下載（fetchWallItems 讀的就是這一份）。
+// 不預載的話要等 JS 下載、執行完、畫面接手之後才開始抓，START 平白晚一兩秒。
+// crossorigin 一定要寫：$fetch 發的是 cors 模式的請求，預載的模式對不上，瀏覽器會再抓一次
+useHead({
+  link: [{ rel: 'preload', as: 'fetch', href: '/api/wall', crossorigin: 'anonymous' }]
+})
 
 const { theme, themeId } = useTheme()
 
@@ -190,10 +200,13 @@ const containerRef = ref<HTMLElement | null>(null)
 const canvasRef = ref<HTMLElement | null>(null)
 
 // ====== Data ======
-const displayItems = ref<QueueHistoryItem[]>([])
+const displayItems = ref<WallNote[]>([])
 const showIntroOverlay = ref(true)
 const loading = ref(true)
+/** /api/wall 讀不到、改由瀏覽器自己讀時抓幾張。跟 server/api/wall.get.ts 的 WALL_LIMIT 一樣 */
 const HISTORY_FETCH_LIMIT = 100
+/** /api/wall 最多等多久。伺服器那邊讀 Firestore 是 3 秒逾時，這裡是它整個掛住時的保險 */
+const WALL_API_TIMEOUT_MS = 6_000
 
 // ====== 散落佈局 ======
 // 跟 /canvas 的流動牆同一種凌亂感、同一組參數（WALL_LOOK），見 ~/utils/scatter-layout
@@ -418,13 +431,20 @@ const HISTORY_RETRY_DELAY_MS = 2000
 let historyRetryTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
- * 讀牆上的便利貼，失敗就隔一下再試一次；再失敗就丟出去，由呼叫端讓牆空著。
+ * 讀牆上的便利貼。先問自己的伺服器（/api/wall：伺服器讀好、所有訪客共用 30 秒，
+ * 不必等瀏覽器跟 Firestore 建立連線）；它讀不到再由瀏覽器自己用 Firestore 讀，
+ * 那邊失敗就隔一下再試一次；再失敗就丟出去，由呼叫端讓牆空著。
  * 牆是空的頁面一樣能用（開場照常按得下去、照樣能去製作便利貼），只是看不到別人的。
  *
  * 重試算在開場的載入時間裡（START 晚一點才能按），牆才會跟平常一樣在開場後面排好；
  * 放到背景重試的話，要處理「牆已經露出來了才一口氣進來一百張」的進場動畫。
  */
-const fetchWallItems = async (): Promise<QueueHistoryItem[]> => {
+const fetchWallItems = async (): Promise<WallNote[]> => {
+  try {
+    return (await $fetch<{ items: WallNote[] }>('/api/wall', { timeout: WALL_API_TIMEOUT_MS, retry: 0 })).items
+  } catch (e) {
+    console.warn('[wall] /api/wall 讀不到，改由瀏覽器自己讀', e)
+  }
   try {
     return (await getHistory(HISTORY_FETCH_LIMIT)).items
   } catch {
@@ -436,7 +456,7 @@ const fetchWallItems = async (): Promise<QueueHistoryItem[]> => {
 }
 
 const appendItemsInBatches = async (
-  items: QueueHistoryItem[],
+  items: WallNote[],
   batchSize = 12
 ) => {
   displayItems.value = []
@@ -465,18 +485,13 @@ onMounted(async () => {
     )
   }
 
-  const windowLoaded = new Promise<void>(resolve => {
-    if (document.readyState === 'complete') {
-      resolve()
-    } else {
-      window.addEventListener('load', () => resolve(), { once: true })
-    }
-  })
-
   // 從右上角的登入回來：跟載入同時進行，不讓人多等
   const loginReturn = completeLoginReturn()
 
-  // 等待字體、圖片載入與最小延遲
+  // 等便利貼資料、字體、開場圖片與最小延遲。
+  // 不等 window 的 load 事件：開場是伺服器畫好的，load 卻要等到所有資源都下載完，
+  // 連 GTM 再帶進來的第三方 script 也算在內，那些跟按下 START 之後的畫面無關，
+  // 網路慢的時候只會讓 START 平白多轉好幾秒
   try {
     const historyPromise = fetchWallItems()
       .then(items => appendItemsInBatches(items))
@@ -485,7 +500,6 @@ onMounted(async () => {
     await Promise.all([
       historyPromise,
       document.fonts.ready,
-      windowLoaded,
       waitForIntroImages(),
       new Promise(resolve => {
         loadingTimer = setTimeout(resolve, 800)
@@ -496,6 +510,10 @@ onMounted(async () => {
   }
 
   loading.value = false
+
+  // 開場以外的介面字（登入卡片、編輯器）現在才開始抓：首頁只預載開場用到的字，
+  // 一開始的頻寬留給開場與 JS。700 那份畫面接手時就抓了（便利貼的字，見 plugins/content-font.client.ts）
+  for (const weight of UI_FONT_WEIGHTS) preloadFontNow(uiFontHref('front', weight))
 
   // 登入鈕在開場之後的牆上（開場蓋著右上角），所以回來時直接回到牆上，
   // 不必再看一次開場

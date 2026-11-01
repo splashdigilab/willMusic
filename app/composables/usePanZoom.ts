@@ -130,6 +130,25 @@ export function usePanZoom(
         options.onTransformChange?.(state.value)
     }
 
+    // === 效能優化：縮放期間沿用舊的點陣 ===
+    // 每一幀改 scale() 時，瀏覽器會照新倍率把整層重畫一次（首頁是一百張遮罩＋貼紙＋手繪），
+    // 手機上縮放會卡。縮放期間給 will-change: transform，瀏覽器就拿原本畫好的點陣直接放大縮小
+    // （放大時暫時有點糊），停手一會兒再拿掉，讓它照最後的倍率清楚地重畫一次。
+    // 只有縮放需要：單純拖曳不改倍率，本來就不會重畫
+    const ZOOM_SETTLE_MS = 200
+    let zoomSettleTimer: ReturnType<typeof setTimeout> | null = null
+
+    const markZooming = () => {
+        const contentEl = contentRef.value ? ((contentRef.value as any).$el || contentRef.value) : null
+        if (!contentEl || !contentEl.style) return
+        contentEl.style.willChange = 'transform'
+        if (zoomSettleTimer) clearTimeout(zoomSettleTimer)
+        zoomSettleTimer = setTimeout(() => {
+            zoomSettleTimer = null
+            contentEl.style.willChange = ''
+        }, ZOOM_SETTLE_MS)
+    }
+
     // 對外暴露的 updateTransform（相容 centerContent 等需要立即更新的場景）
     const updateTransform = () => {
         cacheContainerRect()
@@ -200,6 +219,7 @@ export function usePanZoom(
         state.value.x = clientX - contentTargetX * newScale
         state.value.y = clientY - contentTargetY * newScale
 
+        markZooming()
         scheduleUpdate()
     }
 
@@ -285,6 +305,7 @@ export function usePanZoom(
             state.value.x += panDx
             state.value.y += panDy
 
+            markZooming()
             scheduleUpdate() // rAF 節流
         }
     }
@@ -337,7 +358,10 @@ export function usePanZoom(
             ...centerTarget(),
             duration: 0.8,
             ease: 'power3.out',
-            onUpdate: applyTransform
+            onUpdate: () => {
+                markZooming()
+                applyTransform()
+            }
         })
     }
 
@@ -372,6 +396,7 @@ export function usePanZoom(
 
     onUnmounted(() => {
         if (rafId) cancelAnimationFrame(rafId)
+        if (zoomSettleTimer) clearTimeout(zoomSettleTimer)
 
         const el = containerRef.value
         if (el) {

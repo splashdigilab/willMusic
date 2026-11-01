@@ -3575,15 +3575,9 @@ onMounted(async () => {
     await Promise.race([allLoaded, timeout])
   }
 
-  const windowLoaded = new Promise<void>(resolve => {
-    if (document.readyState === 'complete') {
-      resolve()
-    } else {
-      window.addEventListener('load', () => resolve(), { once: true })
-    }
-  })
-
-  // 等待字體載入與最小延遲（加入 5 秒整體超時，防止字體 API 掛住）
+  // 等待字體、圖片載入與最小延遲（加入 5 秒整體超時，防止字體 API 掛住）。
+  // 不等 window 的 load 事件，理由同首頁（pages/index.vue）：它要等所有資源連同 GTM 帶進來的
+  // 第三方 script 都下載完，掃 QR code 直接進來的人會在規範頁多轉好幾秒。Fabric 是用到時才 await
   try {
     const fontsReady = Promise.race([
       document.fonts.ready,
@@ -3591,7 +3585,6 @@ onMounted(async () => {
     ])
     await Promise.all([
       fontsReady,
-      windowLoaded,
       waitForImages(),
       new Promise(resolve => setTimeout(resolve, 800))
     ])

@@ -61,7 +61,7 @@ const parseUnicodeRange = (value: string): Array<[number, number]> | null => {
 /**
  * 便利貼上的字一律是 700：文字區塊（sticky-note-text-box）與署名（NoteNameTag）都寫死 700，
  * 內容字型的分片也只有 700 一種（見 scripts/fonts/build.py）。
- * 介面字的 400／700／800 三個檔案 unicode-range 相同，不篩字重的話三個都會被嵌入。
+ * 介面字的 400／700／800 unicode-range 相同（三份各自相同，見 utils/ui-fonts.ts），不篩字重的話三個都會被嵌入。
  *
  * 原本這裡只留 400：那是內容字型還是 Regular 時寫的，9/21 改成 700 之後
  * 內容分片從來沒被嵌入過，分享圖上的字其實是系統字或瀏覽器假粗體。
@@ -78,8 +78,8 @@ const isNoteWeight = (block: string): boolean => {
  * 全站字型是 870+ 個 unicode-range 分片（約 6.6MB），若讓 html-to-image
  * 自己讀 cssRules 會全部抓下來，手機直接 OOM。
  *
- * 實際大小：介面字那一片涵蓋 ASCII，所以只要便利貼裡有一個空白或數字就一定
- * 會被帶上（約 227KB），加上內容分片數十 KB，base64 之後總計約 360KB。
+ * 實際大小：介面字首頁那一份涵蓋 ASCII，只要便利貼裡有一個空白或數字就一定會被帶上（約 38KB），
+ * 常用的中文字多半在 -front 那一份（約 117KB），加上內容分片數十 KB，base64 之後總計約 250～300KB。
  * 這不是「數十 KB」，但相較改版前一次嵌入整包 7.5MB 已經少了 95%。
  */
 const buildFontEmbedCSS = async (text: string): Promise<string> => {

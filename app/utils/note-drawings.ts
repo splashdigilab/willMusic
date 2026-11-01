@@ -7,6 +7,12 @@ import { deleteObject, ref as storageRef, type FirebaseStorage } from 'firebase/
 /** 手繪圖在 Storage 上的資料夾 */
 export const NOTE_DRAWING_PATH = 'note_drawings'
 
+/**
+ * 手繪圖檔的 Cache-Control。檔名帶隨機碼、Storage 規則又不准覆寫，同一個網址的內容永遠不變，
+ * 可以放心長期快取。上傳時設（useFirestore 的 uploadDrawing）
+ */
+export const NOTE_DRAWING_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+
 /** 便利貼上所有手繪圖的來源（網址或內嵌的 data URL） */
 export function noteDrawingSources(style: unknown): string[] {
   if (!style || typeof style !== 'object') return []

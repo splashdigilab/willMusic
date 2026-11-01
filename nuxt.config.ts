@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { normalizeFirestoreSuffix } from './app/utils/firestore-suffix'
+import { UI_FONT_WEIGHTS, fontPreloadLink, uiFontHref } from './app/utils/ui-fonts'
 
 // ─── Amplify 的空值限制 ───────────────────────────────────────────
 // Amplify 的環境變數一律不接受空字串，連「所有分支」那一列也不行。
@@ -65,6 +66,29 @@ export default defineNuxtConfig({
   // 這個狀況 —— 去把佔用 3000 的程序關掉，不要改登記另一個 port。
   devServer: { port: 3000 },
 
+  // ─── 靜態檔的瀏覽器快取 ─────────────────────────────────────────
+  // Amplify 上，public/ 底下沒有另外設定的檔案一律是 max-age=0：瀏覽器每次都要回伺服器確認，
+  // 回訪的人看首頁的牆，用到的上百個檔案每個都要多跑一趟。這裡列出的資料夾，maxAge 會被
+  // Nitro 的 aws-amplify preset 寫進部署設定（deploy-manifest.json），變成
+  // public, max-age=<maxAge>, immutable：期限內瀏覽器直接用手機裡的，連重新整理都不會再問。
+  //
+  // - 一年：內容一變、檔名就跟著變的檔案。內容字分片的檔名是內容的雜湊（scripts/fonts/build.py
+  //   用 cn-font-split 產生），符合。介面字（line-seed-ui-*）與 line-seed.css 檔名固定、重建時內容會變，不能放。
+  // - 7 天：便利貼牆上的圖（貼紙、造型與陰影、底圖、節慶主題圖）。檔名固定，但幾乎不會同檔名換圖。
+  //   **要換圖請用新檔名**：同檔名換的話，看過的人（包括店裡的 LED 牆）最多 7 天後才會看到新圖。
+  //   底圖的路徑寫在便利貼的資料裡（style.backgroundImage），舊的那張也不能刪
+  // dir 寫絕對路徑：Nitro 的相對路徑不是從專案根目錄算
+  nitro: {
+    publicAssets: [
+      ...['fonts/tw', 'fonts/kr'].map(dir => ({ dir, maxAge: 60 * 60 * 24 * 365 })),
+      ...['svg/stickers', 'svg/shapes', 'svg/bg', 'themes'].map(dir => ({ dir, maxAge: 60 * 60 * 24 * 7 }))
+    ].map(({ dir, maxAge }) => ({
+      baseURL: `/${dir}`,
+      dir: fileURLToPath(new URL(`./public/${dir}`, import.meta.url)),
+      maxAge
+    }))
+  },
+
   css: [
     '~/assets/scss/main.scss'
   ],
@@ -114,33 +138,11 @@ export default defineNuxtConfig({
         // 介面字與 HTML 平行下載（@font-face 已內嵌，preload 只是提前開始抓）。
         // 400 / 700 / 800 都要 preload：全站粗體是 700，新視覺的大標（應援便利貼!、
         // POST BOARD、START）是 800，少預載任何一個，該字重都會先以後備字型渲染再換過來。
-        {
-          rel: 'preload',
-          as: 'font',
-          type: 'font/woff2',
-          href: '/fonts/line-seed-ui-400.woff2',
-          crossorigin: ''
-        },
-        {
-          rel: 'preload',
-          as: 'font',
-          type: 'font/woff2',
-          href: '/fonts/line-seed-ui-700.woff2',
-          crossorigin: ''
-        },
-        {
-          rel: 'preload',
-          as: 'font',
-          type: 'font/woff2',
-          href: '/fonts/line-seed-ui-800.woff2',
-          crossorigin: ''
-        },
-        // 內容字分片的 @font-face 宣告（約 250KB，gzip 後 65KB）。
-        // 原本是一般樣式表，每一頁的首次渲染都要等它下載完。它只管使用者打的字，
-        // 而首頁與大螢幕的便利貼都是瀏覽器抓完資料才畫，所以改成 preload 提前下載、
-        // 由 plugins/content-font.client.ts 套用，不再擋首屏。
-        // 分片本身本來就是畫到哪個字才下載，擋住這支樣式表也擋不掉分片的閃字。
-        { rel: 'preload', as: 'style', href: '/fonts/line-seed.css' }
+        // 這裡只預載首頁開場的字（三個字重合計約 115KB）。其他前台頁面的字由 app.vue 在那些頁面預載，
+        // 首頁則等 START 能按之後才抓；檔案怎麼分見 app/utils/ui-fonts.ts。
+        ...UI_FONT_WEIGHTS.map(w => fontPreloadLink(uiFontHref('home', w))),
+        // 內容字分片的樣式表（/fonts/line-seed.css）不放這裡，由 plugins/content-font.client.ts
+        // 在畫面接手之後才載入，理由見那支檔案
       ],
       style: [
         { innerHTML: lineSeedUiCss, type: 'text/css' }

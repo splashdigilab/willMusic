@@ -186,6 +186,12 @@ export interface QueueHistoryItem {
 }
 
 /**
+ * 首頁便利貼牆上的一張（/api/wall 只回這幾個欄位）。
+ * 時間戳記不給：Timestamp 是 Firebase SDK 的類別，經過 JSON 就不是它了，牆上也用不到
+ */
+export type WallNote = Pick<QueueHistoryItem, 'id' | 'token' | 'content' | 'style'>
+
+/**
  * 便利貼的投稿者（note_owners/{noteId}），doc ID 與便利貼相同。
  *
  * 跟便利貼分開存，是因為便利貼公開可讀而 uid 就是 LINE 使用者編號。
