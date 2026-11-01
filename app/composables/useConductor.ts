@@ -14,9 +14,9 @@ import {
     query, limit, orderBy,
     type QuerySnapshot
 } from 'firebase/firestore'
-import { useNuxtApp } from '#app'
 import { useFirestore } from '~/composables/useFirestore'
 import { getDocsByIds } from '~/utils/firestore-batch'
+import { clientDb } from '~/utils/firestore-client'
 import { watchWithResubscribe } from '~/utils/resilient-snapshot'
 import type { QueuePendingItem, QueueHistoryItem } from '~/types'
 
@@ -354,8 +354,7 @@ function buildIdleBag(
 /* ─── Composable ─── */
 
 export function useConductor() {
-    const { $firestore } = useNuxtApp()
-    const db = $firestore as any
+    const db = clientDb()
     const cols = useCollections()
     const { moveToHistory } = useFirestore()
     const s = getSingleton()

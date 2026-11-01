@@ -10,15 +10,17 @@
  *   1. 使用者換頭貼之後舊網址會失效，牆上就破圖
  *   2. 便利貼的下載／分享是用 html-to-image 把節點序列化，外部網域的圖片
  *      要有 CORS 標頭才抓得到，base64 直接繞開整個問題
+ *
+ * Firestore 在每個函式裡才 import，理由同 useSubmissionQuota：首頁的登入（useMemberAuth）也用這支。
  */
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import type { DocumentReference } from 'firebase/firestore'
 import type { UserProfile } from '~/types'
 
 /** 頭貼大小上限，與 firestore.rules 的 canWriteUserProfile 一致 */
 const AVATAR_MAX_BYTES = 30000
 
 export const useMemberProfile = () => {
-  const { $firestore, $auth } = useNuxtApp() as any
+  const { $auth } = useNuxtApp() as any
   const cols = useCollections()
 
   /**
@@ -56,10 +58,12 @@ export const useMemberProfile = () => {
     const uid = $auth?.currentUser?.uid
     if (!uid) return
 
-    const ref = doc($firestore, cols.users, uid)
     let existingData: UserProfile | undefined
+    let ref: DocumentReference | undefined
 
     try {
+      const { doc, getDoc, getFirestore, serverTimestamp, setDoc } = await import('firebase/firestore')
+      ref = doc(getFirestore(), cols.users, uid)
       const existing = await getDoc(ref)
       existingData = existing.data() as UserProfile | undefined
 
@@ -86,8 +90,9 @@ export const useMemberProfile = () => {
     // email 分開寫：規則還沒部署新版時這一筆會被擋，但不能連累上面那筆 ——
     // 名牌的頭貼讀的是上面寫的 avatar。
     // 沒拿到 email 時不去刪舊的：可能只是這次 LINE 沒給，不代表使用者要我們忘掉
-    if (!email || existingData?.email === email) return
+    if (!ref || !email || existingData?.email === email) return
     try {
+      const { setDoc } = await import('firebase/firestore')
       await setDoc(ref, { email }, { merge: true })
     } catch (e) {
       console.warn('[MemberProfile] 寫入 email 失敗', e)
@@ -109,7 +114,8 @@ export const useMemberProfile = () => {
     const uid = $auth?.currentUser?.uid
     if (!uid) return false
     try {
-      await setDoc(doc($firestore, cols.users, uid), {
+      const { doc, getFirestore, serverTimestamp, setDoc } = await import('firebase/firestore')
+      await setDoc(doc(getFirestore(), cols.users, uid), {
         displayName,
         email,
         marketingOptIn: optIn,
@@ -126,7 +132,8 @@ export const useMemberProfile = () => {
     const uid = $auth?.currentUser?.uid
     if (!uid) return null
     try {
-      const snap = await getDoc(doc($firestore, cols.users, uid))
+      const { doc, getDoc, getFirestore } = await import('firebase/firestore')
+      const snap = await getDoc(doc(getFirestore(), cols.users, uid))
       return snap.exists() ? (snap.data() as UserProfile) : null
     } catch (e) {
       console.warn('[MemberProfile] 讀取會員資料失敗', e)

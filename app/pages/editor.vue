@@ -1001,8 +1001,7 @@ useHead({
 
 const route = useRoute()
 const router = useRouter()
-const { $firestore } = useNuxtApp()
-const db = $firestore as any
+const db = clientDb()
 const cols = useCollections()
 const { saveDraft, loadDraft, clearDraft, saveToken, loadToken, clearToken } = useStorage()
 const { ready: authReady, user, isMember, profile, startLogin, completeLogin, logout } = useMemberAuth()

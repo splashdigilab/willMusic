@@ -25,6 +25,7 @@ import {
   writeBatch
 } from 'firebase/firestore'
 import { STRIKE_LIMIT, type BlockedNote, type NoteOwner, type UserProfile, type UserStrikes } from '~/types'
+import { clientDb } from '~/utils/firestore-client'
 import { deleteNoteDrawings } from '~/utils/note-drawings'
 
 /** 後台一次載入的已下架清單上限。下架是例外處置，不做分頁 */
@@ -62,10 +63,11 @@ export class NoteGoneError extends Error {
 const toMillis = (ts: any): number => ts?.toMillis?.() ?? 0
 
 export const useNoteModeration = () => {
-  const { $firestore, $auth, $storage } = useNuxtApp() as any
+  const { $auth } = useNuxtApp() as any
+  const db = clientDb()
   const cols = useCollections()
 
-  const strikesRef = (uid: string) => doc($firestore, cols.userStrikes, uid)
+  const strikesRef = (uid: string) => doc(db, cols.userStrikes, uid)
 
   /**
    * 目前登入的會員被下架過幾張。讀不到時回 0：這只是提醒，
@@ -92,7 +94,7 @@ export const useNoteModeration = () => {
 
   /** 這張便利貼的投稿者 uid。匿名時期的沒有紀錄，回 null */
   const getOwner = async (noteId: string): Promise<string | null> => {
-    const snap = await getDoc(doc($firestore, cols.noteOwners, noteId))
+    const snap = await getDoc(doc(db, cols.noteOwners, noteId))
     return snap.exists() ? (snap.data() as NoteOwner).uid : null
   }
 
@@ -109,13 +111,13 @@ export const useNoteModeration = () => {
    * 手繪圖不刪，blocked_notes 裡還指著它（後台要看得到下架的是什麼）。
    */
   const blockNote = async (noteId: string, reason: string): Promise<BlockResult> => {
-    const pendingRef = doc($firestore, cols.queuePending, noteId)
-    const historyRef = doc($firestore, cols.queueHistory, noteId)
-    const ownerRef = doc($firestore, cols.noteOwners, noteId)
-    const blockedRef = doc($firestore, cols.blockedNotes, noteId)
+    const pendingRef = doc(db, cols.queuePending, noteId)
+    const historyRef = doc(db, cols.queueHistory, noteId)
+    const ownerRef = doc(db, cols.noteOwners, noteId)
+    const blockedRef = doc(db, cols.blockedNotes, noteId)
     const staff: string = $auth?.currentUser?.email ?? ''
 
-    return runTransaction($firestore, async (tx) => {
+    return runTransaction(db, async (tx) => {
       // transaction 裡所有的讀取都要在寫入之前
       const [pendingSnap, historySnap, ownerSnap, blockedSnap] = await Promise.all([
         tx.get(pendingRef), tx.get(historyRef), tx.get(ownerRef), tx.get(blockedRef)
@@ -141,14 +143,14 @@ export const useNoteModeration = () => {
       let strikes: number | null = null
       let banWrite: Record<string, unknown> | null = null
       if (uid) {
-        const bannedRef = doc($firestore, cols.bannedUsers, uid)
+        const bannedRef = doc(db, cols.bannedUsers, uid)
         const [strikesSnap, bannedSnap] = await Promise.all([tx.get(strikesRef(uid)), tx.get(bannedRef)])
         strikes = (strikesSnap.exists() ? ((strikesSnap.data() as UserStrikes).count ?? 0) : 0) + 1
 
         // 已經停權（店員手動封鎖過、或之前就到門檻）的不覆寫：原本的時間、備註要留著
         if (strikes >= STRIKE_LIMIT && !bannedSnap.exists()) {
           // 停權名單要存暱稱快照（理由見 BannedUser）。讀不到就留空，後台會顯示編號
-          const profileSnap = await tx.get(doc($firestore, cols.users, uid))
+          const profileSnap = await tx.get(doc(db, cols.users, uid))
           banWrite = {
             displayName: profileSnap.exists() ? ((profileSnap.data() as UserProfile).displayName ?? '') : '',
             reason: `違規累計 ${strikes} 次，自動停權`,
@@ -188,10 +190,10 @@ export const useNoteModeration = () => {
    * 測試期間舊格式寫在便利貼上的 uid，而 queue_history 是公開可讀的。
    */
   const restoreNote = async (noteId: string): Promise<RestoreResult> => {
-    const blockedRef = doc($firestore, cols.blockedNotes, noteId)
-    const historyRef = doc($firestore, cols.queueHistory, noteId)
+    const blockedRef = doc(db, cols.blockedNotes, noteId)
+    const historyRef = doc(db, cols.queueHistory, noteId)
 
-    return runTransaction($firestore, async (tx) => {
+    return runTransaction(db, async (tx) => {
       const [blockedSnap, historySnap] = await Promise.all([tx.get(blockedRef), tx.get(historyRef)])
       if (!blockedSnap.exists()) throw new NoteGoneError()
       const record = blockedSnap.data() as BlockedNote
@@ -202,7 +204,7 @@ export const useNoteModeration = () => {
       if (uid) {
         const [strikesSnap, bannedSnap] = await Promise.all([
           tx.get(strikesRef(uid)),
-          tx.get(doc($firestore, cols.bannedUsers, uid))
+          tx.get(doc(db, cols.bannedUsers, uid))
         ])
         const before = strikesSnap.exists() ? ((strikesSnap.data() as UserStrikes).count ?? 0) : 0
         strikes = Math.max(0, before - 1)
@@ -235,18 +237,18 @@ export const useNoteModeration = () => {
    * 順序同 deleteNote：先刪文件、再清圖，清圖失敗不影響刪除本身。
    */
   const purgeBlockedNote = async (record: BlockedNoteRow): Promise<void> => {
-    const batch = writeBatch($firestore)
-    batch.delete(doc($firestore, cols.blockedNotes, record.id))
-    batch.delete(doc($firestore, cols.noteOwners, record.id))
+    const batch = writeBatch(db)
+    batch.delete(doc(db, cols.blockedNotes, record.id))
+    batch.delete(doc(db, cols.noteOwners, record.id))
     await batch.commit()
 
-    await deleteNoteDrawings($storage, record.id, record.note?.style, '[admin] 下架紀錄已刪除，但手繪圖檔案清除失敗')
+    await deleteNoteDrawings(record.id, record.note?.style, '[admin] 下架紀錄已刪除，但手繪圖檔案清除失敗')
   }
 
   /** 已下架的便利貼，新下架的在前 */
   const listBlockedNotes = async (): Promise<BlockedNoteRow[]> => {
     const snap = await getDocs(query(
-      collection($firestore, cols.blockedNotes),
+      collection(db, cols.blockedNotes),
       orderBy('blockedAt', 'desc'),
       limit(BLOCKED_LIST_LIMIT)
     ))
@@ -255,7 +257,7 @@ export const useNoteModeration = () => {
 
   /** 某個人被下架的便利貼，新的在前。排序在前端做，不必為此開複合索引 */
   const findBlockedNotesOf = async (uid: string): Promise<BlockedNoteRow[]> => {
-    const snap = await getDocs(query(collection($firestore, cols.blockedNotes), where('uid', '==', uid)))
+    const snap = await getDocs(query(collection(db, cols.blockedNotes), where('uid', '==', uid)))
     return snap.docs
       .map(d => ({ ...(d.data() as BlockedNote), id: d.id }))
       .sort((a, b) => toMillis(b.blockedAt) - toMillis(a.blockedAt))

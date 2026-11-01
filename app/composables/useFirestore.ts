@@ -23,10 +23,11 @@ import type {
   TokenDocument,
   CreateNoteForm
 } from '~/types'
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
+import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { recordUploadStat } from '~/composables/useUploadStats'
 import { NOTE_DRAWING_CACHE_CONTROL, NOTE_DRAWING_PATH } from '~/utils/note-drawings'
 import { deduplicateByToken } from '~/utils/dedupe-notes'
+import { clientDb } from '~/utils/firestore-client'
 
 /** 手繪圖上傳最多等多久，超過就退回把圖內嵌在文件裡（見 persistDrawing） */
 const DRAWING_UPLOAD_TIMEOUT_MS = 20_000
@@ -36,10 +37,9 @@ const DRAWING_URL_MIN_WAIT_MS = 5_000
 const MAX_NOTE_STYLE_CHARS = 1_000_000
 
 export const useFirestore = () => {
-  const { $firestore, $storage, $auth } = useNuxtApp() as any
-  const db = $firestore as any
+  const { $auth } = useNuxtApp() as any
+  const db = clientDb()
   const cols = useCollections()
-  const storage = $storage as any
   const { reserve } = useSubmissionQuota()
 
   /**
@@ -114,7 +114,7 @@ export const useFirestore = () => {
     try {
       const blob = await (await fetch(drawing)).blob()
       const path = `${NOTE_DRAWING_PATH}/${noteId}-${randomFileSuffix()}.png`
-      const fileRef = storageRef(storage, path)
+      const fileRef = storageRef(getStorage(), path)
       // 現場網路壅塞時，Storage SDK 會重試好幾分鐘（上傳預設 10 分鐘），
       // 使用者就一直盯著「處理中」。上傳加取網址整段有一個期限，到了就放棄、走下面退回 base64 的路。
       // 期限只在這裡設，不改 SDK 的全站重試上限：後台上傳插播影片也是同一個 Storage 實例。

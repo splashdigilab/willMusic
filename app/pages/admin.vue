@@ -895,7 +895,7 @@ import {
 import { DEFAULT_RATE_LIMIT, STRIKE_LIMIT, type BannedUser, type RateLimitConfig } from '~/types'
 import type { MemberRow } from '~/composables/useMemberAdmin'
 import { BLOCKED_LIST_LIMIT, NoteGoneError, type BlockedNoteRow } from '~/composables/useNoteModeration'
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import QRCode from 'qrcode'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -922,7 +922,6 @@ definePageMeta({
   zhOnly: true
 })
 
-const { $firestore, $storage } = useNuxtApp()
 const { createToken } = useFirestore()
 const { logout } = useAdminAuth()
 const { listMembers, listMarketingOptIns, loadOwners, deleteNote } = useMemberAdmin()
@@ -960,10 +959,11 @@ use([
   VisualMapComponent
 ])
 
-const db = $firestore as any
+const db = clientDb()
 
 const cols = useCollections()
-const storage = $storage as any
+// 後台只在瀏覽器端畫（nuxt.config 的 routeRules），setup 時就拿得到
+const storage = getStorage()
 
 // 頁面內操作結果提示（取代 alert）
 const adminToast = reactive({

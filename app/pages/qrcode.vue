@@ -31,8 +31,7 @@ import QRCode from 'qrcode'
 
 definePageMeta({ layout: false, zhOnly: true })
 
-const { $firestore } = useNuxtApp()
-const db = $firestore as any
+const db = clientDb()
 
 const activeToken = ref<string | null>(null)
 const expiresAt = ref<number | null>(null)

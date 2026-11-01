@@ -204,8 +204,7 @@ const flowTilt = computed(() => {
 })
 
 /* ─── Conductor + 插播影片 ─── */
-const { $firestore } = useNuxtApp()
-const db = $firestore as any
+const db = clientDb()
 
 const interstitialSrc = ref<string | null>(null)
 /** 插播排程間隔（分鐘），與 Firestore system/canvas_video.interstitialIntervalMinutes 同步 */

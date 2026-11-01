@@ -1,8 +1,11 @@
 /**
  * 便利貼的手繪圖檔。一張便利貼可能有好幾張：第一輪在 style.drawing，
  * 之後幾輪在 style.drawingLayers（為什麼會分輪，見 sticky-note-style.ts 的 NOTE_LAYER_Z）。
+ *
+ * 這支不在開頭 import firebase/storage：StickyNote 用它判斷圖片能不能顯示，
+ * 首頁的牆因此也會載入這支，開頭 import 的話每個看牆的人都要先下載 Storage。
+ * 只有刪圖（deleteNoteDrawings，後台用）才在函式裡 import
  */
-import { deleteObject, ref as storageRef, type FirebaseStorage } from 'firebase/storage'
 
 /** 手繪圖在 Storage 上的資料夾 */
 export const NOTE_DRAWING_PATH = 'note_drawings'
@@ -61,12 +64,14 @@ export function isOwnDrawingFile(src: string, noteId: string): boolean {
  * 呼叫端要先刪文件再清圖：反過來的話，文件刪除一旦失敗，牆上會留下破圖
  */
 export async function deleteNoteDrawings(
-  storage: FirebaseStorage,
   noteId: string,
   style: unknown,
   failureMessage: string
 ): Promise<void> {
   const files = noteDrawingSources(style).filter(src => src.startsWith('http') && isOwnDrawingFile(src, noteId))
+  if (!files.length) return
+  const { deleteObject, getStorage, ref: storageRef } = await import('firebase/storage')
+  const storage = getStorage()
   await Promise.all(files.map(async (src) => {
     try {
       await deleteObject(storageRef(storage, src))

@@ -165,7 +165,6 @@
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { gsap } from 'gsap'
 import type { WallNote } from '~/types'
-import { useFirestore } from '~/composables/useFirestore'
 import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
 import { calculateScatterPositions, type ScatterPosition } from '~/utils/scatter-layout'
 import { WALL_LOOK, randomWallLook, turnFactor, type WallLook } from '~/utils/wall-look'
@@ -191,7 +190,7 @@ useHead({
 
 const { theme, themeId } = useTheme()
 
-const { getHistory } = useFirestore()
+const nuxtApp = useNuxtApp()
 const { completeLoginReturn } = useMemberAuth()
 const loginFailed = ref(false)
 
@@ -445,6 +444,11 @@ const fetchWallItems = async (): Promise<WallNote[]> => {
   } catch (e) {
     console.warn('[wall] /api/wall 讀不到，改由瀏覽器自己讀', e)
   }
+  // Firestore 到這裡才下載：首頁平常不用它（見 plugins/firebase.client.ts）。
+  // 寫成 mod.useFirestore 而不是解構：自動匯入看到 useFirestore 這個名字，會在檔案開頭補一個靜態 import。
+  // 這時已經不在 setup 裡了，composable 要靠 runWithContext 才拿得到 Nuxt 的 context
+  const mod = await import('~/composables/useFirestore')
+  const { getHistory } = await nuxtApp.runWithContext(() => mod.useFirestore())
   try {
     return (await getHistory(HISTORY_FETCH_LIMIT)).items
   } catch {

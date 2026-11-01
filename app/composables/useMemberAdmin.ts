@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore'
 import type { NoteOwner, QueueHistoryItem, QueuePendingItem, UserProfile } from '~/types'
 import { getDocsByIds } from '~/utils/firestore-batch'
+import { clientDb } from '~/utils/firestore-client'
 import { deleteNoteDrawings } from '~/utils/note-drawings'
 
 export const MEMBER_PAGE_SIZE = 20
@@ -45,7 +46,7 @@ export type MemberNote = (QueuePendingItem | QueueHistoryItem) & { id: string, i
 const toMillis = (ts: any): number => ts?.toMillis?.() ?? 0
 
 export const useMemberAdmin = () => {
-  const { $firestore, $storage } = useNuxtApp() as any
+  const db = clientDb()
   const cols = useCollections()
 
   /**
@@ -57,7 +58,7 @@ export const useMemberAdmin = () => {
     if (cursor) constraints.push(startAfter(cursor))
     constraints.push(limit(MEMBER_PAGE_SIZE + 1))
 
-    const snap = await getDocs(query(collection($firestore, cols.users), ...constraints))
+    const snap = await getDocs(query(collection(db, cols.users), ...constraints))
     const docs = snap.docs.slice(0, MEMBER_PAGE_SIZE)
     return {
       members: docs.map(d => ({ uid: d.id, ...(d.data() as UserProfile) })) as MemberRow[],
@@ -74,7 +75,7 @@ export const useMemberAdmin = () => {
    * 名單是拿去寄信的，寧可少一筆也不要混進一筆空地址。
    */
   const listMarketingOptIns = async (): Promise<MemberRow[]> => {
-    const snap = await getDocs(query(collection($firestore, cols.users), where('marketingOptIn', '==', true)))
+    const snap = await getDocs(query(collection(db, cols.users), where('marketingOptIn', '==', true)))
     return snap.docs
       .map(d => ({ uid: d.id, ...(d.data() as UserProfile) }) as MemberRow)
       .filter(m => !!m.email)
@@ -82,13 +83,13 @@ export const useMemberAdmin = () => {
   }
 
   const getProfile = async (uid: string): Promise<UserProfile | null> => {
-    const snap = await getDoc(doc($firestore, cols.users, uid))
+    const snap = await getDoc(doc(db, cols.users, uid))
     return snap.exists() ? (snap.data() as UserProfile) : null
   }
 
   /** 這個 uid 名下的便利貼 ID（note_owners 的 doc ID 就是便利貼的 ID） */
   const findOwnedNoteIds = async (uid: string): Promise<string[]> => {
-    const snap = await getDocs(query(collection($firestore, cols.noteOwners), where('uid', '==', uid)))
+    const snap = await getDocs(query(collection(db, cols.noteOwners), where('uid', '==', uid)))
     return snap.docs.map(d => d.id)
   }
 
@@ -102,8 +103,8 @@ export const useMemberAdmin = () => {
   const findMemberNotes = async (uid: string): Promise<MemberNote[]> => {
     const ids = await findOwnedNoteIds(uid)
     const [pending, history] = await Promise.all([
-      getDocsByIds($firestore, cols.queuePending, ids),
-      getDocsByIds($firestore, cols.queueHistory, ids)
+      getDocsByIds(db, cols.queuePending, ids),
+      getDocsByIds(db, cols.queueHistory, ids)
     ])
     const notes = [
       ...pending.map(d => ({ ...(d.data() as QueuePendingItem), id: d.id, isPending: true })),
@@ -117,7 +118,7 @@ export const useMemberAdmin = () => {
    * 沒有紀錄的（匿名時期的舊便利貼）不會出現在結果裡。
    */
   const loadOwners = async (noteIds: string[]): Promise<Record<string, string>> => {
-    const docs = await getDocsByIds($firestore, cols.noteOwners, noteIds)
+    const docs = await getDocsByIds(db, cols.noteOwners, noteIds)
     return Object.fromEntries(docs.map(d => [d.id, (d.data() as NoteOwner).uid]))
   }
 
@@ -138,13 +139,13 @@ export const useMemberAdmin = () => {
    * 沒有檔案要刪；清圖失敗也不影響刪除本身。
    */
   const deleteNote = async (note: NoteRef): Promise<void> => {
-    const batch = writeBatch($firestore)
-    batch.delete(doc($firestore, cols.queuePending, note.id))
-    batch.delete(doc($firestore, cols.queueHistory, note.id))
-    batch.delete(doc($firestore, cols.noteOwners, note.id))
+    const batch = writeBatch(db)
+    batch.delete(doc(db, cols.queuePending, note.id))
+    batch.delete(doc(db, cols.queueHistory, note.id))
+    batch.delete(doc(db, cols.noteOwners, note.id))
     await batch.commit()
 
-    await deleteNoteDrawings($storage, note.id, note.style, '[admin] 便利貼已刪除，但手繪圖檔案清除失敗')
+    await deleteNoteDrawings(note.id, note.style, '[admin] 便利貼已刪除，但手繪圖檔案清除失敗')
   }
 
   /**
@@ -155,14 +156,14 @@ export const useMemberAdmin = () => {
   const removeNameTag = async (note: MemberNote): Promise<void> => {
     const patch = { 'style.nameTag': deleteField() }
     if (!note.isPending) {
-      await updateDoc(doc($firestore, cols.queueHistory, note.id), patch)
+      await updateDoc(doc(db, cols.queueHistory, note.id), patch)
       return
     }
     try {
-      await updateDoc(doc($firestore, cols.queuePending, note.id), patch)
+      await updateDoc(doc(db, cols.queuePending, note.id), patch)
     } catch (err) {
       try {
-        await updateDoc(doc($firestore, cols.queueHistory, note.id), patch)
+        await updateDoc(doc(db, cols.queueHistory, note.id), patch)
       } catch {
         throw err
       }
@@ -190,9 +191,9 @@ export const useMemberAdmin = () => {
 
     const ownedIds = await findOwnedNoteIds(uid)
     await Promise.all([
-      deleteDoc(doc($firestore, cols.users, uid)),
-      deleteDoc(doc($firestore, cols.userQuota, uid)),
-      ...ownedIds.map(id => deleteDoc(doc($firestore, cols.noteOwners, id)))
+      deleteDoc(doc(db, cols.users, uid)),
+      deleteDoc(doc(db, cols.userQuota, uid)),
+      ...ownedIds.map(id => deleteDoc(doc(db, cols.noteOwners, id)))
     ])
   }
 

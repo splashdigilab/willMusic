@@ -203,7 +203,7 @@ const { t, locale } = useI18n()
 usePageSeo(() => t.value.seo.myNotes.title, () => t.value.seo.myNotes.description)
 
 const route = useRoute()
-const { $firestore } = useNuxtApp() as any
+const db = clientDb()
 const cols = useCollections()
 const { ready: authReady, isMember, user, profile, startLogin, completeLoginReturn } = useMemberAuth()
 const { getProfile, setMarketingOptIn } = useMemberProfile()
@@ -312,7 +312,7 @@ const stopWatching = () => {
 }
 
 const fetchHistory = async (ids: string[], gen: number) => {
-  const docs = await getDocsByIds($firestore, cols.queueHistory, ids)
+  const docs = await getDocsByIds(db, cols.queueHistory, ids)
   if (gen !== loadGen) return
   docs.forEach((d) => { myHistory.value[d.id] = d.data() as QueueHistoryItem })
 }
@@ -331,7 +331,7 @@ const refreshAhead = async (gen: number) => {
       // 沒有送出時間的排不進順序（正常送出的都有），當作排在最前面
       if (!note.timestamp) return [id, 0] as const
       const snap = await getCountFromServer(
-        query(collection($firestore, cols.queuePending), where('timestamp', '<', note.timestamp))
+        query(collection(db, cols.queuePending), where('timestamp', '<', note.timestamp))
       )
       return [id, snap.data().count] as const
     }))
@@ -365,7 +365,7 @@ const watchFront = (gen: number) => {
   frontId = id
   let first = true
   unsubFront = onSnapshot(
-    query(collection($firestore, cols.queuePending), where('timestamp', '<', note.timestamp)),
+    query(collection(db, cols.queuePending), where('timestamp', '<', note.timestamp)),
     (snap) => {
       // 快取來的可能只有其中幾張，張數會偏少、提早顯示「輪到你了」：只信伺服器回來的
       if (gen !== loadGen || frontId !== id || snap.metadata.fromCache) return
@@ -408,7 +408,7 @@ const watchPending = (ids: string[], gen: number): Promise<boolean> => {
   const firstSnapshots = chunks.map(chunk => new Promise<void>((resolve, reject) => {
     let first = true
     unsubPending.push(onSnapshot(
-      query(collection($firestore, cols.queuePending), where(documentId(), 'in', chunk)),
+      query(collection(db, cols.queuePending), where(documentId(), 'in', chunk)),
       (snap) => {
         if (gen !== loadGen) return
         const next = { ...myPending.value }
@@ -459,7 +459,7 @@ const loadNotes = async (uid: string) => {
   notesLoading.value = true
   notesError.value = false
   try {
-    const ownerSnap = await getDocs(query(collection($firestore, cols.noteOwners), where('uid', '==', uid)))
+    const ownerSnap = await getDocs(query(collection(db, cols.noteOwners), where('uid', '==', uid)))
     if (gen !== loadGen) return
     myIds.value = ownerSnap.docs.map(d => d.id)
 

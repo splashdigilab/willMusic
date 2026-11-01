@@ -44,8 +44,7 @@ definePageMeta({
 const { t } = useI18n()
 usePageSeo(() => t.value.seo.queue.title, () => t.value.seo.queue.description)
 
-const { $firestore } = useNuxtApp()
-const db = $firestore as any
+const db = clientDb()
 const cols = useCollections()
 
 const queueCount = ref(0)

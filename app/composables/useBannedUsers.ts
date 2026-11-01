@@ -7,29 +7,23 @@
  * 只擋「送出」這一個動作 —— 被封鎖的人仍然可以瀏覽、製作、下載自己的圖。
  * 封鎖以 uid（= line:<LINE userId>）為單位，LINE userId 在同一個 channel 下
  * 不會變，要繞過就得另外辦一個 LINE 帳號。
+ *
+ * Firestore 在每個函式裡才 import，理由同 useSubmissionQuota：首頁的頭像小卡也用這支。
  */
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc
-} from 'firebase/firestore'
+import type { DocumentReference } from 'firebase/firestore'
 import type { BannedUser } from '~/types'
 
 /** 後台一次載入的名單上限。封鎖是例外處置，名單不會長到需要分頁 */
 const BAN_LIST_LIMIT = 500
 
 export const useBannedUsers = () => {
-  const { $firestore, $auth } = useNuxtApp() as any
+  const { $auth } = useNuxtApp() as any
   const cols = useCollections()
 
-  const banRef = (uid: string) => doc($firestore, cols.bannedUsers, uid)
+  const banRef = async (uid: string): Promise<DocumentReference> => {
+    const { doc, getFirestore } = await import('firebase/firestore')
+    return doc(getFirestore(), cols.bannedUsers, uid)
+  }
 
   /**
    * 目前登入的會員是否被停權。讀不到時回 false：
@@ -39,7 +33,8 @@ export const useBannedUsers = () => {
     const uid = $auth?.currentUser?.uid
     if (!uid) return false
     try {
-      return (await getDoc(banRef(uid))).exists()
+      const { getDoc } = await import('firebase/firestore')
+      return (await getDoc(await banRef(uid))).exists()
     } catch (e) {
       console.warn('[ban] 讀取停權狀態失敗', e)
       return false
@@ -49,14 +44,16 @@ export const useBannedUsers = () => {
   // ── 以下限後台（規則只開放 isStaff() 寫入與讀取他人的紀錄）──
 
   const getBan = async (uid: string): Promise<BannedUser | null> => {
-    const snap = await getDoc(banRef(uid))
+    const { getDoc } = await import('firebase/firestore')
+    const snap = await getDoc(await banRef(uid))
     return snap.exists() ? (snap.data() as BannedUser) : null
   }
 
   /** 整份名單，新封鎖的在前。後台用它標示便利貼與會員清單上的「已封鎖」 */
   const listBans = async (): Promise<Map<string, BannedUser>> => {
+    const { collection, getDocs, getFirestore, limit, orderBy, query } = await import('firebase/firestore')
     const snap = await getDocs(query(
-      collection($firestore, cols.bannedUsers),
+      collection(getFirestore(), cols.bannedUsers),
       orderBy('bannedAt', 'desc'),
       limit(BAN_LIST_LIMIT)
     ))
@@ -69,7 +66,8 @@ export const useBannedUsers = () => {
    * @param reason      後台自己看的備註，被封鎖的人看不到
    */
   const ban = async (uid: string, displayName: string, reason: string): Promise<void> => {
-    await setDoc(banRef(uid), {
+    const { serverTimestamp, setDoc } = await import('firebase/firestore')
+    await setDoc(await banRef(uid), {
       displayName,
       reason,
       bannedAt: serverTimestamp(),
@@ -77,7 +75,10 @@ export const useBannedUsers = () => {
     })
   }
 
-  const unban = (uid: string): Promise<void> => deleteDoc(banRef(uid))
+  const unban = async (uid: string): Promise<void> => {
+    const { deleteDoc } = await import('firebase/firestore')
+    await deleteDoc(await banRef(uid))
+  }
 
   return { isSelfBanned, getBan, listBans, ban, unban }
 }

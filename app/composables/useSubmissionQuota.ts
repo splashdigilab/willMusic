@@ -14,8 +14,12 @@
  *
  * `check()` 只是體驗用的：讓使用者在辛苦畫完之前就知道自己已經沒額度，
  * 而不是按了送出才被拒絕。真正的強制在規則那一層。
+ *
+ * Firestore 在每個函式裡才 import：首頁的頭像小卡也用這支（useQuotaStatus），
+ * 寫在檔案開頭的話，沒登入的人打開首頁也要先下載整個 Firestore（見 plugins/firebase.client.ts）。
+ * 要寫成 `const { … } = await import(…)`，打包工具才只留用到的函式
  */
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import type { DocumentReference } from 'firebase/firestore'
 import { DEFAULT_RATE_LIMIT, type RateLimitConfig, type UserQuota } from '~/types'
 import { SYSTEM_COLLECTION } from '~/utils/collections'
 
@@ -70,17 +74,20 @@ export interface QuotaCheck {
 }
 
 export const useSubmissionQuota = () => {
-  const { $firestore, $auth } = useNuxtApp() as any
+  const { $auth } = useNuxtApp() as any
   const cols = useCollections()
 
-  const quotaRef = () => {
+  const quotaRef = async (): Promise<DocumentReference | null> => {
     const uid = $auth?.currentUser?.uid
-    return uid ? doc($firestore, cols.userQuota, uid) : null
+    if (!uid) return null
+    const { doc, getFirestore } = await import('firebase/firestore')
+    return doc(getFirestore(), cols.userQuota, uid)
   }
 
   const loadConfig = async (): Promise<RateLimitConfig> => {
     try {
-      const snap = await getDoc(doc($firestore, SYSTEM_COLLECTION, cols.rateLimitConfig))
+      const { doc, getDoc, getFirestore } = await import('firebase/firestore')
+      const snap = await getDoc(doc(getFirestore(), SYSTEM_COLLECTION, cols.rateLimitConfig))
       if (!snap.exists()) return DEFAULT_RATE_LIMIT
       const data = snap.data() as Partial<RateLimitConfig>
       return {
@@ -101,13 +108,14 @@ export const useSubmissionQuota = () => {
   }
 
   /** 讀失敗會丟錯。要分得出「沒有紀錄」與「讀不到」的用這個，只是顯示用的用 loadQuota */
-  const readQuota = async (ref: NonNullable<ReturnType<typeof quotaRef>>): Promise<UserQuota | null> => {
+  const readQuota = async (ref: DocumentReference): Promise<UserQuota | null> => {
+    const { getDoc } = await import('firebase/firestore')
     const snap = await getDoc(ref)
     return snap.exists() ? (snap.data() as UserQuota) : null
   }
 
   const loadQuota = async (): Promise<UserQuota | null> => {
-    const ref = quotaRef()
+    const ref = await quotaRef()
     if (!ref) return null
     try {
       return await readQuota(ref)
@@ -159,7 +167,7 @@ export const useSubmissionQuota = () => {
    * 今天已經送過的人會被規則拒絕，畫面上變成「次數已達上限」，其實只是網路不穩。
    */
   const reserve = async (noteId: string): Promise<void> => {
-    const ref = quotaRef()
+    const ref = await quotaRef()
     if (!ref) throw new Error('NOT_LOGGED_IN')
 
     let quota: UserQuota | null
@@ -175,6 +183,7 @@ export const useSubmissionQuota = () => {
     // 算錯的話規則會拒絕，而且看起來像是「沒有權限」
     const submitCount = nextSubmitCount(quota, noteId, today)
 
+    const { serverTimestamp, setDoc } = await import('firebase/firestore')
     try {
       await setDoc(ref, {
         lastSubmitAt: serverTimestamp(),
@@ -199,12 +208,11 @@ export const useSubmissionQuota = () => {
    * @param noteId 目前的 submissionId；還沒產生就傳 undefined（不可能是重試）
    */
   const loadUsage = async (noteId: string | undefined): Promise<QuotaUsage | null> => {
-    const ref = quotaRef()
-    if (!ref) return null
     try {
-      const [config, snap] = await Promise.all([loadConfig(), getDoc(ref)])
+      const ref = await quotaRef()
+      if (!ref) return null
+      const [config, quota] = await Promise.all([loadConfig(), readQuota(ref)])
       if (!config.enabled) return null
-      const quota = snap.exists() ? (snap.data() as UserQuota) : null
       const today = taipeiDateKey()
       const isRetry = !!quota && !!noteId && quota.pendingNoteId === noteId
       const lastMs = (quota?.lastSubmitAt as any)?.toMillis?.()
