@@ -18,7 +18,9 @@ const { locale } = useI18n()
 // 日文、韓文介面的字型：選了那個語言才內嵌 @font-face 並預載（見 utils/locale-fonts.ts）
 const localeFont = computed(() => LOCALE_UI_FONTS[locale.value])
 
-const route = useRoute()
+// 只看一進站的那一頁，不跟著換頁：從首頁點進編輯器時，前台那份介面字在首頁 START 能按之後
+// 就載好了（pages/index.vue），換頁時才補 preload 只會讓瀏覽器再跑一趟
+const preloadFrontFonts = useRoute().name !== 'index'
 
 useHead({
   htmlAttrs: {
@@ -30,7 +32,7 @@ useHead({
     ...(localeFont.value?.files ?? []).map(fontPreloadLink),
     // 首頁以外的頁面還要前台那份介面字（首頁開場那份 nuxt.config 每頁都預載，見 utils/ui-fonts.ts）。
     // 首頁不預載：它等 START 能按之後才抓，一開始的頻寬留給開場與 JS
-    ...(route.name === 'index' ? [] : UI_FONT_WEIGHTS.map(w => fontPreloadLink(uiFontHref('front', w))))
+    ...(preloadFrontFonts ? UI_FONT_WEIGHTS.map(w => fontPreloadLink(uiFontHref('front', w))) : [])
   ])
 })
 

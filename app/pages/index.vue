@@ -168,7 +168,7 @@ import type { WallNote } from '~/types'
 import { usePanZoom, type PanZoomBounds } from '~/composables/usePanZoom'
 import { calculateScatterPositions, type ScatterPosition } from '~/utils/scatter-layout'
 import { WALL_LOOK, randomWallLook, turnFactor, type WallLook } from '~/utils/wall-look'
-import { UI_FONT_WEIGHTS, preloadFontNow, uiFontHref } from '~/utils/ui-fonts'
+import { UI_FONT_WEIGHTS, loadUiFontNow } from '~/utils/ui-fonts'
 import StickyNote from '~/components/StickyNote.vue'
 import MemberBadge from '~/components/MemberBadge.vue'
 import AppModal from '~/components/AppModal.vue'
@@ -516,8 +516,9 @@ onMounted(async () => {
   loading.value = false
 
   // 開場以外的介面字（登入卡片、編輯器）現在才開始抓：首頁只預載開場用到的字，
-  // 一開始的頻寬留給開場與 JS。700 那份畫面接手時就抓了（便利貼的字，見 plugins/content-font.client.ts）
-  for (const weight of UI_FONT_WEIGHTS) preloadFontNow(uiFontHref('front', weight))
+  // 一開始的頻寬留給開場與 JS。700 那份頁面資源下載完也會抓（便利貼的字，見 plugins/content-font.client.ts），
+  // 哪邊先到都一樣，同一份只會下載一次
+  for (const weight of UI_FONT_WEIGHTS) loadUiFontNow('front', weight)
 
   // 登入鈕在開場之後的牆上（開場蓋著右上角），所以回來時直接回到牆上，
   // 不必再看一次開場
