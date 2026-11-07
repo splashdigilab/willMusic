@@ -20,8 +20,10 @@
 // 兩端色是從影片擬合出來、再外推到 420 方框的角落（漸層線的兩端在方框角上，不在圓周上）
 $disc-light: #84D4E1;
 $disc-deep: #00A4C4;
-// 膠囊上的字：特別色藍（見 variables 的 $will-blue 註解），影片裡量到的就是這個值
-$pill-text: #00ABC6;
+// 外框、膠囊、正面掃描圖示：影片裡是黃色，改用 CIS 品牌紅
+$accent: var.$will-red;
+// 膠囊上的字：影片裡是特別色藍 #00ABC6，但藍字放在紅膠囊上對比只有約 1.3:1，看不清楚，改白字
+$pill-text: #fff;
 
 .c-canvas-promo {
   position: absolute;
@@ -70,7 +72,7 @@ $pill-text: #00ABC6;
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    background: var.$will-yellow;
+    background: $accent;
     backface-visibility: hidden;
 
     &::before {
@@ -120,7 +122,7 @@ $pill-text: #00ABC6;
   }
 
   &__pill {
-    fill: var.$will-yellow;
+    fill: $accent;
   }
 
   &__pill-label {
@@ -130,13 +132,13 @@ $pill-text: #00ABC6;
   }
 
   &__scan-icon {
-    fill: var.$will-yellow;
+    fill: $accent;
   }
 
   &__scan-corners,
   &__scan-ring {
     fill: none;
-    stroke: var.$will-yellow;
+    stroke: $accent;
     stroke-width: 4.4;
     stroke-linecap: round;
   }
